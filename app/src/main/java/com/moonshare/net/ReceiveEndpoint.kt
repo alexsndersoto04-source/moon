@@ -10,7 +10,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.serializer
+import kotlinx.serialization.encodeToString
 
 /**
  * Lado receptor. Sabe a un [ServerSocket] en la interfaz Wi-Fi Direct y escribe lo
@@ -105,10 +105,8 @@ class ReceiveEndpoint(
         output.write(
             MoonProtocol.encode(
                 MoonProtocol.Type.HELLO_ACK,
-                MoonProtocol.json.encodeToString(
-                    MoonProtocol.Hello::class.serializer(),
-                    MoonProtocol.Hello(name = deviceName(), deviceId = deviceId()),
-                ),
+                MoonProtocol.json.encodeToString(MoonProtocol.Hello(name = deviceName(), deviceId = deviceId())
+                )
             )
         )
         output.flush()
@@ -143,10 +141,8 @@ class ReceiveEndpoint(
             output.write(
                 MoonProtocol.encode(
                     MoonProtocol.Type.DECLINE,
-                    MoonProtocol.json.encodeToString(
-                        MoonProtocol.Decision::class.serializer(),
-                        MoonProtocol.Decision(emptyList(), "rechazado por el usuario"),
-                    ),
+                    MoonProtocol.json.encodeToString(MoonProtocol.Decision(emptyList(), "rechazado por el usuario"),
+                    )
                 )
             )
             output.flush()
@@ -157,10 +153,8 @@ class ReceiveEndpoint(
         output.write(
             MoonProtocol.encode(
                 MoonProtocol.Type.ACCEPT,
-                MoonProtocol.json.encodeToString(
-                    MoonProtocol.Decision::class.serializer(),
-                    MoonProtocol.Decision(accepted),
-                ),
+                MoonProtocol.json.encodeToString(MoonProtocol.Decision(accepted)
+                )
             )
         )
         output.flush()
@@ -290,10 +284,8 @@ class ReceiveEndpoint(
         output.write(
             MoonProtocol.encode(
                 MoonProtocol.Type.END,
-                MoonProtocol.json.encodeToString(
-                    MoonProtocol.End::class.serializer(),
-                    MoonProtocol.End(id = begin.id, streamId = begin.streamId, bytes = written),
-                ),
+                MoonProtocol.json.encodeToString(MoonProtocol.End(id = begin.id, streamId = begin.streamId, bytes = written)
+                )
             )
         )
         output.flush()

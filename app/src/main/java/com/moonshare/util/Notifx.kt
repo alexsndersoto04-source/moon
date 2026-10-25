@@ -117,7 +117,7 @@ object Notifx {
             .setStyle(
                 NotificationCompat.InboxStyle().also { s ->
                     tasks.take(5).forEach { s.addLine("${it.name} · ${MoonLog.human(it.size)}") }
-                    if (tasks.size > 5) s.setBigContentLine("y ${tasks.size - 5} más")
+                    if (tasks.size > 5) s.addLine("… y ${tasks.size - 5} más")
                 }
             )
             .addAction(0, context.getString(R.string.notif_action_open), accept)

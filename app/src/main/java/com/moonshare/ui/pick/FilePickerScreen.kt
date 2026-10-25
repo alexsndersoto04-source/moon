@@ -26,7 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.InverseColors
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Search
@@ -227,7 +227,7 @@ fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Uni
                 text = if (ui.selected.isEmpty()) "Elegí algo" else "Enviar ${ui.selected.size}",
                 onClick = { if (ui.selected.isNotEmpty()) onPairing() },
                 enabled = ui.selected.isNotEmpty(),
-                icon = Icons.Rounded.InverseColors,
+                icon = Icons.Rounded.Share,
                 modifier = Modifier.weight(1f),
             )
         }

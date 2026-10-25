@@ -17,7 +17,6 @@ import com.moonshare.data.settings.SettingsStore
 import com.moonshare.nfc.PairingToken
 import com.moonshare.transfer.TransferEngine
 import com.moonshare.transfer.TransferService
-import com.moonshare.core.MoonLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow

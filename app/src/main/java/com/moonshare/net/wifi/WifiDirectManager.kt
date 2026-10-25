@@ -83,13 +83,7 @@ class WifiDirectManager(private val context: Context) {
             _events.tryEmit("Este teléfono no soporta Wi-Fi Direct")
             return false
         }
-        val ch = try {
-            mgr.initialize(appContext, android.os.Looper.getMainLooper())
-        } catch (e: Exception) {
-            MoonLog.e(tag, "initialize falló", e)
-            _events.tryEmit("No se pudo abrir el canal de Wi-Fi Direct: ${e.message}")
-            null
-        }
+        val ch = acquireChannel(mgr)
         if (ch == null) {
             _events.tryEmit("No se pudo abrir el canal de Wi-Fi Direct")
             return false
@@ -106,6 +100,47 @@ class WifiDirectManager(private val context: Context) {
         }
         MoonLog.i(tag, "canal WFD abierto")
         return true
+    }
+
+    /**
+     * `WifiP2pManager.initialize` tiene 3 sobrecargas según el nivel de API y la de
+     * dos argumentos —la única que sirve en Android 10 a 12— está deprecada y en los
+     * stubs recientes se resuelve ambigua contra la forma con listener. Para no
+     * depender de qué SDK esté compilando ni romper Android 10 en runtime, el método
+     * se busca por reflexión: funciona en 29, 33, 34 y 35 sin condiciones.
+     */
+    private fun acquireChannel(mgr: WifiP2pManager): WifiP2pManager.Channel? {
+        val looper = android.os.Looper.getMainLooper()
+        // 1) La forma clásica: initialize(Context, Looper)
+        mgr.javaClass.methods.firstOrNull { m ->
+            m.name == "initialize" && m.parameterTypes.size == 2 &&
+                m.parameterTypes[0] == Context::class.java &&
+                m.parameterTypes[1] == android.os.Looper::class.java
+        }?.let { m ->
+            val ch = runCatching {
+                m.invoke(mgr, appContext, looper) as? WifiP2pManager.Channel
+            }.getOrNull()
+            if (ch != null) return ch
+        }
+        // 2) API 33+: initialize(Context, Looper, OnChannelListener). El listener se
+        //    implementa con un Proxy para no atarse a la firma exacta de la interfaz.
+        val target = mgr.javaClass.methods.firstOrNull { m ->
+            m.name == "initialize" && m.parameterTypes.size == 3 && m.parameterTypes[2].isInterface
+        } ?: return null
+        val listenerType = target.parameterTypes[2]
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val out = arrayOfNulls<Any>(1)
+        val proxy = java.lang.reflect.Proxy.newProxyInstance(
+            listenerType.classLoader, arrayOf(listenerType),
+        ) { _, _, args ->
+            (args?.firstOrNull() as? WifiP2pManager.Channel)?.let { out[0] = it }
+            latch.countDown()
+            null
+        }
+        runCatching { target.invoke(mgr, appContext, looper, proxy) }
+            .onFailure { MoonLog.w(tag, "initialize(listener): ${it.message}") }
+        latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+        return out[0] as? WifiP2pManager.Channel
     }
 
     fun close() {
@@ -163,12 +198,14 @@ class WifiDirectManager(private val context: Context) {
                     })
                 }
 
-                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> connectionListener()?.let { (m, c) ->
-                    m.requestThisDevice(c, object : WifiP2pManager.ThisDeviceListener {
-                        override fun onThisDeviceUpdated(device: WifiP2pDevice?) {
-                            _thisDevice.value = device
-                        }
-                    })
+                // El dispositivo local NO se pide: viene en el intent del broadcast.
+                // (WifiP2pManager no expone un requestThisDevice(); el extra es la vía.)
+                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
+                    @Suppress("DEPRECATION")
+                    val dev = intent.getParcelableExtra<WifiP2pDevice>(
+                        WifiP2pManager.EXTRA_WIFI_P2P_DEVICE
+                    )
+                    if (dev != null) _thisDevice.value = dev
                 }
             }
         }
@@ -250,21 +287,9 @@ class WifiDirectManager(private val context: Context) {
                     m.requestGroupInfo(c, object : WifiP2pManager.GroupInfoListener {
                         override fun onGroupInfoAvailable(group: WifiP2pGroup?) {
                             _group.value = group
-                            // Ventana WPS abierta ~2 min: el otro entra sin diálogo.
-                            try {
-                                m.startWps(
-                                    c,
-                                    WifiP2pManager.WPS_DISPLAY,
-                                    object : WifiP2pManager.ActionListener {
-                                        override fun onSuccess() = Unit
-                                        override fun onFailure(reason: Int) {
-                                            MoonLog.d(tag, "startWps reason=$reason")
-                                        }
-                                    },
-                                )
-                            } catch (e: Exception) {
-                                MoonLog.d(tag, "startWps no disponible: ${e.message}")
-                            }
+                            // No hace falta abrir una ventana WPS explícita: con un
+                            // grupo ya creado y el join del otro lado usando
+                            // WPS_PBC, la negociación arranca sola en el GO.
                             onReady(group)
                         }
                     })

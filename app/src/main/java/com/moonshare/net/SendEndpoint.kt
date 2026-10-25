@@ -8,7 +8,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
-import kotlinx.serialization.serializer
+import kotlinx.serialization.encodeToString
 
 /**
  * Lado emisor. Abre un socket contra el Group Owner (192.168.49.1 siempre, porque
@@ -59,10 +59,8 @@ class SendEndpoint(
             output.write(
                 MoonProtocol.encode(
                     MoonProtocol.Type.HELLO,
-                    MoonProtocol.json.encodeToString(
-                        MoonProtocol.Hello::class.serializer(),
-                        MoonProtocol.Hello(deviceName, deviceId),
-                    ),
+                    MoonProtocol.json.encodeToString(MoonProtocol.Hello(deviceName, deviceId)
+                    )
                 )
             )
             output.flush()
@@ -81,7 +79,7 @@ class SendEndpoint(
             output.write(
                 MoonProtocol.encode(
                     MoonProtocol.Type.OFFER,
-                    MoonProtocol.json.encodeToString(MoonProtocol.Offer::class.serializer(), offer),
+                    MoonProtocol.json.encodeToString(offer)
                 )
             )
             output.flush()
@@ -145,7 +143,7 @@ class SendEndpoint(
         output.write(
             MoonProtocol.encode(
                 MoonProtocol.Type.BEGIN,
-                MoonProtocol.json.encodeToString(MoonProtocol.Begin::class.serializer(), begin),
+                MoonProtocol.json.encodeToString(begin)
             )
         )
         output.flush()
@@ -178,8 +176,7 @@ class SendEndpoint(
                 output.write(
                     MoonProtocol.encode(
                         MoonProtocol.Type.CANCEL,
-                        MoonProtocol.json.encodeToString(MoonProtocol.End::class.serializer(),
-                            MoonProtocol.End(item.id, streamId, sent, ok = false)),
+                        MoonProtocol.json.encodeToString(MoonProtocol.End(item.id, streamId, sent, ok = false))
                     )
                 )
                 output.flush()
@@ -190,10 +187,8 @@ class SendEndpoint(
             output.write(
                 MoonProtocol.encode(
                     MoonProtocol.Type.END,
-                    MoonProtocol.json.encodeToString(
-                        MoonProtocol.End::class.serializer(),
-                        MoonProtocol.End(item.id, streamId, sent),
-                    ),
+                    MoonProtocol.json.encodeToString(MoonProtocol.End(item.id, streamId, sent)
+                    )
                 )
             )
             output.flush()
