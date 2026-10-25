@@ -2,6 +2,12 @@ name: Build APK
 
 # Genera el .apk instalable sin que necesites Android Studio ni el SDK local.
 # Cada push a main o a una rama arena/ sube un artefacto MoonShare-debug.apk.
+#
+# Si la compilación falla, el workflow abre/actualiza un issue con la lista de
+# errores del compilador. Es deliberado: el log de Actions vive en un host
+# distinto al API y no siempre es legible desde un entorno restringido, mientras
+# que los issues se leen por la API normal. Así el feedback del build es
+# accesible desde cualquier cliente de la API.
 
 on:
   workflow_dispatch:
@@ -18,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: apk-${{ github.ref }}
@@ -50,26 +57,75 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Compilar
+        shell: bash
         run: |
+          set -o pipefail
           VARIANT="${{ github.event.inputs.variant || 'debug' }}"
-          gradle --no-daemon "assemble${VARIANT^}" \
-            -Pandroid.sdk.channel=3 \
-            --stacktrace
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          gradle --no-daemon --console=plain "assemble${VARIANT^}" 2>&1 | tee /tmp/build.log
 
       - name: Localizar el APK
         id: find
+        if: success()
         run: |
           APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          [ -n "$APK" ] || { echo "no se encontró el APK" >&2; exit 1; }
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "## APK: \`$APK\`" >> "$GITHUB_STEP_SUMMARY"
-          ls -la "$(dirname "$APK")" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## ✅ APK generado"
+            echo
+            echo '```'
+            ls -la "$APK"
+            echo '```'
+            echo
+            echo "Descargalo de la pestaña **Artifacts** → \`moonshare-apk\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Subir artefacto
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: moonshare-apk
           path: ${{ steps.find.outputs.path }}
           if-no-files-found: error
           retention-days: 30
+
+      # ------------------------------------------------------------------ fallo
+      - name: Reportar errores de compilación en un issue
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Errores de Kotlin (e: file://...), de AGP y el bloque "What went wrong".
+          {
+            echo "## ❌ MoonShare no compiló"
+            echo
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- rama: \`${GITHUB_REF_NAME}\`"
+            echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '```'
+            grep -E "^e: file:|^> Task .*FAILED|^error:|Caused by:|what went wrong" -i /tmp/build.log \
+              | sed 's|/home/runner/work/[^/]*/[^/]*/||g' \
+              | head -120
+            echo '```'
+          } > /tmp/report.md
+
+          if [ ! -s /tmp/report.md ]; then
+            { echo "## ❌ MoonShare no compiló (sin errores parseables)"; echo; echo '```'; tail -120 /tmp/build.log; echo '```'; } > /tmp/report.md
+          fi
+
+          TITLE="🔧 Fallo de build de MoonShare"
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&labels=ci-build-failure" \
+            --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$EXISTING/comments" -f body "$(cat /tmp/report.md)"
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$EXISTING" \
+              -f body="$(cat /tmp/report.md)" || true
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues" \
+              -f title="$TITLE" \
+              -f body="$(cat /tmp/report.md)" \
+              -f "labels[]=ci-build-failure"
+          fi

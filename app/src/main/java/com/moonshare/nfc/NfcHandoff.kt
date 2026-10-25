@@ -110,7 +110,7 @@ class NfcHandoff(private val activity: Activity) {
         val timeout = if (iso.timeout < 5000) 5000 else iso.timeout
         iso.timeout = timeout
         iso.connect()
-        iso.use {
+        iso.withIsoDep {
             // SELECT NDEF Tag Application
             val select = buildSelect(MoonCardService.NDEF_AID)
             val r1 = it.transceive(select)
@@ -168,7 +168,11 @@ class NfcHandoff(private val activity: Activity) {
         resp.size >= 2 &&
             resp[resp.size - 2] == 0x90.toByte() && resp[resp.size - 1] == 0x00
 
-    private inline fun IsoDep.use(block: (IsoDep) -> PairingToken?): PairingToken? {
+    /**
+     * No se llama `use`: [IsoDep] implementa `Closeable`, y un `use` propio pelearía
+     * con la extensión de la stdlib en la resolución de sobrecargas.
+     */
+    private inline fun IsoDep.withIsoDep(block: (IsoDep) -> PairingToken?): PairingToken? {
         try {
             return block(this)
         } finally {

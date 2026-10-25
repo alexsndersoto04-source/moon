@@ -83,7 +83,6 @@ object Notifx {
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
-            .setSilent(true)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)

@@ -273,20 +273,17 @@ class TransferEngine(
         resetTasks(items, TransferDirection.Send)
         ensureRadioOpen()
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                var result = false
-                wfd.join(address) { success, err ->
-                    result = success
-                    if (err != null) _state.update { st -> st.copy(error = err) }
-                }
-                result
+            // El listener de connect() dispara apenas cuando la *solicitud* se acepta;
+            // el enlace real llega después por broadcast. La única fuente de verdad es
+            // awaitLink(), así que el callback solo se usa para adelantar el error.
+            var joinError: String? = null
+            withContext(Dispatchers.IO) {
+                wfd.join(address) { _, err -> joinError = err }
             }
-            if (!ok) {
-                // El join puede estar en curso pese al callback de error en algunos ROMs:
-                // damos una oportunidad al enlace antes de rendirnos.
-                MoonLog.w(TAG, "join respondió error, igual esperamos el enlace")
+            joinError?.let { msg ->
+                MoonLog.w(TAG, "join: $msg (igual esperamos el enlace)")
             }
-            val link = wfd.awaitLink(if (ok) 25_000 else 35_000)
+            val link = wfd.awaitLink(35_000)
             if (link == null) {
                 failAll("No se formó el enlace Wi-Fi Direct. Aceptá el diálogo del sistema si apareció.")
                 return@launch

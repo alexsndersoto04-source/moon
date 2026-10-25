@@ -78,9 +78,11 @@ class WifiDirectManager(private val context: Context) {
             _events.tryEmit("Este teléfono no soporta Wi-Fi Direct")
             return false
         }
+        // initialize(Context, Looper, OnChannelListener) recién existe en API 33, y acá el
+        // piso es API 29: se usa la sobrecarga clásica (deprecada pero viva en todas).
         @Suppress("DEPRECATION")
         val ch = try {
-            mgr.initialize(context.applicationContext, context.mainLooper, null)
+            mgr.initialize(context.applicationContext, android.os.Looper.getMainLooper())
         } catch (e: SecurityException) {
             MoonLog.e(tag, "initialize sin permiso de cercanos", e)
             _events.tryEmit("Falta el permiso de dispositivos cercanos")
@@ -194,7 +196,7 @@ class WifiDirectManager(private val context: Context) {
                     // orden estable: conectados primero, luego por nombre
                     .sortedWith(
                         compareByDescending<WifiP2pDevice> { it.isConnected() }
-                            .thenBy { it.deviceName.lowercase() }
+                            .thenBy { it.deviceName?.lowercase() ?: "" }
                     )
                 if (devices.size != _peers.value.size || devices != _peers.value) {
                     _peers.value = devices
