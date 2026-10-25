@@ -21,7 +21,7 @@ class MoonCardService : HostApduService() {
         val apdu = Apdu.parse(commandApdu) ?: return SW_WRONG_LENGTH
         val payload = apdu.data
 
-        when {
+        return when {
             apdu.isSelectByAid() -> {
                 selected = if (apdu.dataStartsWith(NDEF_AID)) FILE_NDEF else FILE_NONE
                 MoonLog.d(TAG, "select AID → ${if (selected == FILE_NDEF) "ok" else "no-nuestra"}")
@@ -65,7 +65,12 @@ class MoonCardService : HostApduService() {
     private fun ndefFile(): ByteArray {
         val token = PairingTokenHolder.current ?: return EMPTY
         return try {
-            val message = NdefMessage(arrayOf(NdefRecord.createUri(token.toUriString())))
+            // Registro de TEXTO en vez de URI: `NdefRecord.createUri` obliga al lector a
+            // re-parsear el prefijo, y getUri() no está en todas las ROMs. Con texto el
+            // payload es la URI tal cual, y lo lee cualquiera.
+            val message = NdefMessage(
+                arrayOf(NdefRecord.createTextRecord("en", token.toUriString()))
+            )
             val body = message.toByteArray()
             byteArrayOf(
                 ((body.size shr 8) and 0xFF).toByte(),

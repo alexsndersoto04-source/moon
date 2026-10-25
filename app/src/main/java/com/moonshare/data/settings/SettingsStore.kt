@@ -189,7 +189,8 @@ class SettingsStore(private val context: Context) {
 
     suspend fun appendHistory(entry: HistoryEntry) {
         context.moonDataStore.edit { p ->
-            val list = parse(p[Key.historyBlob]).apply { add(0, entry) }
+            val list = ArrayList(parse(p[Key.historyBlob]))
+            list.add(0, entry)
             while (list.size > historyCap) list.removeAt(list.size - 1)
             val arr = JSONArray()
             list.forEach { e ->

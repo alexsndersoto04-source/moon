@@ -122,8 +122,10 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
                 .height(312.dp),
             contentAlignment = Alignment.Center,
         ) {
-            // Pozo de luz: solo cuando hay algo en curso o estás escuchando
-            AnimatedVisibility(visible = hosting || active, enter = fadeIn(tween(500)), exit = fadeOut(tween(320))) {
+            // Pozo de luz: solo cuando hay algo en curso o estás escuchando.
+            // Es un `if` y no AnimatedVisibility porque dentro de un Box con
+            // contentAlignment el scope de animación no aplica.
+            if (hosting || active) {
                 Box(
                     Modifier
                         .size(300.dp)

@@ -8,6 +8,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
+import kotlinx.serialization.serializer
 
 /**
  * Lado emisor. Abre un socket contra el Group Owner (192.168.49.1 siempre, porque

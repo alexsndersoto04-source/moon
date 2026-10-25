@@ -10,6 +10,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.serializer
 
 /**
  * Lado receptor. Sabe a un [ServerSocket] en la interfaz Wi-Fi Direct y escribe lo

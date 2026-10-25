@@ -24,7 +24,8 @@ object NfcAvailability {
         }.getOrNull() ?: return false
         return runCatching {
             CardEmulation.getInstance(adapter).isDefaultServiceForCategory(
-                context.packageName, CardEmulation.CATEGORY_OTHER,
+                android.content.ComponentName(context, MoonCardService::class.java),
+                CardEmulation.CATEGORY_OTHER,
             )
         }.getOrDefault(false)
     }
@@ -43,7 +44,7 @@ object NfcAvailability {
         }
     }
 
-    fun describe(context: Context): String = when (of(context)) {
+    fun describe(context: Context): String = when (Status.of(context)) {
         Status.Ready -> "NFC listo: acercá los dos teléfonos"
         Status.Off -> "NFC apagado — encendela en Ajustes rápidos"
         Status.NoHardware -> "Este teléfono no tiene NFC: se puede parear igual desde la lista"

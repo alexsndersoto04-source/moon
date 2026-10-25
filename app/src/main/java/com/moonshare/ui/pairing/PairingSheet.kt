@@ -45,7 +45,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.moonshare.core.MoonLog
 import com.moonshare.data.model.FileItem
 import com.moonshare.nfc.NfcAvailability
 import com.moonshare.ui.common.PrimaryButton
@@ -73,8 +72,6 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
     val engine by vm.engineState.collectAsState()
     val peers by vm.engine.discoveredPeers.collectAsState()
     val token by vm.nfcToken.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
-
     var scanning by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
 
@@ -193,7 +190,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
                 modifier = Modifier.height((peers.size * 56).dp.coerceAtMost(190.dp)),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(peers, key = { it.deviceAddress ?: it.deviceName }) { dev ->
+                items(peers, key = { it.deviceAddress ?: (it.deviceName ?: it.hashCode().toString()) }) { dev ->
                     Row(
                         Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))

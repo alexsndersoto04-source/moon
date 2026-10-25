@@ -106,8 +106,8 @@ fun SettingRow(
 @Composable
 fun MoonSwitch(
     checked: Boolean,
-    onChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onChange: (Boolean) -> Unit,
 ) {
     val track by animateColorAsState(
         if (checked) Aqua.copy(alpha = 0.32f) else Color.White.copy(alpha = 0.07f),

@@ -330,7 +330,7 @@ class TransferEngine(
     }
 
     private fun lastNfcToken(): PairingToken? =
-        nfcHandoffToken.takeIf { PairingToken.isFresh(it) }
+        nfcHandoffToken?.takeIf { PairingToken.isFresh(it) }
 
     /** Token que entregó [com.moonshare.nfc.NfcHandoff] hace menos de 5 minutos. */
     @Volatile

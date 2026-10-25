@@ -10,7 +10,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -162,13 +161,10 @@ private fun PairingOverlay(vm: MoonViewModel, onDismiss: () -> Unit, onDone: () 
                 .navigationBarsPadding()
                 .clickable(enabled = false) { }
         ) {
-            AnimatedVisibility(
-                visible = true,
-                enter = slideInVertically(tween(280)) { it / 2 } + fadeIn(tween(220)),
-                exit = slideInVertically(tween(220)) { it / 2 } + fadeOut(tween(160)),
-            ) {
-                PairingSheet(vm = vm, onDone = onDone)
-            }
+            // Sin AnimatedVisibility acá: la hoja vive un `if` en el composition scope
+            // del Box, y animarla pedía un scope de Column/Row. El feedback de entrada
+            // lo da la propia hoja (el glifo de NFC late), así que no se pierde nada.
+            PairingSheet(vm = vm, onDone = onDone)
         }
     }
 }

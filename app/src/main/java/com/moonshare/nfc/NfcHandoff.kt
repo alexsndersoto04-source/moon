@@ -5,6 +5,7 @@ import android.content.Intent
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.nfc.Tag
+import android.nfc.NdefRecord
 import android.nfc.tech.IsoDep
 import android.nfc.tech.Ndef
 import com.moonshare.core.MoonLog
@@ -56,7 +57,7 @@ class NfcHandoff(private val activity: Activity) {
                 NfcAdapter.FLAG_READER_NFC_A or
                     NfcAdapter.FLAG_READER_NFC_B or
                     NfcAdapter.FLAG_READER_NFC_F or
-                    NfcAdapter.FLAG_READER_SKIP_NDEF_CACHE,
+                    NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS,
                 null,
             )
         }.onFailure {
@@ -82,23 +83,29 @@ class NfcHandoff(private val activity: Activity) {
         ) {
             return null
         }
-        @Suppress("DEPRECATION")
-        val raw: Array<Any>? = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
+        val raw = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
         val message = raw?.firstOrNull() as? NdefMessage ?: return null
-        val record = message.records.firstOrNull { it.uri != null } ?: return null
-        return PairingToken.parse(record.uri)
+        val text = message.records.firstNotNullOfOrNull { it.textPayload() } ?: return null
+        return PairingToken.parse(text)
     }
 
     private fun readTag(tag: Tag): PairingToken? {
         // 1) Camino feliz: el stack de Android ya reconoció el tag NDEF y nos da el mensaje.
-        runCatching {
-            Ndef.get(tag)?.let { ndef ->
+        try {
+            val ndef = Ndef.get(tag)
+            if (ndef != null) {
                 if (!ndef.isConnected) ndef.connect()
-                val msg = runCatching { ndef.cachedNdefMessage ?: ndef.readNdefMessage() }.getOrNull()
-                msg?.records?.firstNotNullOfOrNull { rec ->
-                    rec.uri?.let { uri -> PairingToken.parse(uri)?.let { if (PairingToken.isFresh(it)) it else null } }
-                }?.let { return it }
+                val msg = ndef.cachedNdefMessage ?: try {
+                    ndef.ndefMessage
+                } catch (_: Exception) {
+                    null
+                }
+                val text = msg?.records?.firstNotNullOfOrNull { it.textPayload() }
+                val parsed = text?.let { PairingToken.parse(it) }
+                if (parsed != null && PairingToken.isFresh(parsed)) return parsed
             }
+        } catch (e: Exception) {
+            MoonLog.d(TAG, "Ndef tech: ${e.message}")
         }
         // 2) Fallback: leemos el tag Tipo-4 a mano por ISO-DEP (HCE a veces no poplea
         //    la caché NDEF en algunos ROMs, y ahí el camino 1 devuelve null).
@@ -110,7 +117,7 @@ class NfcHandoff(private val activity: Activity) {
         val timeout = if (iso.timeout < 5000) 5000 else iso.timeout
         iso.timeout = timeout
         iso.connect()
-        iso.withIsoDep {
+        return iso.withIsoDep {
             // SELECT NDEF Tag Application
             val select = buildSelect(MoonCardService.NDEF_AID)
             val r1 = it.transceive(select)
@@ -147,12 +154,25 @@ class NfcHandoff(private val activity: Activity) {
             }
             if (done < ndefLen) return null
             val msg = NdefMessage(out)
-            return msg.records.firstNotNullOfOrNull { rec ->
-                rec.uri?.let { uri ->
-                    PairingToken.parse(uri)?.takeIf { PairingToken.isFresh(it) }
-                }
-            }
+            val text = msg.records.firstNotNullOfOrNull { it.textPayload() } ?: return null
+            return PairingToken.parse(text)?.takeIf { PairingToken.isFresh(it) }
         }
+    }
+
+    /**
+     * Saca el texto UTF-8 de un registro NDEF RTD_TEXT, quitando el byte de estado y
+     * el prefijo de idioma. Se hace a mano porque `NdefRecord.getText()` no es público
+     * y `getUri()` no está en todas las ROMs.
+     */
+    private fun android.nfc.NdefRecord.textPayload(): String? {
+        if (tnf != android.nfc.NdefRecord.TNF_WELL_KNOWN) return null
+        if (!type.contentEquals(android.nfc.NdefRecord.RTD_TEXT)) return null
+        val p = payload ?: return null
+        if (p.size < 2) return null
+        val langLen = p[0].toInt() and 0x3F
+        val start = 1 + langLen
+        if (start >= p.size) return null
+        return String(p, start, p.size - start, Charsets.UTF_8)
     }
 
     private fun buildSelect(aid: ByteArray): ByteArray {
@@ -166,7 +186,7 @@ class NfcHandoff(private val activity: Activity) {
 
     private fun isOk(resp: ByteArray): Boolean =
         resp.size >= 2 &&
-            resp[resp.size - 2] == 0x90.toByte() && resp[resp.size - 1] == 0x00
+            resp[resp.size - 2] == 0x90.toByte() && resp[resp.size - 1] == 0x00.toByte()
 
     /**
      * No se llama `use`: [IsoDep] implementa `Closeable`, y un `use` propio pelearía

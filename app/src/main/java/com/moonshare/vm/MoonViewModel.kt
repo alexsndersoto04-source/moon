@@ -326,6 +326,9 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
         engine.clearError()
     }
 
+    /** Fuerza un `discoverPeers()` para refrescar la lista (botón "Buscar"). */
+    fun refreshPeers() = engine.refreshPeers()
+
     // ------------------------------------------------------------- ajustes
     private inline fun edit(crossinline block: suspend (SettingsStore) -> Unit) {
         viewModelScope.launch { block(settings) }
