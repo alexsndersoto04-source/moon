@@ -116,16 +116,30 @@ jobs:
           fi
 
           TITLE="🔧 Fallo de build de MoonShare"
-          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&labels=ci-build-failure" \
-            --jq '.[0].number // empty')
+          BODY="$(cat /tmp/report.md)"
 
-          if [ -n "$EXISTING" ]; then
-            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$EXISTING/comments" -f body "$(cat /tmp/report.md)"
+          # El label tiene que existir antes de asignarse, si no la API responde 422.
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/labels/ci-build-failure" \
+            -f name="ci-build-failure" -f color="e11d48" >/dev/null 2>&1 || true
+
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&labels=ci-build-failure" \
+            --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$EXISTING" \
-              -f body="$(cat /tmp/report.md)" || true
+              -f title="$TITLE" -f body="$BODY" >/dev/null 2>&1 ||
+              gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$EXISTING/comments" \
+                -f body="$BODY" >/dev/null 2>&1 || true
+            echo "reporte actualizado en #$EXISTING"
           else
-            gh api -X POST "repos/$GITHUB_REPOSITORY/issues" \
-              -f title="$TITLE" \
-              -f body="$(cat /tmp/report.md)" \
-              -f "labels[]=ci-build-failure"
+            NUM=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues" \
+              -f title="$TITLE" -f body="$BODY" --jq '.number' 2>/dev/null || echo "")
+            if [ -n "$NUM" ] && [ "$NUM" != "null" ]; then
+              gh api -X PUT "repos/$GITHUB_REPOSITORY/issues/$NUM/labels" \
+                -f "labels[]=ci-build-failure" >/dev/null 2>&1 || true
+              echo "reporte publicado en #$NUM"
+            fi
           fi
+          # Doble canal: si la API de issues estuviera cerrada, el resumen del job
+          # igual queda visible en la UI de Actions.
+          cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
