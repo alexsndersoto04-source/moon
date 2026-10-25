@@ -423,7 +423,6 @@ private fun NicknameRow(current: String, onCommit: (String) -> Unit) {
             modifier = Modifier.width(132.dp),
             shape = RoundedCornerShape(14.dp),
             textStyle = MaterialTheme.typography.bodyMedium,
-            keyboardOptions = KeyboardOptions(capitalize = true),
             colors = moonFieldColors(),
         )
     }
