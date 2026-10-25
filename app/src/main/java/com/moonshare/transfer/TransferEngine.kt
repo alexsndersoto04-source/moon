@@ -152,7 +152,7 @@ class TransferEngine(
      */
     fun startReceiving() {
         if (_state.value.isHosting) return
-        MoonLog.i(TAG, "abrriendo modo recepción")
+        MoonLog.i(TAG, "abriendo modo recepción")
         _state.update { it.copy(phase = EnginePhase.OpeningRadio, error = null, statusText = "Prendiendo Wi-Fi Direct…") }
         hostJob?.cancel()
         hostJob = scope.launch {
@@ -239,6 +239,9 @@ class TransferEngine(
      */
     fun send(items: List<FileItem>, viaNfc: PairingToken? = null) {
         if (items.isEmpty()) return
+        // Los ítems de SAF/DocumentFile a veces reportan size=0: sin el tamaño real
+        // el progreso del receptor no tendría denominador.
+        val sized = items.map { if (it.size > 0L) it else media.refreshSize(it) }
         if (_state.value.mode == EngineMode.Sending) {
             _state.update { it.copy(error = "Ya hay un envío en curso") }
             return
@@ -257,7 +260,7 @@ class TransferEngine(
             wfd.discover()
             return
         }
-        launchSend(items, address, token?.deviceName.orEmpty(), token?.port ?: currentSettings.listenPort)
+        launchSend(sized, address, token?.deviceName.orEmpty(), token?.port ?: currentSettings.listenPort)
     }
 
     private fun launchSend(items: List<FileItem>, address: String, nameHint: String, port: Int) {

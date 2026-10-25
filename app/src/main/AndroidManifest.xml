@@ -61,7 +61,7 @@
 
         <!-- ================= ACTIVIDAD PRINCIPAL =================
              Recibe ACTION_SEND / SEND_MULTIPLE / VIEW: se puede compartir ANY
-             archivo desde GallERIA, Archivos, Chrome, etc. hacia MoonShare. -->
+             archivo desde galería, Archivos, Chrome, etc. hacia MoonShare. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density"

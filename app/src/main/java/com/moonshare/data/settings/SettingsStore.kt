@@ -145,10 +145,7 @@ class SettingsStore(private val context: Context) {
         current = settings
     }
 
-    private val defaultSettings get() = MoonSettings()
-
     // ---------------------------------------------------------------- escritura
-
     private suspend inline fun write(crossinline block: (MutablePreferences) -> Unit) {
         context.moonDataStore.edit { prefs -> block(prefs) }
     }
