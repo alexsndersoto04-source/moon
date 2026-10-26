@@ -1,0 +1,54 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Esfera de vidrio: azul -> turquesa, con especular arriba a la izquierda -->
+    <path android:pathData="M54,27 m-27,0 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="44"
+                android:centerY="42"
+                android:gradientRadius="34"
+                android:startColor="#FF7FF7E8"
+                android:centerColor="#FF2BB7C9"
+                android:endColor="#FF12418C" />
+        </aapt:attr>
+    </path>
+
+    <!-- Luna creciente recortada sobre la esfera -->
+    <path
+        android:fillColor="#F2F7FB"
+        android:fillAlpha="0.92"
+        android:pathData="M62.5,39.5 m-14.5,0 a14.5,14.5 0 1,0 29,0 a14.5,14.5 0 1,0 -29,0" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,0" />
+    <path
+        android:fillColor="#FF1A6FB0"
+        android:fillAlpha="0.55"
+        android:pathData="M68.5,36.5 m-13,0 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0" />
+
+    <!-- Brillo especular -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.55"
+        android:pathData="M41,39 m-5.5,-3 a5.5,3 20,1 0 11,6 a5.5,3 20,1 0 -11,-6" />
+
+    <!-- Estela de "paso" hacia afuera: sugiere el archivo saliendo -->
+    <path
+        android:strokeColor="#FF5FE3D0"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.75"
+        android:pathData="M78,66 C86,72 90,79 91,86" />
+    <path
+        android:strokeColor="#FF2E7BE8"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.45"
+        android:pathData="M70,74 C76,79 79,84 80,90" />
+</vector>

@@ -1,0 +1,29 @@
+# Build
+*.iml
+.gradle/
+build/
+app/build/
+captures/
+.preview/
+
+# Android Studio / IntelliJ
+.idea/
+*.kts.iml
+local.properties
+
+# Artefactos
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Firma — NUNCA subir la clave privada
+keystore.properties
+*.jks
+*.keystore
+
+# Assets generados por tools/make_sfx.py (se regeneran, no se parchan a mano)
+# NOTA: los .wav que estan versionados en res/raw son los oficiales de la app.
+
+.DS_Store
