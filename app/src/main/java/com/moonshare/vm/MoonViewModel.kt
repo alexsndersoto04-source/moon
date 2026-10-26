@@ -78,8 +78,24 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     private val _incomingShare = MutableSharedFlow<List<Uri>>(replay = 1, extraBufferCapacity = 4)
     val incomingShare = _incomingShare.asSharedFlow()
 
-    init {
+    /**
+     * `viewModelScope` propaga cualquier excepción al handler del proceso y eso
+     * cierra la app. Todo lo que toca IO de disco/red pasa por acá.
+     */
+    private fun safe(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
         viewModelScope.launch {
+            try {
+                block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                MoonLog.e("VM", "fallo no previsto en la capa de UI", e)
+            }
+        }
+    }
+
+    init {
+        safe {
             settings.settings.collect { s ->
                 _ui.update { it.copy(settings = s) }
                 settings.cache(s)
@@ -106,7 +122,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun load(force: Boolean = false, debounce: Boolean = false) {
         val seq = ++loadSeq
-        viewModelScope.launch {
+        safe {
             if (debounce) kotlinx.coroutines.delay(220)
             val cat = _ui.value.catalog.category
             val q = _ui.value.catalog.query
@@ -157,7 +173,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onTreePicked(treeUri: Uri) {
-        viewModelScope.launch {
+        safe {
             media.takePersistablePermission(treeUri)
             _ui.update { it.copy(catalog = it.catalog.copy(treeUri = treeUri.toString(), category = MediaCategory.All)) }
             load(force = true)
@@ -220,7 +236,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
             else -> emptyList()
         }
         if (uris.isEmpty()) return
-        viewModelScope.launch {
+        safe {
             val items = withContext(Dispatchers.IO) { media.fromUris(uris) }
             externalItems = items
             _incomingShare.emit(uris)
@@ -329,8 +345,8 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshPeers() = engine.refreshPeers()
 
     // ------------------------------------------------------------- ajustes
-    private inline fun edit(crossinline block: suspend (SettingsStore) -> Unit) {
-        viewModelScope.launch { block(settings) }
+    private fun edit(block: suspend (SettingsStore) -> Unit) {
+        safe { block(settings) }
     }
 
     fun setAutoAccept(v: Boolean) = edit { it.setAutoAccept(v) }
@@ -362,7 +378,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadHistory() {
-        viewModelScope.launch {
+        safe {
             val list = settings.readHistory()
             _ui.update { it.copy(history = list) }
         }

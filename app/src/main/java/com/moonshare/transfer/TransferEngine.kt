@@ -102,7 +102,18 @@ class TransferEngine(
     private val sfx: SfxPlayer,
 ) {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * Sin [CoroutineExceptionHandler] una excepción dentro de un `scope.launch`
+     * va derecha al uncaught handler del proceso y la app se cierra: en la práctica
+     * era "pantalla negra y se sale". El motor maneja red y MediaStore, que en ROMs
+     * raras tiran de todo, así que acá se loggea, se reporta y SEGUIME andando.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            kotlinx.coroutines.CoroutineExceptionHandler { t, e ->
+                MoonLog.e(TAG, "excepción no atendida en $t", e)
+            },
+    )
     private val wfd = WifiDirectManager(context)
 
     private val _state = MutableStateFlow(EngineState(deviceName = myName()))
