@@ -63,7 +63,7 @@ def lint_section():
 
 
 def tests_section():
-    files = glob.glob(os.path.join(REPO, "app/build/test-results/testDebugUnitTest/*.xml"))
+    files = glob.glob(os.path.join(REPO, "app/build/test-results/*Unit*/*.xml"))
     out = ["### Prueba de arranque en la JVM (Robolectric, SDK 29)", ""]
     if not files:
         out.append("_no se generaron resultados de test._ Filas utiles del log:")
@@ -76,7 +76,8 @@ def tests_section():
             txt = "(test.log no existe)"
         keep = [ln for ln in txt.splitlines() if any(k in ln for k in (
             "FAILURE", "What went wrong", "No tests found", "Execution failed",
-            "exit=", "Task :app:test", "Plugin version", "error:", "Caused by"))]
+            "exit=", "Task :app:test", "Task :app:compileDebugUnitTest", "error:", "Caused by",
+            "e: file:", "Unresolved reference", "None of the following"))]
         out.append("\n".join(keep[-40:]) if keep else tail(os.path.join(REPO, "test.log"), 40))
         out.append("```")
         return "\n".join(out)

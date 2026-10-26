@@ -25,16 +25,16 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [29], qualifiers = "w411dp-h891dp-xhdpi", timeout = 120_000)
+@Config(sdk = [29], qualifiers = "w411dp-h891dp-xhdpi")
 class StartupSmokeTest {
 
     @Test
     fun elApplicationCargaYElMotorSeArma() {
         val app = ApplicationProvider.getApplicationContext<MoonApplication>()
-        assertTrue(
-            "el manifest no apunta a MoonApplication (es ${app.javaClass.simpleName})",
-            app is MoonApplication,
-        )
+        // El generico de getApplicationContext<MoonApplication>() ya es la verificacion de
+        // que el manifest apunta a nuestra Application: si apuntara a otra, esto lanza
+        // ClassCastException y la prueba falla con el motivo.
+        assertEquals("MoonApplication", app.javaClass.simpleName)
         assertTrue(
             "TransferEngine no se pudo crear. Avisos del arranque: " +
                 app.bootWarnings().joinToString(" || "),
