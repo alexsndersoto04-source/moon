@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.res.stringResource
+import com.moonshare.R
 import com.moonshare.core.MoonLog
 import com.moonshare.core.perm.MoonPermissions
 import com.moonshare.ui.common.PrimaryButton
@@ -240,10 +242,13 @@ private fun PermissionGate(vm: MoonViewModel) {
                         .moonGlass(elevation = 16.dp)
                         .padding(vertical = 8.dp),
                 ) {
-                    GrantRow(Icons.Rounded.Shield, "Wi-Fi Direct", "Crea la red punto a punto entre los dos teléfonos")
-                    GrantRow(Icons.Rounded.NearMe, "Tus archivos", "Leer lo que querés enviar y guardar lo que recibís")
+                    // Los textos viven en strings.xml (unicos, traducibles); Lint venia
+                    // marcando esos recursos como muertos porque la pantalla los tenía
+                    // escritos a mano encima.
+                    GrantRow(Icons.Rounded.Shield, "Wi-Fi Direct", stringResource(R.string.perm_nearby_rationale))
+                    GrantRow(Icons.Rounded.NearMe, "Tus archivos", stringResource(R.string.perm_media_rationale))
                     if (Build.VERSION.SDK_INT >= 33) {
-                        GrantRow(Icons.Rounded.NearMe, "Notificaciones", "Muestran el progreso y evitan que el sistema corte todo")
+                        GrantRow(Icons.Rounded.NearMe, "Notificaciones", stringResource(R.string.perm_notif_rationale))
                     }
                 }
 

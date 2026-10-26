@@ -11,7 +11,6 @@
     <!-- NFC / HCE -->
     <string name="nfc_service_description">MoonShare · deja que otro telefono te "toque" para parearse</string>
     <string name="nfc_aid_group_description">Token de pareo MoonShare</string>
-    <string name="nfc_banner_desc">Acercá los dos teléfonos para transferir</string>
 
     <!-- Permisos -->
     <string name="perm_nearby_rationale">Necesito permiso de dispositivos cercanos para crear la red Wi-Fi Direct entre los dos teléfonos.</string>
@@ -25,6 +24,4 @@
     <string name="notif_waiting">Esperando el acercamiento de otro teléfono</string>
     <string name="notif_action_stop">Detener</string>
     <string name="notif_action_open">Abrir</string>
-
-    <string name="share_subject">Compartido desde MoonShare</string>
 </resources>

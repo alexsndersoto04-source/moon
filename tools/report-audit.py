@@ -99,10 +99,13 @@ def tests_section():
         out.append("")
         out += blocks
     elif ran:
-        out.append("✅ %d pruebas en verde: `MoonApplication.onCreate` + creacion de `MainActivity` "
-                   "no lanzan excepcion en API 29 simulado. El bug entonces NO es de logica de arranque: "
-                   "quedan GPU/ROM (RenderThread nativo), MIUI matando el proceso, o algo que solo aparece "
-                   "con Wi-Fi Direct/NFC reales." % ran)
+        out.append(
+            "✅ %d pruebas en verde sobre el camino de arranque (API 29 simulado): `Application.onCreate`, "
+            "el motor construyendose, la creacion de `MainActivity` con su primera composicion y el contrato "
+            "de `startForeground` del servicio. Si algo de esto se rompe, la build queda roja." % ran)
+        out.append("")
+        out.append("Lo que la CI NO puede verificar: la formacion real del grupo Wi-Fi Direct, la lectura "
+                   "NFC y el driver grafico del modelo de telefono. Eso necesita el aparato.")
     else:
         out.append("(0 pruebas ejecutadas — revisá el filtro --tests)")
     return "\n".join(out)
