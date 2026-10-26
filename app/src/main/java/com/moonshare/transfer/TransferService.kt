@@ -31,7 +31,8 @@ class TransferService : android.app.Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var observe: Job? = null
 
-    private val engine get() = (application as MoonApplication).engine
+    /** Puede ser null si el motor no arranco: el servicio entonces no hace nada. */
+    private val engine get() = (application as MoonApplication).engineOrNull()
 
     override fun onBind(intent: Intent?) = null
 
@@ -41,7 +42,7 @@ class TransferService : android.app.Service() {
         observe = scope.launch {
             // Cada cambio de estado re-pinta la notificación: el usuario ve MB y
             // velocidad sin tener que abrir la app.
-            engine.state.collectLatest { state ->
+            engine?.state?.collectLatest { state ->
                 if (state.busy || state.isHosting) {
                     runCatching {
                         (getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
@@ -58,17 +59,17 @@ class TransferService : android.app.Service() {
         when (intent?.action) {
             ACTION_START -> {
                 goForeground()
-                engine.startReceiving()
+                engine?.startReceiving()
             }
 
             ACTION_STOP -> {
-                engine.stopReceiving()
+                engine?.stopReceiving()
                 stopSelfSafely()
             }
 
-            ACTION_ACCEPT -> engine.respondToOffer(accept = true)
-            ACTION_DECLINE -> engine.respondToOffer(accept = false)
-            ACTION_CANCEL -> engine.cancelAll()
+            ACTION_ACCEPT -> engine?.respondToOffer(accept = true)
+            ACTION_DECLINE -> engine?.respondToOffer(accept = false)
+            ACTION_CANCEL -> engine?.cancelAll()
             else -> goForeground()
         }
         // START_STICKY: si el sistema se come el proceso por memoria, Android lo
@@ -77,7 +78,7 @@ class TransferService : android.app.Service() {
     }
 
     private fun goForeground() {
-        val notification = Notifx.transferNotification(this, engine.state.value)
+        val notification = Notifx.transferNotification(this, engine?.state?.value ?: EngineState())
         val type = if (Build.VERSION.SDK_INT >= 29) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         } else {

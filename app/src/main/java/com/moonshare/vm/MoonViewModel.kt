@@ -234,12 +234,12 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
         val st = _ui.value
         val items = st.selectedItems.ifEmpty { externalItems }
         if (items.isEmpty()) {
-            engine?.failWith(("Elegí primero qué enviar")
+            engine?.failWith("Elegí primero qué enviar")
             return
         }
         consumeNfc()
         TransferService.start(getApplication())
-        engine?.send((items, viaNfc)
+        engine?.send(items, viaNfc)
     }
 
     /** Ítems que llegaron por intent de "Compartir" y que el usuario no tocó en la grilla. */
@@ -352,19 +352,19 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun respondToOffer(accept: Boolean) {
-        engine?.respondToOffer((accept)
+        engine?.respondToOffer(accept)
     }
 
     fun cancelTransfer() {
-        engine?.cancelAll(()
+        engine?.cancelAll()
     }
 
     fun clearError() {
-        engine?.clearError(()
+        engine?.clearError()
     }
 
     /** Fuerza un `discoverPeers()` para refrescar la lista (botón "Buscar"). */
-    fun refreshPeers() = engine?.refreshPeers(()
+    fun refreshPeers() = engine?.refreshPeers()
 
     // ------------------------------------------------------------- ajustes
     private fun edit(block: suspend (SettingsStore) -> Unit) {
