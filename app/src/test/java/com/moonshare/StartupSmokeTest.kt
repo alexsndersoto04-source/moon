@@ -37,7 +37,8 @@ class StartupSmokeTest {
             app is MoonApplication,
         )
         assertTrue(
-            "TransferEngine no se pudo crear: el onCreate lo atrapó runCatching y hay que ver por que",
+            "TransferEngine no se pudo crear. Avisos del arranque: " +
+                app.bootWarnings().joinToString(" || "),
             app.engineHealthy,
         )
         assertNotNull("engine sin inicializar", app.engineOrNull())
@@ -45,6 +46,16 @@ class StartupSmokeTest {
             "el motor deberia estar Idle al arrancar",
             EnginePhase.Idle,
             app.engineOrNull()!!.state.value.phase,
+        )
+    }
+
+    @Test
+    fun elArranqueNoDejaAvisos() {
+        val app = ApplicationProvider.getApplicationContext<MoonApplication>()
+        val warns = app.bootWarnings()
+        assertTrue(
+            "subsistemas caidos en el arranque:\n" + warns.joinToString("\n"),
+            warns.isEmpty(),
         )
     }
 

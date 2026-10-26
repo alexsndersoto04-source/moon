@@ -27,6 +27,7 @@ object CrashReport {
     private const val PREFS = "moon_crash"
     private const val SESSION = "session_open"
     private const val PHASE_KEY = "last_phase"
+    private const val WARN = "boot_warnings"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -95,6 +96,23 @@ object CrashReport {
         runCatching { prefs(context).edit().putString(PHASE_KEY, name).commit() }
     }
 
+    /**
+     * Avisos de subsistemas que no arrancaron. Se guardan en SharedPreferences con
+     * commit() porque sirven justo en el caso en que la app no llegó a dibujar: si el
+     * motor o el sonido mueren y eso a su vez tumba la Activity, el aviso tiene que
+     * estar en disco para poder contarlo al arranque siguiente.
+     */
+    fun addBootWarning(context: Context, line: String) {
+        runCatching {
+            val sp = prefs(context)
+            val prev = sp.getString(WARN, "").orEmpty()
+            sp.edit().putString(WARN, (prev + "\n" + line).trim().lines().takeLast(6).joinToString("\n")).commit()
+        }
+    }
+
+    fun bootWarnings(context: Context): String =
+        prefs(context).getString(WARN, "").orEmpty()
+
     fun lastPhase(context: Context): String =
         prefs(context).getString(PHASE_KEY, "NONE") ?: "NONE"
 
@@ -143,8 +161,12 @@ object CrashReport {
     /** true si hay un reporte pendiente de mostrar. */
     fun hasPending(context: Context): Boolean = pendingFile(context)?.exists() == true
 
-    fun pendingText(context: Context): String =
-        pendingFile(context)?.readText().orEmpty()
+    /** Texto del reporte pendiente, con los avisos de subsistemas abajo. */
+    fun pendingText(context: Context): String {
+        val trace = pendingFile(context)?.readText().orEmpty()
+        val warn = bootWarnings(context)
+        return if (warn.isBlank()) trace else trace + "\n\n=== avisos del arranque ===\n" + warn
+    }
 
     fun copyToClipboard(context: Context, text: String) {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
@@ -153,7 +175,7 @@ object CrashReport {
 
     /** Se llama cuando el usuario ya vio el reporte. */
     fun acknowledge(context: Context) {
-        prefs(context).edit().remove(MARKER).apply()
+        prefs(context).edit().remove(MARKER).remove(WARN).apply()
     }
 
     fun deleteAll(context: Context) {

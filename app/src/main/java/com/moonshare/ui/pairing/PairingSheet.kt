@@ -70,7 +70,7 @@ import com.moonshare.vm.sizeLabel
 fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
     val ui by vm.ui.collectAsState()
     val engine by vm.engineState.collectAsState()
-    val peers by vm.engine.discoveredPeers.collectAsState()
+    val peers by vm.peers.collectAsState()
     val token by vm.nfcToken.collectAsState()
     var scanning by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -79,7 +79,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
     val bytes = items.sumOf { it.size }
 
     DisposableEffect(Unit) {
-        if (ui.settings.nfcBumpEnabled && vm.engine.nfcSupported) {
+        if (ui.settings.nfcBumpEnabled && vm.nfcSupported) {
             scanning = vm.startNfcScan { msg -> notice = msg }
         }
         onDispose { vm.stopNfcScan() }
@@ -88,7 +88,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
     // El token ya dispara el envío por sí solo; acá sólo acompañamos la salida.
     LaunchedEffect(token) {
         if (token != null) {
-            vm.engine.notifyPaired()
+            vm.notifyPaired()
             onDone()
         }
     }
@@ -251,7 +251,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
         PrimaryButton(
             text = if (token != null) "Pareado, pasando…" else "Enviar igual al último",
             onClick = {
-                val last = vm.engine.nfcHandoffToken
+                val last = vm.handoffToken
                 if (last == null && peers.isEmpty()) {
                     notice = "Nada elegido: acercá los teléfonos o tocá un dispositivo."
                 } else {

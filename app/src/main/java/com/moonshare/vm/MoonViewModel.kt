@@ -55,20 +55,42 @@ data class UiState(
 class MoonViewModel(app: Application) : AndroidViewModel(app) {
 
     private val moonApp = app as MoonApplication
-    val engine: TransferEngine = moonApp.engine
+
+    /**
+     * Nullable a propósito, y esta línea es la que explica el "pantalla negra y se sale
+     * sola": antes el motor se leía como `moonApp.engine` (lateinit). Si cualquier
+     * subsistema del arranque fallaba, leer ese `lateinit` lanza
+     * `UninitializedPropertyAccessException` dentro de la construcción del ViewModel,
+     * eso mata `onCreate` de la Activity y Android cierra sin mostrar nada. Ahora el
+     * motor puede estar muerto y la app abre, con el aviso a la vista.
+     */
+    val engine: TransferEngine? = moonApp.engineOrNull()
     private val settings: SettingsStore = moonApp.settings
     private val media: MediaRepository = moonApp.media
 
+    /** false => no se puede transferir; la UI usa esto para deshabilitar acciones. */
+    val ready: Boolean get() = engine != null
+
+    /** Flujos con respaldo: la UI consume siempre, haya o no haya motor. */
+    val peers: StateFlow<List<android.net.wifi.p2p.WifiP2pDevice>> =
+        engine?.discoveredPeers ?: MutableStateFlow(emptyList())
+    val nfcSupported: Boolean get() = engine?.nfcSupported ?: false
+    val handoffToken: com.moonshare.nfc.PairingToken? get() = engine?.nfcHandoffToken
+    fun notifyPaired() { engine?.notifyPaired() }
+
     private val _ui = MutableStateFlow(
-        UiState(nfcSupported = moonApp.engine.nfcSupported)
+        UiState(nfcSupported = engine?.nfcSupported ?: false)
     )
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     /** Pulsos de la esfera + sonido, reemitidos desde el engine. */
-    val pulses = moonApp.engine.pulses
+    val pulses: kotlinx.coroutines.flow.SharedFlow<com.moonshare.transfer.OrbPulse> =
+        engine?.pulses ?: kotlinx.coroutines.flow.MutableSharedFlow()
 
-    val engineState = moonApp.engine.state
-    val pendingOffer = moonApp.engine.pendingOffer
+    val engineState: StateFlow<com.moonshare.transfer.EngineState> =
+        engine?.state ?: MutableStateFlow(com.moonshare.transfer.EngineState())
+    val pendingOffer: StateFlow<com.moonshare.transfer.PendingOffer?> =
+        engine?.pendingOffer ?: MutableStateFlow(null)
 
     /** Token que llegó por NFC y todavía no se consumió (la UI lo muestra un instante). */
     private val _nfcToken = MutableStateFlow<PairingToken?>(null)
@@ -212,12 +234,12 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
         val st = _ui.value
         val items = st.selectedItems.ifEmpty { externalItems }
         if (items.isEmpty()) {
-            engine.failWith("Elegí primero qué enviar")
+            engine?.failWith(("Elegí primero qué enviar")
             return
         }
         consumeNfc()
         TransferService.start(getApplication())
-        engine.send(items, viaNfc)
+        engine?.send((items, viaNfc)
     }
 
     /** Ítems que llegaron por intent de "Compartir" y que el usuario no tocó en la grilla. */
@@ -263,7 +285,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onNfcToken(token: PairingToken) {
         _nfcToken.value = token
-        engine.nfcHandoffToken = token
+        engine?.let { it.nfcHandoffToken = token }
         MoonLog.i("VM", "token NFC de ${token.deviceName}")
         if (_ui.value.selected.isNotEmpty() || externalItems.isNotEmpty()) {
             sendSelected(token)
@@ -272,7 +294,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun consumeNfc() {
         _nfcToken.value = null
-        engine.nfcHandoffToken = null
+        engine?.let { it.nfcHandoffToken = null }
     }
 
     // ------------------------------------------------------------- NFC
@@ -330,19 +352,19 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun respondToOffer(accept: Boolean) {
-        engine.respondToOffer(accept)
+        engine?.respondToOffer((accept)
     }
 
     fun cancelTransfer() {
-        engine.cancelAll()
+        engine?.cancelAll(()
     }
 
     fun clearError() {
-        engine.clearError()
+        engine?.clearError(()
     }
 
     /** Fuerza un `discoverPeers()` para refrescar la lista (botón "Buscar"). */
-    fun refreshPeers() = engine.refreshPeers()
+    fun refreshPeers() = engine?.refreshPeers(()
 
     // ------------------------------------------------------------- ajustes
     private fun edit(block: suspend (SettingsStore) -> Unit) {

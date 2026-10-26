@@ -65,7 +65,7 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
     val ui by vm.ui.collectAsState()
     val engine by vm.engineState.collectAsState()
     val offer by vm.pendingOffer.collectAsState()
-    val peers by vm.engine.discoveredPeers.collectAsState()
+    val peers by vm.peers.collectAsState()
 
     val s = ui.settings
     val hosting = engine.isHosting

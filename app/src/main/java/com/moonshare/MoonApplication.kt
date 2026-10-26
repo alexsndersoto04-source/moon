@@ -33,6 +33,33 @@ class MoonApplication : Application() {
     var engineHealthy: Boolean = false
         private set
 
+    /**
+     * Registra un subsistema roto con su causa, para mostrarlo en la app. Importa el
+     * nombre: "no se pudo crear TransferEngine" sin más esconde que lo que revienta
+     * puede ser una dependencia (sonido, ajustes, media) y no el motor.
+     */
+    fun warn(what: String, t: Throwable) {
+        val trace = runCatching {
+            val sw = java.io.StringWriter()
+            t.printStackTrace(sw)
+            sw.toString().lines().drop(1).take(5).joinToString("\n").trim()
+        }.getOrDefault("")
+        val cause = generateSequence(t.cause) { it.cause }.lastOrNull() ?: t
+        val line = buildString {
+            append("· $what — ${t.javaClass.name}: ${t.message}")
+            if (cause !== t) append(" | causa raíz: ${cause.javaClass.name}: ${cause.message}")
+            if (trace.isNotBlank()) append("\n").append(trace)
+        }
+        MoonLog.e("App", line, t)
+        runCatching { CrashReport.addBootWarning(this, line) }
+        _bootWarnings.add(line)
+    }
+
+    private val _bootWarnings = mutableListOf<String>()
+
+    /** Qué se rompió antes de dibujar (vacío = arranque limpio). */
+    fun bootWarnings(): List<String> = _bootWarnings.toList()
+
     /** Acceso tolerante: si el motor no se creó, el llamador decide (no revienta). */
     fun engineOrNull(): TransferEngine? = if (::engine.isInitialized) engine else null
 
@@ -48,12 +75,10 @@ class MoonApplication : Application() {
         super.onCreate()
 
         Startup.set(Startup.Phase.NOTIF)
-        runCatching { Notifx.ensureChannels(this) }
-            .onFailure { MoonLog.w("App", "canales de notificación", it) }
+        runCatching { Notifx.ensureChannels(this) }.onFailure { warn("notificaciones", it) }
 
         Startup.set(Startup.Phase.SFX)
-        runCatching { sfx.init() }
-            .onFailure { MoonLog.w("App", "SoundPool no disponible en esta ROM", it) }
+        runCatching { sfx.init() }.onFailure { warn("sonido (SoundPool)", it) }
 
         Startup.set(Startup.Phase.ENGINE)
         runCatching {
@@ -65,8 +90,9 @@ class MoonApplication : Application() {
             )
             engineHealthy = true
         }.onFailure { err ->
-            // Sin motor no hay transferencia, pero la app abre y muestra por qué.
-            MoonLog.e("App", "no se pudo crear TransferEngine", err)
+            // Sin motor no hay transferencia, pero la app abre y dice por qué. El aviso
+            // se persiste: es el único modo de saberlo sin adb ni logcat.
+            warn("motor de transferencia", err)
         }
 
         MoonLog.i("App", "MoonShare ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) listo")
