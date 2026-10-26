@@ -20,6 +20,11 @@
     <uses-permission
         android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="32" />
+    <!-- Desde API 31 el sistema ofrece "ubicación aproximada"; pedir solo FINE hace que
+         el diálogo de permisos se niegue en bloque. Lint lo marca (CoarseFineLocation). -->
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32" />
 
     <uses-permission android:name="android.permission.NFC" />
 
@@ -47,9 +52,7 @@
 
     <application
         android:name=".MoonApplication"
-        android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
+        android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

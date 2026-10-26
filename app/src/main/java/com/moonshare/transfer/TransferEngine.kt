@@ -103,6 +103,16 @@ class TransferEngine(
 ) {
 
     /**
+     * Declarado ANTES que cualquier otra property que lo lea, y no es capricho:
+     * Kotlin inicializa los properties en orden de declaración, y [_state] se arma
+     * llamando a [myName], que lee `currentSettings`. Con la declaración más abajo,
+     * `myName()` leía el campo todavía sin asignar -> NullPointerException en el
+     * constructor del motor. Como el motor se crea en `Application.onCreate` y el
+     * ViewModel lo lee, eso era exactamente el "abre negro y se sale solo".
+     */
+    private var currentSettings: MoonSettings = MoonSettings()
+
+    /**
      * Sin [CoroutineExceptionHandler] una excepción dentro de un `scope.launch`
      * va derecha al uncaught handler del proceso y la app se cierra: en la práctica
      * era "pantalla negra y se sale". El motor maneja red y MediaStore, que en ROMs
@@ -131,7 +141,6 @@ class TransferEngine(
     private var sendEndpoint: SendEndpoint? = null
     private var hostJob: Job? = null
     private var lastPeerAddress: String? = null
-    private var currentSettings: MoonSettings = MoonSettings()
 
     private val tasks = LinkedHashMap<String, TransferTask>()
     private val tasksLock = Any()
@@ -605,7 +614,9 @@ class TransferEngine(
 
     // ------------------------------------------------------------------ utils
     private fun myName(): String {
-        val nick = currentSettings.deviceNickname.trim()
+        // runCatching aunque [currentSettings] ya se declara antes: si alguien
+        // reordena las properties, esto no puede volver a tumbar el arranque.
+        val nick = runCatching { currentSettings.deviceNickname.trim() }.getOrDefault("")
         if (nick.isNotEmpty()) return nick
         return runCatching {
             android.provider.Settings.Global.getString(context.contentResolver, "device_name")

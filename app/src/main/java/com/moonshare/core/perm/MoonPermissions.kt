@@ -22,7 +22,10 @@ object MoonPermissions {
         if (Build.VERSION.SDK_INT >= 33) {
             add(Manifest.permission.NEARBY_WIFI_DEVICES)
         } else {
-            // API 29..32: WFD pide ubicación fina (aunque no geolocalicemos nada)
+            // API 29..32: WFD pide ubicación (aunque no geolocalicemos nada). Las dos:
+            // pedir solo FINE en 31/32 hace que el usuario pueda rechazar sin notar que
+            // está matando el pareo.
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
             add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
