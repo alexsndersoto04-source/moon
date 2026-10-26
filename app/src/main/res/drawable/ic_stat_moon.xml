@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <!-- Luna + onda: icono de estado, monocromo por diseño (status bar lo tinta) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M15.6,3.2 A9,9 0 1,0 20.8,8.4 A7,7 0 0,1 15.6,3.2 Z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M3,18.5 C5,16.8 6.6,20.2 8.6,18.5 C10.6,16.8 12.2,20.2 14.2,18.5" />
+</vector>

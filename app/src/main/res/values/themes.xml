@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema "sin bordes": ventana edge-to-edge, sin ActionBar, fondo negro azulado
+         para que el vidrio de Compose tenga de donde refractar. -->
+    <style name="Theme.MoonShare" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/moon_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowActivityTransitions">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorControlHighlight">#2257E9D2</item>
+    </style>
+</resources>

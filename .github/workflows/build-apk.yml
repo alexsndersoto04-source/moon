@@ -1,0 +1,233 @@
+name: Build APK
+
+# Genera el .apk instalable sin que necesites Android Studio ni el SDK local.
+# Cada push a main o a una rama arena/ sube un artefacto MoonShare-debug.apk.
+#
+# Si la compilación falla, el workflow abre/actualiza un issue con la lista de
+# errores del compilador. Es deliberado: el log de Actions vive en un host
+# distinto al API y no siempre es legible desde un entorno restringido, mientras
+# que los issues se leen por la API normal. Así el feedback del build es
+# accesible desde cualquier cliente de la API.
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Variante a compilar'
+        required: true
+        default: 'debug'
+        type: choice
+        options: [debug, release]
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Compilar MoonShare (${{ github.event.inputs.variant || 'debug' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Instalar Gradle 8.9 (sin depender del wrapper jar)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Compilar
+        shell: bash
+        run: |
+          set -o pipefail
+          VARIANT="${{ github.event.inputs.variant || 'debug' }}"
+          gradle --no-daemon --console=plain "assemble${VARIANT^}" 2>&1 | tee /tmp/build.log
+
+      - name: Localizar el APK
+        id: find
+        if: success()
+        run: |
+          APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          [ -n "$APK" ] || { echo "no se encontró el APK" >&2; exit 1; }
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          {
+            echo "## ✅ APK generado"
+            echo
+            echo '```'
+            ls -la "$APK"
+            echo '```'
+            echo
+            echo "Descargalo de la pestaña **Artifacts** → \`moonshare-apk\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir artefacto
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moonshare-apk
+          path: ${{ steps.find.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      # ------------------------------------------------------------------ fallo
+      - name: Reportar errores de compilación en un issue
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Errores de Kotlin (e: file://...), de AGP y el bloque "What went wrong".
+          grep -E "^e: file:|^> Task .*FAILED|^E: |error:|Caused by:|what went wrong|Execution failed" -i /tmp/build.log \
+            | sed 's|/home/runner/work/[^/]*/[^/]*/||g' | head -120 > /tmp/sel.log || true
+          # Si el grep no cazó nada, el fallo es de otra etapa: mando el final del log igual,
+          # si no me quedo sin información para arreglarlo.
+          if [ ! -s /tmp/sel.log ]; then
+            echo "(sin errores parseables — últimas 120 líneas del log)" > /tmp/sel.log
+            tail -120 /tmp/build.log >> /tmp/sel.log || true
+          fi
+          {
+            echo "## ❌ MoonShare no compiló"
+            echo
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- rama: \`${GITHUB_REF_NAME}\`"
+            echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '```'
+            cat /tmp/sel.log
+            echo '```'
+          } > /tmp/report.md
+
+          TITLE="🔧 Fallo de build de MoonShare"
+          BODY="$(cat /tmp/report.md)"
+
+          # El label tiene que existir antes de asignarse, si no la API responde 422.
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/labels/ci-build-failure" \
+            -f name="ci-build-failure" -f color="e11d48" >/dev/null 2>&1 || true
+
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&labels=ci-build-failure" \
+            --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$EXISTING" \
+              -f title="$TITLE" -f body="$BODY" >/dev/null 2>&1 ||
+              gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$EXISTING/comments" \
+                -f body="$BODY" >/dev/null 2>&1 || true
+            echo "reporte actualizado en #$EXISTING"
+          else
+            NUM=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues" \
+              -f title="$TITLE" -f body="$BODY" --jq '.number' 2>/dev/null || echo "")
+            if [ -n "$NUM" ] && [ "$NUM" != "null" ]; then
+              gh api -X PUT "repos/$GITHUB_REPOSITORY/issues/$NUM/labels" \
+                -f "labels[]=ci-build-failure" >/dev/null 2>&1 || true
+              echo "reporte publicado en #$NUM"
+            fi
+          fi
+          # Doble canal: si la API de issues estuviera cerrada, el resumen del job
+          # igual queda visible en la UI de Actions.
+          cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Auditoria del arranque. Este proyecto se compila en la nube y se prueba en UN
+  # telefono que no esta conectado a nada, asi que el feedback tiene que salir de ACa:
+  #   - Lint  -> detecta APIs que no existen en minSdk 29 (compilan, revientan en el
+  #              dispositivo) y componentes del manifest que no se pueden instanciar.
+  #   - Robolectric -> EJECUTA Application.onCreate + la creacion de la Activity en la
+  #              JVM con el SDK 29 simulado y nos devuelve el stack real del crash.
+  # Todo se publica en un issue, que es el unico canal legible desde un sandbox sin
+  # acceso al host de logs de Actions.
+  # ---------------------------------------------------------------------------
+  audit:
+    name: Arranque auditado (Lint + Robolectric)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Instalar Gradle 8.9 (sin depender del wrapper jar)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-read-only: true
+
+      - name: Correr Lint
+        shell: bash
+        # Lint no tiene que romper el job: los hallazgos se publican y se juzgan a mano
+        # (muchos son style, y abortOnError=false en build.gradle refuerza lo mismo).
+        run: |
+          gradle --no-daemon --console=plain :app:lintDebug > /tmp/lint.log 2>&1 || true
+          echo "--- lint.log (final) ---"; tail -15 /tmp/lint.log
+
+      - name: Correr la prueba de arranque
+        shell: bash
+        run: |
+          # Sin filtro --tests: si el nombre no matchea, Gradle responde "No tests found
+          # for given includes" y el job igual pasa verde porque perdonamos el exit code.
+          # Con la tarea completa, "0 pruebas ejecutadas" se ve en el informe igual.
+          gradle --no-daemon --console=plain :app:testDebugUnitTest --rerun > /tmp/test.log 2>&1
+          st=$?
+          echo "exit=$st" >> /tmp/test.log
+          echo "--- test.log (final) ---"; tail -30 /tmp/test.log
+
+      - name: Publicar hallazgos
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp /tmp/lint.log /tmp/test.log . 2>/dev/null || true
+          python3 tools/report-audit.py > /tmp/audit.md 2>/tmp/audit.err || {
+            echo "## ⚠️ La auditoria no pudo armar su informe" >> /tmp/audit.md
+            echo '```' >> /tmp/audit.md; tail -30 /tmp/audit.err >> /tmp/audit.md 2>/dev/null
+            echo '```' >> /tmp/audit.md
+          }
+          cat /tmp/audit.md
+          {
+            echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            cat /tmp/audit.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          TITLE="🔬 Auditoría de arranque (Lint + Robolectric)"
+          BODY="$(cat /tmp/audit.md)"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/labels/ci-audit" -f name="ci-audit" -f color="0ea5e9" >/dev/null 2>&1 || true
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=all&labels=ci-audit" --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$EXISTING" -f title="$TITLE" -f body="$BODY" >/dev/null 2>&1 || true
+            echo "audit actualizado en #$EXISTING"
+          else
+            NUM=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues" -f title="$TITLE" -f body="$BODY" --jq '.number' 2>/dev/null || echo "")
+            if [ -n "$NUM" ] && [ "$NUM" != "null" ]; then
+              gh api -X PUT "repos/$GITHUB_REPOSITORY/issues/$NUM/labels" -f "labels[]=ci-audit" >/dev/null 2>&1 || true
+              echo "audit publicado en #$NUM"
+            fi
+          fi

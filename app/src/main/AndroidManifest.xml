@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ============================ HARDWARE / TRANSPORTES ============================ -->
+    <!-- Wi-Fi Direct es el camion de los datos; NFC es solo el "choque" que negocia. -->
+    <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <!-- Android 13+ : permiso de dispositivos cercanos (reemplaza al de ubicacion para WFD) -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+    <!-- Android 10-12 : WFD todavia exige ubicacion fina -->
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="32" />
+    <!-- Desde API 31 el sistema ofrece "ubicación aproximada"; pedir solo FINE hace que
+         el diálogo de permisos se niegue en bloque. Lint lo marca (CoarseFineLocation). -->
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32" />
+
+    <uses-permission android:name="android.permission.NFC" />
+
+    <!-- ============================ CONTENIDOS ============================ -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Opcional y voluntario: solo si el usuario activa "acceso a todos los archivos"
+         en Ajustes (Settings > MANAGE_EXTERNAL_STORAGE). La app funciona sin esto. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- ============================ SERVICIO / UX ============================ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- para abrir/instalar un .apk recibido -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:name=".MoonApplication"
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MoonShare"
+        tools:targetApi="35">
+
+        <!-- ================= ACTIVIDAD PRINCIPAL =================
+             Recibe ACTION_SEND / SEND_MULTIPLE / VIEW: se puede compartir ANY
+             archivo desde galería, Archivos, Chrome, etc. hacia MoonShare. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.MoonShare"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- "Compartir en Moon" desde cualquier app -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <!-- Abrir contenido recibido (imagen / video / pdf / apk) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="image/*" />
+                <data android:scheme="content" android:mimeType="video/*" />
+                <data android:scheme="content" android:mimeType="audio/*" />
+                <data android:scheme="content" android:mimeType="application/pdf" />
+            </intent-filter>
+
+            <!-- NFC: la otra punta del "bump" lee esta NDEF y abre la app -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="moonshare" android:host="pair" />
+            </intent-filter>
+        </activity>
+
+        <!-- ================= SERVICIO DE TRANSFERENCIA =================
+             Foreground service: sin esto MIUI (Redmi) mata la transferencia
+             apenas la app pasa a segundo plano. -->
+        <service
+            android:name=".transfer.TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- ================= NFC / HCE =================
+             Emulacion de tarjeta: el telefono que RECIBE se hace pasar por un
+             tag NDEF Tipo-4 y el que ENVIA lo lee con un golpe. Cero pareo manual. -->
+        <service
+            android:name=".nfc.MoonCardService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/nfc_aid_list" />
+        </service>
+
+        <!-- FileProvider: compartir archivos recibidos con otras apps sin permisos de ruta -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>
