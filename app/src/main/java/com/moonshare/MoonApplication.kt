@@ -36,6 +36,10 @@ class MoonApplication : Application() {
     /** Acceso tolerante: si el motor no se creó, el llamador decide (no revienta). */
     fun engineOrNull(): TransferEngine? = if (::engine.isInitialized) engine else null
 
+    /** Para el smoke test de arranque: fase del motor como texto, sin exponer el Flow. */
+    internal fun engineStateForTest(): String =
+        engineOrNull()?.let { it.state.value.phase.name } ?: ""
+
     override fun onCreate() {
         // 1) El handler de crash va ANTES de todo: es lo único que tiene que
         //    sobrevivir a cualquier fallo posterior.

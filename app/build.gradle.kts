@@ -42,6 +42,18 @@ android {
      * La regla `NewApi` es la que distingue "compila" de "arranca". `abortOnError =
      * false` a propósito: el reporte se publica igual, no queremos que tape la build.
      */
+    testOptions {
+        // Robolectric: el arranque se ejecuta en la JVM de CI, con el SDK 29
+        // simulado (que es justo el Android del Redmi 9C). Sin teléfono.
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+            all {
+                it.systemProperty("robolectric.logging.enabled", "false")
+            }
+        }
+    }
+
     lint {
         abortOnError = false
         checkReleaseBuilds = false
@@ -142,5 +154,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
 }
