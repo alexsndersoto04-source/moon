@@ -66,9 +66,18 @@ def tests_section():
     files = glob.glob(os.path.join(REPO, "app/build/test-results/testDebugUnitTest/*.xml"))
     out = ["### Prueba de arranque en la JVM (Robolectric, SDK 29)", ""]
     if not files:
-        out.append("_no se generaron resultados de test — final del log:_")
+        out.append("_no se generaron resultados de test._ Filas utiles del log:")
         out.append("```")
-        out.append(tail(os.path.join(REPO, "test.log"), 40))
+        txt = ""
+        try:
+            with open(os.path.join(REPO, "test.log"), "r", errors="replace") as fh:
+                txt = fh.read()
+        except OSError:
+            txt = "(test.log no existe)"
+        keep = [ln for ln in txt.splitlines() if any(k in ln for k in (
+            "FAILURE", "What went wrong", "No tests found", "Execution failed",
+            "exit=", "Task :app:test", "Plugin version", "error:", "Caused by"))]
+        out.append("\n".join(keep[-40:]) if keep else tail(os.path.join(REPO, "test.log"), 40))
         out.append("```")
         return "\n".join(out)
     ran = failed = 0

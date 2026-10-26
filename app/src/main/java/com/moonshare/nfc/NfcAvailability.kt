@@ -22,9 +22,12 @@ object NfcAvailability {
         // NFC_SERVICE devuelve NfcManager, NO NfcAdapter: el cast directo es lo que
         // dice Lint (ServiceCast) y en ROMs que devuelven el manager puro revienta con
         // ClassCastException. Se pide el adapter por la vía correcta, con fallback.
+        // NFC_SERVICE devuelve NfcManager. El cast directo a NfcAdapter que estaba aca
+        // era ClassCastException en ROMs estrictas y ademas Lint lo marca como error:
+        // se usa la via publica, y `defaultAdapter` puede venir null si el usuario
+        // apag6 la NFC (eso no es un fallo, es el estado real del equipo).
         val adapter = runCatching {
             (context.getSystemService(Context.NFC_SERVICE) as? android.nfc.NfcManager)?.defaultAdapter
-                ?: (context.getSystemService(Context.NFC_SERVICE) as? NfcAdapter)
         }.getOrNull() ?: return false
         return runCatching {
             CardEmulation.getInstance(adapter).isDefaultServiceForCategory(

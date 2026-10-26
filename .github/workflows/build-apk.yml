@@ -182,6 +182,8 @@ jobs:
 
       - name: Correr Lint
         shell: bash
+        # Lint no tiene que romper el job: los hallazgos se publican y se juzgan a mano
+        # (muchos son style, y abortOnError=false en build.gradle refuerza lo mismo).
         run: |
           gradle --no-daemon --console=plain :app:lintDebug > /tmp/lint.log 2>&1 || true
           echo "--- lint.log (final) ---"; tail -15 /tmp/lint.log
@@ -189,9 +191,13 @@ jobs:
       - name: Correr la prueba de arranque
         shell: bash
         run: |
-          gradle --no-daemon --console=plain :app:testDebugUnitTest \
-            --tests 'com.moonshare.StartupSmokeTest' --info > /tmp/test.log 2>&1 || true
-          echo "--- test.log (final) ---"; tail -25 /tmp/test.log
+          # Sin filtro --tests: si el nombre no matchea, Gradle responde "No tests found
+          # for given includes" y el job igual pasa verde porque perdonamos el exit code.
+          # Con la tarea completa, "0 pruebas ejecutadas" se ve en el informe igual.
+          gradle --no-daemon --console=plain :app:testDebugUnitTest --rerun > /tmp/test.log 2>&1
+          st=$?
+          echo "exit=$st" >> /tmp/test.log
+          echo "--- test.log (final) ---"; tail -30 /tmp/test.log
 
       - name: Publicar hallazgos
         if: always()
