@@ -395,7 +395,7 @@ private fun ReceiveToggle(hosting: Boolean, active: Boolean, onToggle: () -> Uni
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                if (hosting) "Acercá el otro teléfono y listo"
+                if (hosting) "Acercá el otro teléfono y listo · la primera vez Android pide confirmar el grupo Wi‑Fi Direct"
                 else "Deja este teléfono disponible para que te pasen archivos",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

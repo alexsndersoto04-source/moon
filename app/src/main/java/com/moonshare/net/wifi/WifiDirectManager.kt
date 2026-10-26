@@ -236,6 +236,14 @@ class WifiDirectManager(private val context: Context) {
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         }
 
+    private fun locationServicesOn(): Boolean =
+        if (android.os.Build.VERSION.SDK_INT >= 33) true else runCatching {
+            val lm = appContext.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+            // Si el sistema no expone el servicio, no lo hacemos bloqueante: que intente.
+            lm == null || lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+        }.getOrDefault(true)
+
     /** true si el telefono puede, de verdad, usar Wi-Fi Direct ahora mismo. */
     fun radioReady(): Boolean = isSupported && runCatching {
         (appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)
@@ -252,6 +260,13 @@ class WifiDirectManager(private val context: Context) {
     // ---------------------------------------------------------------- acciones
     fun discover() {
         val (m, c) = connectionListener() ?: return
+        // Android 10-12: no alcanza con el permiso, los SERVICIOS de ubicación tienen
+        // que estar encendidos o discoverPeers() responde onSuccess con lista vacia.
+        // Es la causa #1 de "no encuentra a nadie" en estos ROMs y el sistema no avisa.
+        if (!locationServicesOn()) {
+            _events.tryEmit("Activá la ubicación (el interruptor del sistema): Android 10 a 12 lo exige para ver otros teléfonos")
+            return
+        }
         // Android 10..12 no devuelve pares si falta ACCESS_FINE_LOCATION, y lo hace en
         // silencio: discoverPeers() tiene onSuccess y la lista llega vacia. Se avisa
         // explicitamente porque si no, el usuario cree que no hay nadie cerca.

@@ -88,6 +88,25 @@ dentro de un `collect` sin handler es exactamente el mecanismo que produce
 
 ---
 
+## Qué te va a pedir el sistema (y por qué)
+
+"Sin configuración" significa sin routers, sin IPs, sin FTP y sin compartir un link. No
+significa sin permisos: Android impone tres cosas que ninguna app puede saltarse.
+
+1. **Wi‑Fi encendido y ubicación activada.** Wi‑Fi Direct es una radio del Wi‑Fi. En
+   Android 10 a 12, además, `discoverPeers()` devuelve la lista **vacía en silencio** si
+   los servicios de ubicación están apagados, así que la app te lo dice explícito en vez
+   de hacerte creer que no hay nadie cerca.
+2. **Un diálogo de confirmación del grupo la primera vez** (por teléfono). Al crear o
+   unirse a un grupo, el sistema muestra su propia confirmación. Es el reemplazo de
+   Android del "permite al otro dispositivo" de iOS y no se puede omitir desde una app.
+3. **En MIUI, exención de optimización de batería** (Ajustes → Apps → MoonShare → Inicio
+   automático: permitir). Sin eso el sistema corta el servicio y la transferencia se
+   interrumpe al minimizar la app.
+
+La app reporta cada una de estas condiciones con un texto y una acción (abrir el panel de
+Wi‑Fi, reintentar), en vez de mostrar un spinner eterno.
+
 ## Qué hace y qué no va a hacer
 
 Conviene leer esto antes de emocionarse, porque la promesa "*igual que AirDrop pero en
