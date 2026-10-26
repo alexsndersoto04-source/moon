@@ -227,10 +227,14 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
                             modifier = Modifier.weight(1f),
                         )
                         Spacer(Modifier.width(12.dp))
+                        // El estado del enlace NO se lee del dispositivo: WifiP2pDevice
+                        // no expone un isConnected() publico y sus STATUS_* no son de
+                        // fiar por version de API. Lo que si sabemos con certeza es si el
+                        // motor tiene un link armado y con quien, y eso se muestra.
                         Text(
-                            if (d.status == WifiP2pDevice.STATUS_CONNECTED) "conectado" else "disponible",
+                            if (engine.linkReady && d.deviceName == engine.peerName) "conectado" else "disponible",
                             style = MaterialTheme.typography.bodySmall,
-                            color = InkMedium,
+                            color = if (engine.linkReady && d.deviceName == engine.peerName) Aqua else InkMedium,
                         )
                     }
                 }
