@@ -49,13 +49,13 @@ fun BootFailureScreen(text: String, phase: String, onCopy: () -> Unit, onContinu
             Spacer(Modifier.height(24.dp))
             BasicText(
                 "MoonShare no pudo abrir",
-                textStyle = TextStyle(color = Color.White, fontSize = 24.sp, letterSpacing = (-0.4).sp),
+                style = TextStyle(color = Color.White, fontSize = 24.sp, letterSpacing = (-0.4).sp),
             )
             BasicText(
                 "Fase alcanzada antes de morir: $phase\n" +
                     "Si esto se repite, copia el detalle y pegalo en el reporte. " +
                     "Podes tocar “Abrir igual” para usar la app sin esperar el arreglo.",
-                textStyle = TextStyle(color = Color(0xFF8A98A6), fontSize = 13.sp, lineHeight = 19.sp),
+                style = TextStyle(color = Color(0xFF8A98A6), fontSize = 13.sp, lineHeight = 19.sp),
             )
             Box(
                 Modifier
@@ -66,7 +66,7 @@ fun BootFailureScreen(text: String, phase: String, onCopy: () -> Unit, onContinu
                     .verticalScroll(rememberScrollState())
                     .clickable { expanded = !expanded },
             ) {
-                BasicText(if (expanded) text.ifBlank { "(vacío)" } else text.lines().take(12).joinToString("\n"), textStyle = mono)
+                BasicText(if (expanded) text.ifBlank { "(vacío)" } else text.lines().take(12).joinToString("\n"), style = mono)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 BootButton("Copiar reporte", primary = true, onClick = onCopy, modifier = Modifier.weight(1f))
@@ -87,7 +87,7 @@ private fun BootButton(text: String, primary: Boolean, onClick: () -> Unit, modi
     ) {
         BasicText(
             text,
-            textStyle = TextStyle(
+            style = TextStyle(
                 color = if (primary) Color(0xFF04221F) else Color(0xFFD7E2EA),
                 fontSize = 14.sp,
             ),

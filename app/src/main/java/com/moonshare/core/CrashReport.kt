@@ -61,7 +61,7 @@ object CrashReport {
     private fun auditAbandonedSession(context: Context) {
         val sp = prefs(context)
         if (!sp.getBoolean(SESSION, false)) return
-        val phase = sp.getString(PHASE_KEY, Startup.Phase.NONE.name) ?: Startup.Phase.NONE.name
+        val phase = sp.getString(PHASE_KEY, Startup.Phase.NONE.name) ?: "NONE"
         // Si el handler ya dejo un reporte, ese es el bueno: no lo pisamos.
         if (sp.getString(MARKER, null) == null) {
             val dir = File(context.filesDir, DIR)
@@ -87,7 +87,7 @@ object CrashReport {
      */
     fun markHealthy(context: Context) {
         runCatching {
-            prefs(context).edit().putBoolean(SESSION, false).putString(PHASE_KEY, Phase.READY.name).commit()
+            prefs(context).edit().putBoolean(SESSION, false).putString(PHASE_KEY, Startup.Phase.READY.name).commit()
         }
     }
 
@@ -96,7 +96,7 @@ object CrashReport {
     }
 
     fun lastPhase(context: Context): String =
-        prefs(context).getString(PHASE_KEY, Startup.Phase.NONE.name) ?: Startup.Phase.NONE.name
+        prefs(context).getString(PHASE_KEY, "NONE") ?: "NONE"
 
     private fun write(context: Context, thread: Thread, error: Throwable) {
         val dir = File(context.filesDir, DIR).apply { if (!exists()) mkdirs() }
