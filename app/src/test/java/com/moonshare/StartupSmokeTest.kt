@@ -64,8 +64,14 @@ class StartupSmokeTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
         assertNotNull("no se pudo crear MainActivity", activity)
-        // La primera composicion y el post { FIRST_FRAME } viven en la cola del looper.
-        shadowOf(android.os.Looper.getMainLooper()).runToEndOfTasks()
+        // La primera composicion ya corrio al attacharse la vista. Se idlea el looper un
+        // par de veces para dejar entrar el post { FIRST_FRAME }, y NO runToEndOfTasks():
+        // eso re-ejecuta lo que el propio Recomposer se repostea y el Robolectric
+        // ShadowTrace acumula secciones hasta matar el heap de la JVM (OOM del test,
+        // no de la app — perder una hora con eso es exactamente lo que hay que evitar).
+        runCatching {
+            repeat(2) { shadowOf(android.os.Looper.getMainLooper()).idle() }
+        }
         assertTrue(
             "MainActivity se cerro apenas creada (isFinishing=true): sintoma reportado",
             !activity.isFinishing,

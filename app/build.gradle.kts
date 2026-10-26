@@ -50,6 +50,9 @@ android {
             isReturnDefaultValues = true
             all {
                 it.systemProperty("robolectric.logging.enabled", "false")
+                // Compose + Robolectric se comen el heap por defecto en la primera
+                // composicion; sin esto el test muere de OOM y el informe miente.
+                it.maxHeapSize = "1536m"
             }
         }
     }
