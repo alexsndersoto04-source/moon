@@ -36,6 +36,21 @@ android {
         resourceConfigurations += listOf("es", "en")
     }
 
+    /**
+     * Lint corre en CI como auditoría de compatibilidad: con `compileSdk = 35` el
+     * compilador acepta cualquier API, pero esta app se instala desde un Android 10.
+     * La regla `NewApi` es la que distingue "compila" de "arranca". `abortOnError =
+     * false` a propósito: el reporte se publica igual, no queremos que tape la build.
+     */
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        xmlReport = true
+        textReport = false
+        htmlReport = true
+        baseline = file("lint-baseline.xml")
+    }
+
     if (signingConfigured) {
         signingConfigs {
             create("moon") {

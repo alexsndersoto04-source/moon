@@ -24,6 +24,12 @@ object CrashReport {
     private const val DIR = "crash"
     private const val MARKER = "crash_pending"
     private const val MAX_REPORTS = 5
+    private const val PREFS = "moon_crash"
+    private const val SESSION = "session_open"
+    private const val PHASE_KEY = "last_phase"
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /**
      * Instala el handler. Se llama lo primero en `Application.onCreate`, antes de
@@ -32,6 +38,17 @@ object CrashReport {
      */
     fun install(context: Context) {
         val appContext = context.applicationContext
+        Startup.bind(appContext)
+        // (1) Antes de nada: la sesion anterior termino sin marcarse como sana?
+        // Un proceso muerto por el sistema (lmkd, MIUI) o por un crash NATIVO nunca
+        // pasa por el uncaught handler, asi que sin esta bandera no habria ni prueba
+        // de donde murio. Acá se reconstruye con la ultima fase persistida.
+        runCatching { auditAbandonedSession(appContext) }
+        // (2) La sesion nueva queda marcada como "en curso" hasta que la UI demuestre
+        //     que levanto (markHealthy). commit(), no apply(): tiene que sobrevivir
+        //     a que el proceso muera en los proximos 200 ms.
+        runCatching { prefs(appContext).edit().putBoolean(SESSION, true).commit() }
+        // (3) y recien ahora el handler de excepciones Java.
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             runCatching { write(appContext, thread, error) }
@@ -40,6 +57,46 @@ object CrashReport {
             previous?.uncaughtException(thread, error)
         }
     }
+
+    private fun auditAbandonedSession(context: Context) {
+        val sp = prefs(context)
+        if (!sp.getBoolean(SESSION, false)) return
+        val phase = sp.getString(PHASE_KEY, Startup.Phase.NONE.name) ?: Startup.Phase.NONE.name
+        // Si el handler ya dejo un reporte, ese es el bueno: no lo pisamos.
+        if (sp.getString(MARKER, null) == null) {
+            val dir = File(context.filesDir, DIR)
+            if (!dir.exists()) dir.mkdirs()
+            val name = "crash-${System.currentTimeMillis()}.log"
+            File(dir, name).writeText(
+                buildString {
+                    appendLine("=== MoonShare: el proceso murio sin excepcion ===")
+                    appendLine("fase alcanzada: $phase")
+                    appendLine("device   : ${Build.MANUFACTURER} ${Build.MODEL} / API ${Build.VERSION.SDK_INT}")
+                    appendLine()
+                    appendLine("No hay stack porque no hubo excepcion Java: esto es un crash nativo")
+                    appendLine("(RenderThread/Skia) o el sistema matando el proceso.")
+                },
+            )
+            sp.edit().putString(MARKER, name).commit()
+        }
+    }
+
+    /**
+     * Marca que la app ya arranco bien: a partir de aca, una bandera de sesion
+     * abandonada significa "murió durante el uso", no "murió al abrir".
+     */
+    fun markHealthy(context: Context) {
+        runCatching {
+            prefs(context).edit().putBoolean(SESSION, false).putString(PHASE_KEY, Phase.READY.name).commit()
+        }
+    }
+
+    internal fun debugPhase(context: Context, name: String) {
+        runCatching { prefs(context).edit().putString(PHASE_KEY, name).commit() }
+    }
+
+    fun lastPhase(context: Context): String =
+        prefs(context).getString(PHASE_KEY, Startup.Phase.NONE.name) ?: Startup.Phase.NONE.name
 
     private fun write(context: Context, thread: Thread, error: Throwable) {
         val dir = File(context.filesDir, DIR).apply { if (!exists()) mkdirs() }
@@ -51,7 +108,7 @@ object CrashReport {
             pw.println("app      : ${com.moonshare.BuildConfig.VERSION_NAME} (${com.moonshare.BuildConfig.VERSION_CODE})")
             pw.println("android  : API ${Build.VERSION.SDK_INT} ${Build.VERSION.RELEASE}")
             pw.println("device   : ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})")
-            pw.println("init     : fase=${Startup.phase.get()}")
+            pw.println("init     : fase=${Startup.phase.get()} (ultimo en disco: ${lastPhase(context)})")
             pw.println()
             error.printStackTrace(pw)
             var cause = error.cause
@@ -68,8 +125,11 @@ object CrashReport {
         File(dir, "crash-$stamp.log").writeText(sw.toString())
         // último, para leerlo rápido al abrir la app
         File(dir, "latest.log").writeText(sw.toString())
-        context.getSharedPreferences("moon_crash", Context.MODE_PRIVATE)
-            .edit().putString(MARKER, "crash-$stamp.log").apply()
+        prefs(context).edit()
+            .putString(MARKER, "crash-$stamp.log")
+            .putBoolean(SESSION, false)
+            .putString(PHASE_KEY, Startup.phase.get().name)
+            .commit()
 
         // recorte: no llenar el storage del usuario de reportes
         dir.listFiles { f -> f.name.startsWith("crash-") && f.name.endsWith(".log") }
@@ -93,8 +153,7 @@ object CrashReport {
 
     /** Se llama cuando el usuario ya vio el reporte. */
     fun acknowledge(context: Context) {
-        context.getSharedPreferences("moon_crash", Context.MODE_PRIVATE)
-            .edit().remove(MARKER).apply()
+        prefs(context).edit().remove(MARKER).apply()
     }
 
     fun deleteAll(context: Context) {
@@ -103,8 +162,7 @@ object CrashReport {
     }
 
     private fun pendingFile(context: Context): File? {
-        val name = context.getSharedPreferences("moon_crash", Context.MODE_PRIVATE)
-            .getString(MARKER, null) ?: return null
+        val name = prefs(context).getString(MARKER, null) ?: return null
         return File(File(context.filesDir, DIR), name)
     }
 }
@@ -115,12 +173,24 @@ object CrashReport {
  * familias de causas distintas.
  */
 object Startup {
+
+    /** Orden del arranque; sirve para acotar dónde murió el proceso. */
     enum class Phase { NONE, APP_BEGIN, NOTIF, SFX, ENGINE, ACTIVITY, FIRST_FRAME, READY }
 
+    private var app: Context? = null
     val phase = java.util.concurrent.atomic.AtomicReference(Phase.NONE)
+
+    fun bind(context: Context) {
+        app = context.applicationContext
+    }
 
     fun set(p: Phase) {
         phase.set(p)
         MoonLog.i("Boot", "fase → ${p.name}")
+        // commit() sincronico: si el proceso muere 5 ms despues, igual tiene que
+        // quedar escrito hasta donde llegamos. Son ~7 escrituras en todo el arranque.
+        runCatching {
+            app?.let { CrashReport.debugPhase(it, p.name) }
+        }
     }
 }

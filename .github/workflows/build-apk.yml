@@ -145,3 +145,104 @@ jobs:
           # Doble canal: si la API de issues estuviera cerrada, el resumen del job
           # igual queda visible en la UI de Actions.
           cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Auditoría estática. Existe porque este proyecto se compila en la nube y se
+  # prueba en UN teléfono físico que no está conectado a nada: la clase de bug
+  # que sobrevive al compilador y revienta en el dispositivo es la de APIs de
+  # framework que no existen en el minSdk (NewApi) y componentes del manifest
+  # que no se pueden instanciar. Lint los encuentra sin necesidad de un teléfono.
+  # ---------------------------------------------------------------------------
+  audit:
+    name: Auditoría de APIs (Lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Instalar Gradle 8.9 (sin depender del wrapper jar)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-read-only: true
+
+      - name: Correr Lint
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain :app:lintDebug 2>&1 | tee /tmp/lint.log || true
+
+      - name: Publicar hallazgos
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import os, re, xml.etree.ElementTree as ET
+          rep = "app/build/reports/lint-results-debug.xml"
+          rows, counts = [], {}
+          if os.path.exists(rep):
+              for it in ET.parse(rep).getroot().findall("issue"):
+                  iid = it.get("id") or "?"
+                  sev = (it.get("severity") or "").lower()
+                  msg = (it.get("message") or "").strip()
+                  loc = it.find("location")
+                  where = ""
+                  if loc is not None:
+                      where = (loc.get("file") or "").replace("/home/runner/work/moon/moon/", "")
+                      if loc.get("line"):
+                          where += ":" + loc["line"]
+                  counts[iid] = counts.get(iid, 0) + 1
+                  # NewApi / MissingClass / Instantiatable son los que explican
+                  # "arranca negro y se cierra" sin error de compilacion. Prioridad 1.
+                  pri = 0 if iid in ("NewApi", "MissingClass", "Instantiatable",
+                                     "MissingSuperCall", "WrongCall", "UnresolvedClass") else (1 if sev in ("fatal", "error") else 2)
+                  rows.append((pri, iid, sev, msg[:220], where))
+          rows.sort(key=lambda r: (r[0], r[1], r[3]))
+          lines = ["## 🔬 Lint (minSdk 29 / target 35)", ""]
+          if not rows:
+              lines.append("(sin hallazgos en el XML — revisar /tmp/lint.log)")
+          for pri, iid, sev, msg, where in rows[:120]:
+              if pri > 1:
+                  continue
+              lines.append(f"- **{iid}** `{where}` — {msg}")
+          if not any(r[0] <= 1 for r in rows):
+              lines.append("Nada de NewApi/MissingClass/Instantiatable: el crash no es de API inexistente.")
+          lines.append("")
+          lines.append("Totales por regla: " + (", ".join(f"{k}={v}" for k, v in sorted(counts.items())[:25]) or "-"))
+          open("/tmp/lint.md", "w").write("\n".join(lines))
+          print("\n".join(lines[:40]))
+          PY
+          {
+            echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            cat /tmp/lint.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Y al issue, que es el canal que se puede leer desde un sandbox sin
+          # acceso al host de logs de Actions.
+          TITLE="🔬 Auditoría Lint de MoonShare"
+          BODY="$(cat /tmp/lint.md)"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/labels/ci-audit" -f name="ci-audit" -f color="0ea5e9" >/dev/null 2>&1 || true
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=all&labels=ci-audit" --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$EXISTING" -f title="$TITLE" -f body="$BODY" >/dev/null 2>&1 || true
+            echo "audit actualizado en #$EXISTING"
+          else
+            NUM=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues" -f title="$TITLE" -f body="$BODY" --jq '.number' 2>/dev/null || echo "")
+            if [ -n "$NUM" ] && [ "$NUM" != "null" ]; then
+              gh api -X PUT "repos/$GITHUB_REPOSITORY/issues/$NUM/labels" -f "labels[]=ci-audit" >/dev/null 2>&1 || true
+              echo "audit publicado en #$NUM"
+            fi
+          fi

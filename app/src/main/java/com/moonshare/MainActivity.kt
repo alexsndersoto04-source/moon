@@ -11,10 +11,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import com.moonshare.core.CrashReport
 import com.moonshare.core.MoonLog
+import com.moonshare.core.Startup
 import com.moonshare.transfer.EnginePhase
+import com.moonshare.ui.BootFailureScreen
 import com.moonshare.ui.CrashDialogHost
 import com.moonshare.ui.MoonApp
 import com.moonshare.ui.ShareIntentRouter
@@ -34,6 +39,13 @@ class MainActivity : ComponentActivity() {
 
     private val vm: MoonViewModel by viewModels { MoonViewModelFactory(application) }
 
+    /**
+     * true mientras la app esta en "modo diagnostico". No se construye el ViewModel ni
+     * el motor en ese modo: si el crash del arranque viniera de ahi, la pantalla de
+     * ayuda moriria antes de poder mostrarse (fue exactamente lo que paso una vez).
+     */
+    private val bootFailed = mutableStateOf(false)
+
     private val treePicker = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -46,8 +58,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.moonshare.core.Startup.set(com.moonshare.core.Startup.Phase.ACTIVITY)
+        Startup.set(Startup.Phase.ACTIVITY)
         enableEdgeToEdge()
+
+        // ¿La sesión anterior murió antes de demostrar que estaba viva? Entonces esto
+        // es lo único que se dibuja: sin tema, sin ViewModel, sin motor.
+        bootFailed.value = CrashReport.hasPending(this)
+        if (bootFailed.value) {
+            MoonLog.e("Boot", "arranque previo inconcluso (fase ${CrashReport.lastPhase(this)})")
+            setContent {
+                val dump = CrashReport.pendingText(this)
+                BootFailureScreen(
+                    text = dump,
+                    phase = CrashReport.lastPhase(this),
+                    onCopy = {
+                        CrashReport.copyToClipboard(this, CrashReport.pendingText(this))
+                        finish()
+                    },
+                    onContinue = {
+                        CrashReport.acknowledge(this)
+                        bootFailed.value = false
+                    },
+                )
+            }
+            return
+        }
 
         // MoonApp es el dueño del tema: necesita leer `amoledBlack` de los ajustes,
         // y eso solo vive en el ViewModel, así que la decoración empieza ahí adentro.
@@ -65,25 +100,35 @@ class MainActivity : ComponentActivity() {
         }
         // La primera composición ya pasó: a partir de acá un fallo es de la UI/VM.
         window.decorView.post {
-            com.moonshare.core.Startup.set(com.moonshare.core.Startup.Phase.FIRST_FRAME)
+            Startup.set(Startup.Phase.FIRST_FRAME)
+            // Y si el frame se dibujó y sobrevive un segundo, la app ya no está en
+            // "arranque frágil": a partir de acá una muerte se lee como tal, no como
+            // un arranque roto.
+            window.decorView.postDelayed({
+                Startup.set(Startup.Phase.READY)
+                CrashReport.markHealthy(this)
+            }, 1100)
         }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (bootFailed.value) return
         vm.acceptViewIntent(intent)
         vm.acceptShareIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
+        if (bootFailed.value) return
         vm.attachNfc(this)
         vm.resumeScanIfPending()
     }
 
     override fun onPause() {
         super.onPause()
+        if (bootFailed.value) return
         // Importante: NFC en readerMode consume batería y bloquea a otras apps
         // (pagos, otro lector). Solo se deja activo mientras la hoja de pareo está visible.
         vm.detachNfc()
