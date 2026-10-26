@@ -43,8 +43,9 @@ def lint_section():
         where = ""
         if loc is not None:
             where = (loc.get("file") or "").replace(REPO + "/", "")
-            if loc.get("line"):
-                where += ":" + loc["line"]
+            line = loc.get("line")
+            if line:
+                where += ":" + line
         seen[iid] = seen.get(iid, 0) + 1
         if iid in PRIORITY or sev in FATAL:
             rows.append("`%s` **%s** — %s  \n    `%s`" % (sev or "?", iid, msg[:240], where))
@@ -97,14 +98,26 @@ def tests_section():
     return "\n".join(out)
 
 
+def section(fn, label):
+    """Cada seccion va aislada: si el formateo de Lint revienta, el stack de los tests
+    igual tiene que salir. Perder la parte importante por un bug de impresion es el
+    peor modo de fallar."""
+    try:
+        return fn()
+    except Exception:
+        import traceback
+        return "### %s\n\n_no se pudo leer:_%\n```\n%s\n```" % (
+            label, traceback.format_exc(limit=3).strip())
+
+
 def main():
     print("## 🔬 Auditoría de arranque de MoonShare")
     print("")
     print("- commit: `%s`" % os.environ.get("GITHUB_SHA", "?"))
     print("")
-    print(lint_section())
+    print(section(lint_section, "Lint"))
     print("")
-    print(tests_section())
+    print(section(tests_section, "Prueba de arranque"))
 
 
 if __name__ == "__main__":

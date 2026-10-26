@@ -201,9 +201,10 @@ jobs:
         run: |
           cp /tmp/lint.log /tmp/test.log . 2>/dev/null || true
           python3 tools/report-audit.py > /tmp/audit.md 2>/tmp/audit.err || {
-            echo "## ⚠️ La auditoria no pudo armar su informe"
-            echo '```'; tail -30 /tmp/audit.err 2>/dev/null; echo '```';
-          } >> /tmp/audit.md
+            echo "## ⚠️ La auditoria no pudo armar su informe" >> /tmp/audit.md
+            echo '```' >> /tmp/audit.md; tail -30 /tmp/audit.err >> /tmp/audit.md 2>/dev/null
+            echo '```' >> /tmp/audit.md
+          }
           cat /tmp/audit.md
           {
             echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
