@@ -49,6 +49,37 @@ class StartupSmokeTest {
         )
     }
 
+    /**
+     * Regresion del `RemoteServiceException: Context.startForegroundService() did not
+     * then call Service.startForeground()` que mato la app en el Redmi 9C (M2006C3MG,
+     * API 29) segun el reporte de campo: `TransferService` se arrancaba con
+     * `startForegroundService()` y habia ramas (ACTION_STOP, ACTION_ACCEPT/CANCEL, y el
+     * `stopSelf()` inmediato del colector cuando el motor todavia estaba Idle) que nunca
+     * llamaban a `startForeground()`. El sistema no avisa: inyecta la excepcion en el
+     * Looper del proceso y la app se cierra ~5 s despues de abrir.
+     *
+     * El invariante que se prueba es chico y exacto: en cuanto el servicio existe, el
+     * foreground ya esta pedido. No se depende de ShadowService para leer la notificacion
+     * porque el flag de la app es la afirmacion que nos interesa.
+     */
+    @Test
+    fun elServicioCumpleElContratoDeForegroundDesdeOnCreate() {
+        val service = Robolectric.buildService(com.moonshare.transfer.TransferService::class.java)
+            .create()
+            .get()
+        assertTrue(
+            "onCreate() no pidio foreground: el sistema mata el proceso a los 5 s",
+            service.isForegroundRequested,
+        )
+        // START_STICKY re-entrega el servicio con onCreate sin volver a correr; ahi el
+        // que tiene que cubrir el contrato es onStartCommand.
+        val second = Robolectric.buildService(com.moonshare.transfer.TransferService::class.java)
+            .create()
+            .startCommand(0, 0)
+            .get()
+        assertTrue("un startCommand suelto dejo el contrato colgando", second.isForegroundRequested)
+    }
+
     @Test
     fun elArranqueNoDejaAvisos() {
         val app = ApplicationProvider.getApplicationContext<MoonApplication>()

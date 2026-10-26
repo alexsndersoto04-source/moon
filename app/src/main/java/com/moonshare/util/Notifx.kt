@@ -98,6 +98,21 @@ object Notifx {
             .build()
     }
 
+    /**
+     * Notificación de supervivencia: sin estilo, sin `PendingIntent`, sin nada que pueda
+     * fallar. Se usa cuando la de progreso no se pudo armar (canal borrado a mano desde
+     * MIUI) y el servicio igual tiene que cumplir el contrato de primer plano. Sin
+     * notificación no hay aviso: Android mata el proceso.
+     */
+    fun plainNotification(context: Context): Notification =
+        NotificationCompat.Builder(context, CHANNEL_TRANSFER)
+            .setSmallIcon(R.drawable.ic_stat_moon)
+            .setContentTitle(context.getString(R.string.app_name))
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
     /** Notificación de "te quieren mandar archivos", con Aceptar/Rechazar directos. */
     fun requestNotification(
         context: Context,

@@ -31,6 +31,21 @@ class TransferService : android.app.Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var observe: Job? = null
 
+    /**
+     * El contrato de `startForegroundService()` no es negociable: el servicio tiene que
+     * llamar a `startForeground()` dentro de ~5 s **por cada** arranque, en cualquier
+     * rama, aunque ese arranque termine en `stopSelf()` inmediato. Si no, el sistema no
+     * lanza la excepción dentro del servicio: la inyecta en el `Looper` del proceso
+     * (`ActivityThread$H`) y la app muere con
+     * `RemoteServiceException: Context.startForegroundService() did not then call
+     * Service.startForeground()`. Ese era el cierre en el Redmi: la pantalla llegaba a
+     * dibujar y ~5 s después se cortaba.
+     */
+    @Volatile private var foregrounded = false
+
+    /** Expuesto para el test de regresion: el contrato tiene que estar cumplido tras onCreate. */
+    internal val isForegroundRequested: Boolean get() = foregrounded
+
     /** Puede ser null si el motor no arranco: el servicio entonces no hace nada. */
     private val engine get() = (application as MoonApplication).engineOrNull()
 
@@ -39,6 +54,11 @@ class TransferService : android.app.Service() {
     override fun onCreate() {
         super.onCreate()
         Notifx.ensureChannels(this)
+        // ANTES de cualquier otra cosa, y no en onStartCommand: `onCreate` corre una sola
+        // vez por creación del proceso pero `onStartCommand` puede llegar con intents que
+        // no piden nada (ACTION_ACCEPT/CANCEL desde la notificación) y ahí el reloj de 5 s
+        // ya estaría corriendo.
+        goForeground()
         observe = scope.launch {
             // Cada cambio de estado re-pinta la notificación: el usuario ve MB y
             // velocidad sin tener que abrir la app.
@@ -49,18 +69,25 @@ class TransferService : android.app.Service() {
                             .notify(Notifx.ID_TRANSFER, Notifx.transferNotification(this@TransferService, state))
                     }
                 } else {
-                    stopSelfSafely()
+                    // Ojo con la prisa: la primerísima emisión del StateFlow es Idle
+                    // (el motor todavía no procesó ACTION_START). Cortar ahí deja al
+                    // servicio sin foreground y arma el RemoteServiceException. Se espera
+                    // un latido y se re-lee el estado antes de rendirse.
+                    kotlinx.coroutines.delay(2_500)
+                    val now = engine?.state?.value
+                    if (now == null || (!now.busy && !now.isHosting)) stopSelfSafely()
                 }
             }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Idempotente (vease `foregrounded`): cubre el caso de servicio resucitado por
+        // START_STICKY, donde onCreate no vuelve a correr pero el sistema si espera el
+        // startForeground() de este arranque.
+        goForeground()
         when (intent?.action) {
-            ACTION_START -> {
-                goForeground()
-                engine?.startReceiving()
-            }
+            ACTION_START -> engine?.startReceiving()
 
             ACTION_STOP -> {
                 engine?.stopReceiving()
@@ -78,20 +105,40 @@ class TransferService : android.app.Service() {
     }
 
     private fun goForeground() {
-        val notification = Notifx.transferNotification(this, engine?.state?.value ?: EngineState())
+        if (foregrounded) return
+        // Si construir la notificacion de progreso falla (canal borrado a mano desde
+        // Ajustes de MIUI, por ejemplo) se usa una minima: quedandonos sin notificacion
+        // el sistema no nos avisa, nos mata.
+        val notification = runCatching {
+            Notifx.transferNotification(this, engine?.state?.value ?: EngineState())
+        }.getOrElse {
+            MoonLog.w(TAG, "notificacion de progreso no se pudo armar: ${it.message}")
+            Notifx.plainNotification(this)
+        }
         val type = if (Build.VERSION.SDK_INT >= 29) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         } else {
             0
         }
-        try {
+        var ok = runCatching {
             ServiceCompat.startForeground(this, Notifx.ID_TRANSFER, notification, type)
-        } catch (e: Exception) {
-            // Android 14+ puede rechazar startForeground() si no hay permiso de
+        }.isSuccess
+        if (!ok) {
+            // Android 14+ puede rechazar startForeground() si falta el permiso de
             // notificaciones: la transferencia igual sigue, solo perdemos el progreso visible.
-            MoonLog.w(TAG, "startForeground rechazado: ${e.message}")
-            runCatching { startForeground(Notifx.ID_TRANSFER, notification) }
+            MoonLog.w(TAG, "startForeground con tipo rechazado, reintentando sin tipo")
+            ok = runCatching { startForeground(Notifx.ID_TRANSFER, notification) }.isSuccess
         }
+        // Y si aun asi no se pudo: se corta el servicio DESPUES de haber llamado a
+        // startForeground, o con la notificacion minima. Nunca dejar el contrato
+        // pendiente, que es lo que cerraba la app.
+        if (!ok) {
+            MoonLog.e(TAG, "startForeground imposible: el servicio se corta antes de matar la app")
+            runCatching { startForeground(Notifx.ID_TRANSFER, Notifx.plainNotification(this)) }
+            runCatching { stopSelf() }
+            return
+        }
+        foregrounded = true
         acquireWakeLock()
     }
 
@@ -111,8 +158,11 @@ class TransferService : android.app.Service() {
     }
 
     private fun stopSelfSafely() {
+        // Cortarse sin haber hecho foreground es la violacion exacta del contrato: el
+        // sistema igual espera su startForeground(). Se satisface primero y se corta despues.
+        if (!foregrounded) runCatching { goForeground() }
         releaseWakeLock()
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         runCatching {
             (getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
                 .cancel(Notifx.ID_TRANSFER)
@@ -127,7 +177,7 @@ class TransferService : android.app.Service() {
         super.onDestroy()
     }
 
-    /** Se lo invoca desde el ViewModel cuando empieza un envío. */
+    /** Se lo invoca desde el ViewModel cuando empieza un envío. Idempotente. */
     fun ensureRunning() = goForeground()
 
     companion object {
@@ -148,14 +198,24 @@ class TransferService : android.app.Service() {
         fun stop(context: Context) {
             runCatching {
                 context.startService(Intent(context, TransferService::class.java).setAction(ACTION_STOP))
+            }.onFailure {
+                // Con el servicio ya muerto, stopService no tiene efecto: se avisa nada mas.
+                MoonLog.w(TAG, "stop con servicio caido: ${it.message}")
             }
         }
 
+        /**
+         * Acciones que no mueven datos (aceptar/rechazar/cancelar): van con
+         * `startService()`. Pedirlas con `startForegroundService()` arma el reloj de 5 s
+         * para un servicio que no tiene nada que mostrar en primer plano, y ese es el
+         * RemoteServiceException que se veia. Si el servicio ya esta corriendo, el intent
+         * llega igual; si el proceso murio, `IllegalStateException` se atrapa y la accion
+         * se pierde (mejor eso que cerrar la app).
+         */
         fun sendAction(context: Context, action: String) {
             val i = Intent(context, TransferService::class.java).setAction(action)
-            runCatching {
-                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(i) else context.startService(i)
-            }
+            runCatching { context.startService(i) }
+                .onFailure { MoonLog.w(TAG, "accion $action sin servicio vivo: ${it.message}") }
         }
     }
 }
