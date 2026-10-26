@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -85,19 +86,34 @@ fun CrystalOrb(
     }
 
     val motion = if (reducedMotion) 0f else 1f
-    val transition = rememberInfiniteTransition(label = "orb")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (PI * 2).toFloat() * motion,
-        animationSpec = infiniteRepeatable(tween(3600, easing = LinearEasing)),
-        label = "wave",
-    )
-    val breathe by transition.animateFloat(
-        initialValue = 1f - 0.015f * motion,
-        targetValue = 1f + 0.015f * motion,
-        animationSpec = infiniteRepeatable(tween(4400, easing = FastOutSlowInEasing)),
-        label = "breathe",
-    )
+
+    // El shimmer ambiental vivia en un `rememberInfiniteTransition`, o sea: recomposicion
+    // infinita aunque la esfera no tenga nada que mostrar (en reposo, o en el onboarding).
+    // Sobre el Helio G35 del Redmi 9C son cycles y bateria regalados, y en el test de
+    // arranque de CI no dejaba idlear el looper (el OutOfMemoryError de ShadowTrace que
+    // salio ahi era exactamente eso). La superficie ahora respira solo mientras hay una
+    // transferencia en curso, y con ciclos acotados: ~17 min y para.
+    val phase = remember { Animatable(0f) }
+    val breathe = remember { Animatable(1f) }
+    LaunchedEffect(active, reducedMotion) {
+        if (!active || motion == 0f) {
+            phase.snapTo(0f)
+            breathe.snapTo(1f)
+            return@LaunchedEffect
+        }
+        repeat(240) {
+            launch {
+                breathe.animateTo(
+                    if (it % 2 == 0) 1f + 0.015f else 1f - 0.015f,
+                    tween(4400, easing = FastOutSlowInEasing),
+                )
+            }
+            launch {
+                phase.animateTo(phase.value + (PI * 2).toFloat(), tween(3600, easing = LinearEasing))
+            }
+            delay(4400)
+        }
+    }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
 
@@ -120,8 +136,8 @@ fun CrystalOrb(
             Modifier
                 .size(188.dp)
                 .graphicsLayer {
-                    scaleX = breathe
-                    scaleY = breathe
+                    scaleX = breathe.value
+                    scaleY = breathe.value
                     alpha = if (active) 1f else 0.55f
                 }
         ) {
@@ -162,8 +178,8 @@ fun CrystalOrb(
                     while (x < size.width) {
                         val nx = minOf(x + step, size.width)
                         val y = surfaceY +
-                            sin((nx / size.width) * PI.toFloat() * 3f + phase) * amp +
-                            sin((nx / size.width) * PI.toFloat() * 7f - phase * 1.7f) * amp * 0.35f
+                            sin((nx / size.width) * PI.toFloat() * 3f + phase.value) * amp +
+                            sin((nx / size.width) * PI.toFloat() * 7f - phase.value * 1.7f) * amp * 0.35f
                         lineTo(nx, y)
                         x = nx
                     }
