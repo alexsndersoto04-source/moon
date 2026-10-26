@@ -122,17 +122,17 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun load(force: Boolean = false, debounce: Boolean = false) {
         val seq = ++loadSeq
-        safe {
+        safe body@{
             if (debounce) kotlinx.coroutines.delay(220)
             val cat = _ui.value.catalog.category
             val q = _ui.value.catalog.query
             if (cat == MediaCategory.All && _ui.value.catalog.treeUri != null) {
                 loadTree(seq)
-                return@launch
+                return@body
             }
             _ui.update { it.copy(catalog = it.catalog.copy(loading = true, error = null)) }
             val items = media.query(cat, q)
-            if (seq != loadSeq) return@launch
+            if (seq != loadSeq) return@body
             _ui.update {
                 it.copy(
                     catalog = it.catalog.copy(

@@ -97,6 +97,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Errores de Kotlin (e: file://...), de AGP y el bloque "What went wrong".
+          grep -E "^e: file:|^> Task .*FAILED|^E: |error:|Caused by:|what went wrong|Execution failed" -i /tmp/build.log \
+            | sed 's|/home/runner/work/[^/]*/[^/]*/||g' | head -120 > /tmp/sel.log || true
+          # Si el grep no cazó nada, el fallo es de otra etapa: mando el final del log igual,
+          # si no me quedo sin información para arreglarlo.
+          if [ ! -s /tmp/sel.log ]; then
+            echo "(sin errores parseables — últimas 120 líneas del log)" > /tmp/sel.log
+            tail -120 /tmp/build.log >> /tmp/sel.log || true
+          fi
           {
             echo "## ❌ MoonShare no compiló"
             echo
@@ -105,15 +113,9 @@ jobs:
             echo "- run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo
             echo '```'
-            grep -E "^e: file:|^> Task .*FAILED|^error:|Caused by:|what went wrong" -i /tmp/build.log \
-              | sed 's|/home/runner/work/[^/]*/[^/]*/||g' \
-              | head -120
+            cat /tmp/sel.log
             echo '```'
           } > /tmp/report.md
-
-          if [ ! -s /tmp/report.md ]; then
-            { echo "## ❌ MoonShare no compiló (sin errores parseables)"; echo; echo '```'; tail -120 /tmp/build.log; echo '```'; } > /tmp/report.md
-          fi
 
           TITLE="🔧 Fallo de build de MoonShare"
           BODY="$(cat /tmp/report.md)"
