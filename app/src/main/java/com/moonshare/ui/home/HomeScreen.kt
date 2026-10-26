@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.net.wifi.p2p.WifiP2pDevice
 import com.moonshare.core.MoonLog
 import androidx.compose.ui.platform.LocalContext
 import com.moonshare.ui.common.MoonSwitch
@@ -184,7 +185,7 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
                         Text(
                             MoonLog.rate(engine.speedBps.toDouble()),
                             style = MaterialTheme.typography.labelMedium,
-                            color = AquaSoft,
+                            color = Aqua.copy(alpha = 0.85f),
                         )
                     }
                 }
@@ -209,7 +210,7 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
                 )
             }
             Column(Modifier.fillMaxWidth()) {
-                peers.take(6).forEach { d ->
+                peers.take(6).forEach { d: WifiP2pDevice ->
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -227,7 +228,7 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            if (runCatching { d.isConnected }.getOrDefault(false)) "conectado" else "disponible",
+                            if (d.status == WifiP2pDevice.STATUS_CONNECTED) "conectado" else "disponible",
                             style = MaterialTheme.typography.bodySmall,
                             color = InkMedium,
                         )
