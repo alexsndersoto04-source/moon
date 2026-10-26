@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.moonshare.ui.theme.Aqua
 import com.moonshare.ui.theme.InkFaint
 import com.moonshare.ui.theme.PillShape
@@ -157,7 +158,11 @@ fun MoonSlider(
     )
 }
 
-/** Chip de estado: punto de color + texto. Sin contorno. */
+/**
+ * Estado: un punto de color y texto secundario. Antes era una píldora rellena de
+ * color al 12% por estado, y eso (tres píldoras de colores distintos juntas) era la
+ * mitad de lo que se leía como "interfaz de nave".
+ */
 @Composable
 fun StatusChip(
     text: String,
@@ -166,19 +171,20 @@ fun StatusChip(
     indeterminate: Boolean = false,
 ) {
     Row(
-        modifier
-            .clip(PillShape)
-            .background(color.copy(alpha = 0.12f))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+        modifier.padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (indeterminate) {
-            CircularProgressIndicator(Modifier.size(11.dp), strokeWidth = 1.4.dp, color = color)
+            CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.3.dp, color = color)
         } else {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+            Box(Modifier.size(6.dp).clip(CircleShape).background(color))
         }
         Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.labelMedium, color = color)
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -192,34 +198,29 @@ fun PrimaryButton(
     tint: Color = Aqua,
     loading: Boolean = false,
 ) {
-    val bg by animateColorAsState(
-        if (enabled) tint.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.04f),
-        tween(160), label = "btnbg",
-    )
     Row(
         modifier
             .fillMaxWidth()
-            .clip(PillShape)
-            .background(bg)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (enabled) tint else Color.White.copy(alpha = 0.08f))
             .clickable(enabled = enabled && !loading) { onClick() }
-            .padding(horizontal = 22.dp, vertical = 16.dp),
+            .padding(horizontal = 18.dp, vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (loading) {
-            CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = tint)
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
         } else if (icon != null) {
-            Icon(
-                icon, contentDescription = null, tint = tint,
-                modifier = Modifier.size(19.dp),
-            )
-            Spacer(Modifier.width(10.dp))
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
         }
         Text(
             text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = if (enabled) tint else InkFaint,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontWeight = FontWeight.Medium,
+                fontSize = 17.sp,
+            ),
+            color = if (enabled) Color.White else InkFaint,
         )
     }
 }
@@ -228,21 +229,20 @@ fun PrimaryButton(
 fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     Row(
         modifier
-            .clip(PillShape)
-            .background(Color.White.copy(alpha = 0.05f))
+            .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 13.dp),
+            .padding(horizontal = 6.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(
-                icon, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(17.dp),
-            )
-            Spacer(Modifier.width(8.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
         }
-        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

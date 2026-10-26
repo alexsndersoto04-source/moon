@@ -77,15 +77,32 @@ class WifiDirectManager(private val context: Context) {
     /** @return true si el canal quedó usable. */
     fun open(): Boolean {
         if (channel != null) return true
+        if (!isSupported) {
+            // No es un error del usuario: el hardware no lo trae. Se avisa y la app
+            // sigue sirviendo para recibir por red local si el SO lo permite.
+            _events.tryEmit("Este teléfono no trae Wi-Fi Direct")
+            return false
+        }
         val mgr = appContext.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         if (mgr == null) {
             MoonLog.w(tag, "WIFI_P2P_SERVICE no disponible en este equipo")
-            _events.tryEmit("Este teléfono no soporta Wi-Fi Direct")
+            _events.tryEmit("El sistema no expone Wi-Fi Direct en este teléfono")
+            return false
+        }
+        // Precondición que en Android NADIE te avisa: sin el Wi-Fi encendido,
+        // initialize() devuelve canal pero discover() nunca encuentra a nadie.
+        val wifi = appContext.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        if (wifi != null && !wifi.isWifiEnabled) {
+            _events.tryEmit("Encendé el Wi-Fi: sin la radio no hay Wi-Fi Direct posible")
             return false
         }
         val ch = acquireChannel(mgr)
         if (ch == null) {
-            _events.tryEmit("No se pudo abrir el canal de Wi-Fi Direct")
+            _events.tryEmit(
+                "El sistema no registró a MoonShare en Wi-Fi Direct. " +
+                    "Suele ser el permiso de ubicación sin conceder (Android 10 a 12 lo exige).",
+            )
             return false
         }
         manager = mgr
@@ -109,39 +126,36 @@ class WifiDirectManager(private val context: Context) {
      * depender de qué SDK esté compilando ni romper Android 10 en runtime, el método
      * se busca por reflexión: funciona en 29, 33, 34 y 35 sin condiciones.
      */
-    private fun acquireChannel(mgr: WifiP2pManager): WifiP2pManager.Channel? {
-        val looper = android.os.Looper.getMainLooper()
-        // 1) La forma clásica: initialize(Context, Looper)
-        mgr.javaClass.methods.firstOrNull { m ->
-            m.name == "initialize" && m.parameterTypes.size == 2 &&
-                m.parameterTypes[0] == Context::class.java &&
-                m.parameterTypes[1] == android.os.Looper::class.java
-        }?.let { m ->
-            val ch = runCatching {
-                m.invoke(mgr, appContext, looper) as? WifiP2pManager.Channel
-            }.getOrNull()
-            if (ch != null) return ch
-        }
-        // 2) API 33+: initialize(Context, Looper, OnChannelListener). El listener se
-        //    implementa con un Proxy para no atarse a la firma exacta de la interfaz.
-        val target = mgr.javaClass.methods.firstOrNull { m ->
-            m.name == "initialize" && m.parameterTypes.size == 3 && m.parameterTypes[2].isInterface
-        } ?: return null
-        val listenerType = target.parameterTypes[2]
-        val latch = java.util.concurrent.CountDownLatch(1)
-        val out = arrayOfNulls<Any>(1)
-        val proxy = java.lang.reflect.Proxy.newProxyInstance(
-            listenerType.classLoader, arrayOf(listenerType),
-        ) { _, _, args ->
-            (args?.firstOrNull() as? WifiP2pManager.Channel)?.let { out[0] = it }
-            latch.countDown()
-            null
-        }
-        runCatching { target.invoke(mgr, appContext, looper, proxy) }
-            .onFailure { MoonLog.w(tag, "initialize(listener): ${it.message}") }
-        latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
-        return out[0] as? WifiP2pManager.Channel
-    }
+    /**
+     * Registro ante el framework. La firma es la pública de siempre, documentada desde
+     * API 14: `initialize(Context, Looper, ChannelListener)` y **devuelve** el canal.
+     *
+     * Acá estaba el bug que rompía todo en el Redmi: se buscaba por reflejo una
+     * sobrecarga de dos argumentos (inexistente) y, en el rebote, se esperaba el canal
+     * como parámetro de un callback. `initialize` devuelve el Channel; nadie lo pasa por
+     * el listener. Resultado: null garantizado, "No se pudo abrir el canal de Wi-Fi
+     * Direct", y una app que no puede transferir nada. Se reemplaza por la llamada real.
+     */
+    @Suppress("DEPRECATION")
+    private fun acquireChannel(mgr: WifiP2pManager): WifiP2pManager.Channel? = runCatching {
+        mgr.initialize(
+            appContext,
+            android.os.Looper.getMainLooper(),
+            object : WifiP2pManager.ChannelListener {
+                override fun onChannelDisconnected() {
+                    // El framework nos cerró el canal (se apagó el Wi-Fi, cambió el
+                    // usuario, MIUI reciclando). Sin esto quedaríamos con un channel
+                    // muerto y TODAS las operaciones fallarían en silencio para siempre.
+                    MoonLog.w(tag, "canal WFD perdido: se va a re-abrir al próximo uso")
+                    channel = null
+                    manager = null
+                }
+            },
+        )
+    }.onFailure {
+        MoonLog.e(tag, "initialize falló: ${it.javaClass.simpleName}: ${it.message}")
+    }.getOrNull()
+
 
     fun close() {
         if (registered) {
@@ -211,6 +225,23 @@ class WifiDirectManager(private val context: Context) {
         }
     }
 
+    private fun hasNearbyPermission(): Boolean =
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                appContext, android.Manifest.permission.NEARBY_WIFI_DEVICES,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                appContext, android.Manifest.permission.ACCESS_FINE_LOCATION,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+    /** true si el telefono puede, de verdad, usar Wi-Fi Direct ahora mismo. */
+    fun radioReady(): Boolean = isSupported && runCatching {
+        (appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)
+            ?.isWifiEnabled != false
+    }.getOrDefault(true) && hasNearbyPermission()
+
     /** Par (manager, channel) solo cuando ambos están vivos. */
     private fun connectionListener(): Pair<WifiP2pManager, WifiP2pManager.Channel>? {
         val m = manager ?: return null
@@ -221,6 +252,13 @@ class WifiDirectManager(private val context: Context) {
     // ---------------------------------------------------------------- acciones
     fun discover() {
         val (m, c) = connectionListener() ?: return
+        // Android 10..12 no devuelve pares si falta ACCESS_FINE_LOCATION, y lo hace en
+        // silencio: discoverPeers() tiene onSuccess y la lista llega vacia. Se avisa
+        // explicitamente porque si no, el usuario cree que no hay nadie cerca.
+        if (!hasNearbyPermission()) {
+            _events.tryEmit("Falta el permiso de ubicación para ver otros teléfonos (Android 10 a 12 lo exige)")
+            return
+        }
         _peers.value = emptyList()
         try {
             m.discoverPeers(c, object : WifiP2pManager.ActionListener {

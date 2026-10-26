@@ -20,11 +20,11 @@ import androidx.compose.ui.unit.sp
  * Los niveles se marcan con luz y desenfoque, no con trazo.
  */
 val MoonShapes = Shapes(
-    extraSmall = RoundedCornerShape(14.dp),
-    small = RoundedCornerShape(18.dp),
-    medium = RoundedCornerShape(24.dp),
-    large = RoundedCornerShape(30.dp),
-    extraLarge = RoundedCornerShape(38.dp),
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 private val MoonDarkScheme = darkColorScheme(
@@ -39,7 +39,9 @@ private val MoonDarkScheme = darkColorScheme(
     tertiary = AquaSoft,
     background = NightBg,
     onBackground = InkHigh,
-    surface = NightSurface,
+    // surface == background: la separación entre bloques es aire, no un rectángulo
+    // más claro encima. Es lo que hace que se lea "sistema" y no "panel de nave".
+    surface = NightBg,
     onSurface = InkHigh,
     surfaceVariant = NightSurfaceHigh,
     onSurfaceVariant = InkMedium,
@@ -101,7 +103,7 @@ fun MoonTheme(
 val PillShape: Shape = RoundedCornerShape(percent = 50)
 
 /** Escala tipográfica para los números grandes (MB, %). */
-val NumericStyle = MoonTypography.displaySmall.copy(
-    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraLight,
-    letterSpacing = (-1.5).sp,
+val NumericStyle = MoonTypography.headlineMedium.copy(
+    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+    letterSpacing = (-0.6).sp,
 )

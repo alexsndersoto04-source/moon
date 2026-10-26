@@ -212,12 +212,14 @@ private fun PermissionGate(vm: MoonViewModel) {
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(150.dp)) {
-                    CrystalOrb(progress = 0f, intensity = 0.9f)
+                // La esfera en el arranque cuenta la promesa; en la pantalla principal
+                // ya no: ahi estorba (era el detalle que mas "diseño futurista" sumaba).
+                Box(Modifier.size(104.dp)) {
+                    CrystalOrb(progress = 0f, intensity = 0.75f)
                 }
-                Spacer(Modifier.height(26.dp))
+                Spacer(Modifier.height(22.dp))
                 Text(
-                    "Pasar archivos de un teléfono a otro con un golpe",
+                    "Pasá archivos de un teléfono al otro con un golpe",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,

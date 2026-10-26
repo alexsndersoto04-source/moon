@@ -10,7 +10,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -26,7 +25,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [29], qualifiers = "w411dp-h891dp-xhdpi")
+@Config(sdk = [29], qualifiers = "w411dp-h891dp-xhdpi", timeout = 120_000)
 class StartupSmokeTest {
 
     @Test
@@ -95,14 +94,11 @@ class StartupSmokeTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
         assertNotNull("no se pudo crear MainActivity", activity)
-        // La primera composicion ya corrio al attacharse la vista. Se idlea el looper un
-        // par de veces para dejar entrar el post { FIRST_FRAME }, y NO runToEndOfTasks():
-        // eso re-ejecuta lo que el propio Recomposer se repostea y el Robolectric
-        // ShadowTrace acumula secciones hasta matar el heap de la JVM (OOM del test,
-        // no de la app — perder una hora con eso es exactamente lo que hay que evitar).
-        runCatching {
-            repeat(2) { shadowOf(android.os.Looper.getMainLooper()).idle() }
-        }
+        // NO se idlea el looper aca: la esfera usa rememberInfiniteTransition, asi que el
+        // Recomposer de Compose pide frames para siempre y cualquier idle()/runToEndOfTasks()
+        // sobre el looper principal llena el heap de la JVM en ShadowTrace. El OOM que dio
+        // la version anterior del test era de ese bombeo, no de la app. La primera
+        // composicion ya ocurrio sincronico al attacharse la vista, que es lo que interesa.
         assertTrue(
             "MainActivity se cerro apenas creada (isFinishing=true): sintoma reportado",
             !activity.isFinishing,

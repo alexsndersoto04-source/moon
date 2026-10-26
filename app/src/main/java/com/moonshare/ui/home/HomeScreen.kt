@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.sp
@@ -44,6 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.moonshare.core.MoonLog
+import androidx.compose.ui.platform.LocalContext
+import com.moonshare.ui.common.MoonSwitch
 import com.moonshare.transfer.EngineMode
 import com.moonshare.ui.common.GhostButton
 import com.moonshare.ui.common.PrimaryButton
@@ -54,6 +55,7 @@ import com.moonshare.ui.theme.Aqua
 import com.moonshare.ui.theme.BlueSoft
 import com.moonshare.ui.theme.Danger
 import com.moonshare.ui.theme.InkFaint
+import com.moonshare.ui.theme.InkMedium
 import com.moonshare.ui.theme.NumericStyle
 import com.moonshare.ui.theme.Ok
 import com.moonshare.ui.theme.Warn
@@ -115,97 +117,129 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
 
         Spacer(Modifier.height(18.dp))
 
-        // ---------------------------------------------------------- esfera
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(312.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            // Pozo de luz: solo cuando hay algo en curso o estás escuchando.
-            // Es un `if` y no AnimatedVisibility porque dentro de un Box con
-            // contentAlignment el scope de animación no aplica.
-            if (hosting || active) {
-                Box(
-                    Modifier
-                        .size(300.dp)
-                        .background(
-                            Brush.radialGradient(
-                                listOf(Aqua.copy(alpha = 0.10f), Color.Transparent)
+        Spacer(Modifier.height(20.dp))
+
+        // ---------------------------------------------------------- estado
+        // Una línea de texto, como la fila de estado de AirDrop. Antes había un pozo de
+        // luz, una esfera de 230 dp girando "en espera" y tres píldoras de colores:
+        // demasiado teatro para una app que todavía no hizo nada.
+        val ctx = LocalContext.current
+        val radioOn = runCatching {
+            (ctx.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)
+                ?.isWifiEnabled != false
+        }.getOrDefault(true)
+        val awaitingTransfer = active
+        val (stateText, stateColor) = when {
+            awaitingTransfer -> "Pasando ${engine.tasks.count { !it.state.name.endsWith("Done") }} de ${engine.tasks.size} archivo(s)" to Aqua
+            hosting -> "Listo para recibir · acercá el otro teléfono" to Ok
+            !radioOn -> "El Wi‑Fi está apagado" to Warn
+            else -> "Tocá Recibir para que te puedan pasar archivos" to InkFaint
+        }
+        StatusChip(stateText, stateColor)
+        if (!radioOn) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Abrir ajustes de Wi‑Fi",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        // Accion directa al panel del sistema: mas util que explicar
+                        // en un parrafo donde tocar.
+                        runCatching {
+                            ctx.startActivity(
+                                android.content.Intent(android.provider.Settings.Panel.ACTION_WIFI)
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
-                        )
-                )
-            }
-            if (s.orbEnabled) {
+                        }.onFailure { MoonLog.w("UI", "no se pudo abrir el panel de Wi-Fi") }
+                    }
+                    .padding(vertical = 4.dp),
+            )
+        }
+
+        // ---------------------------------------------------------- la esfera, solo si está pasando algo
+        if (awaitingTransfer && s.orbEnabled) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(196.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 CrystalOrb(
-                    modifier = Modifier.size(230.dp),
-                    progress = if (active) engine.progress else if (hosting) 0f else 0f,
+                    modifier = Modifier.size(178.dp),
+                    progress = engine.progress,
                     intensity = s.orbIntensity,
                     reducedMotion = s.reduceMotion,
-                    active = active || hosting,
+                    active = true,
                 )
-            }
-
-            // estado al centro de la esfera
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    when {
-                        active -> "${(engine.progress * 100).toInt()}%"
-                        hosting -> "ON"
-                        else -> "—"
-                    },
-                    style = NumericStyle,
-                    color = if (active || hosting) Aqua else Color.White.copy(alpha = 0.25f),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    when {
-                        engine.mode == EngineMode.Receiving -> "recibiendo"
-                        engine.mode == EngineMode.Sending -> "enviando"
-                        hosting -> "escuchando"
-                        else -> "en espera"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (engine.speedBps > 0) {
-                    Spacer(Modifier.height(2.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        MoonLog.rate(engine.speedBps.toDouble()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Aqua.copy(alpha = 0.8f),
+                        "${(engine.progress * 100).toInt()}%",
+                        style = NumericStyle,
+                        color = Color.White,
                     )
+                    if (engine.speedBps > 0) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            MoonLog.rate(engine.speedBps.toDouble()),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = AquaSoft,
+                        )
+                    }
                 }
             }
         }
 
-        // ---------------------------------------------------------- estado
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusChip(
-                    if (hosting) "Wi-Fi Direct activo" else "Wi-Fi Direct inactivo",
-                    if (hosting) Ok else Warn,
+        // ---------------------------------------------------------- cercanos
+        if (hosting) {
+            Spacer(Modifier.height(18.dp))
+            Text(
+                if (peers.isEmpty()) "Buscando teléfonos cerca…" else "Cerca de vos",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 0.3.sp,
+            )
+            if (peers.isEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Del otro lado tiene que estar MoonShare abierto en “Recibir”.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkFaint,
                 )
             }
-            item {
-                StatusChip(
-                    when {
-                        !ui.nfcSupported -> "sin NFC"
-                        hosting -> "NFC listo para el golpe"
-                        else -> "NFC en espera"
-                    },
-                    if (ui.nfcSupported) Aqua else InkFaint,
-                )
-            }
-            if (peers.isNotEmpty()) item {
-                StatusChip("${peers.size} cerca", BlueSoft)
+            Column(Modifier.fillMaxWidth()) {
+                peers.take(6).forEach { d ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { vm.refreshPeers() }
+                            .padding(vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            d.deviceName?.takeIf { it.isNotBlank() } ?: "dispositivo sin nombre",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            if (runCatching { d.isConnected }.getOrDefault(false)) "conectado" else "disponible",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkMedium,
+                        )
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(20.dp))
 
         // ---------------------------------------------------------- acciones
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             PrimarySendButton(onSend = onSend, selected = ui.selected.size)
             ReceiveToggle(
                 hosting = hosting,
@@ -281,27 +315,34 @@ fun HomeScreen(vm: MoonViewModel, onSend: () -> Unit, onOpenTransfer: () -> Unit
         }
 
         // ---------------------------------------------------------- error
+        // Texto + accion. Sin caja de relleno rojo: una tarjeta de error sobre la
+        // pantalla principal convierte un detalle en un susto.
         AnimatedVisibility(visible = engine.error != null, enter = fadeIn(), exit = fadeOut()) {
             engine.error?.let { err ->
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 14.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Danger.copy(alpha = 0.12f))
-                        .clickable { vm.clearError() }
-                        .padding(14.dp),
+                        .padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         err,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.width(10.dp))
-                    androidx.compose.material3.Icon(
-                        Icons.Rounded.Refresh, null, tint = InkFaint, modifier = Modifier.size(15.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        "Reintentar",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                vm.clearError()
+                                vm.startReceiving()
+                            }
+                            .padding(horizontal = 2.dp, vertical = 4.dp),
                     )
                 }
             }
@@ -338,37 +379,31 @@ private fun PrimarySendButton(onSend: () -> Unit, selected: Int) {
 
 @Composable
 private fun ReceiveToggle(hosting: Boolean, active: Boolean, onToggle: () -> Unit) {
+    // Fila de ajuste con switch, como las preferencias del sistema. Antes era un boton
+    // gigante con relleno turquesa que competia con "Elegir que enviar" por la atencion.
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(
-                if (hosting) Aqua.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f)
-            )
-            .clickable(enabled = !active) { onToggle() }
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                if (hosting) "Recibiendo" else "Recibir",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (hosting) Aqua else MaterialTheme.colorScheme.onSurface,
+                "Recibir",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                if (hosting) "Acercá el otro teléfono y listo · tocá para parar"
+                if (hosting) "Acercá el otro teléfono y listo"
                 else "Deja este teléfono disponible para que te pasen archivos",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        androidx.compose.material3.Icon(
-            if (hosting) Icons.Rounded.Stop else Icons.Rounded.NearMe,
-            null,
-            tint = if (hosting) Aqua else InkFaint,
-            modifier = Modifier.size(20.dp),
+        Spacer(Modifier.width(14.dp))
+        MoonSwitch(
+            checked = hosting,
+            onChange = { if (!active) onToggle() },
         )
     }
 }
-
