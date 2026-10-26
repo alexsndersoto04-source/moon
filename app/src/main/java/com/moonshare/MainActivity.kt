@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import com.moonshare.core.MoonLog
 import com.moonshare.transfer.EnginePhase
+import com.moonshare.ui.CrashDialogHost
 import com.moonshare.ui.MoonApp
 import com.moonshare.ui.ShareIntentRouter
 import com.moonshare.vm.MoonViewModel
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.moonshare.core.Startup.set(com.moonshare.core.Startup.Phase.ACTIVITY)
         enableEdgeToEdge()
 
         // MoonApp es el dueño del tema: necesita leer `amoledBlack` de los ajustes,
@@ -58,6 +60,12 @@ class MainActivity : ComponentActivity() {
             )
             KeepScreenOn(vm)
             FolderPickerHost(vm, treePicker)
+            // Si hay un crash sin ver, se muestra acá antes de cualquier otra cosa.
+            CrashDialogHost(vm)
+        }
+        // La primera composición ya pasó: a partir de acá un fallo es de la UI/VM.
+        window.decorView.post {
+            com.moonshare.core.Startup.set(com.moonshare.core.Startup.Phase.FIRST_FRAME)
         }
     }
 

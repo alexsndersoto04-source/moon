@@ -19,6 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.Dp
+import android.os.Build
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -104,7 +106,7 @@ fun CrystalOrb(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { alpha = 0.55f * intensity }
-                .blur(30.dp)
+                .moonBlur(30.dp)
                 .background(
                     Brush.radialGradient(
                         0f to Aqua.copy(alpha = 0.30f * intensity),
@@ -124,8 +126,11 @@ fun CrystalOrb(
                 }
         ) {
             Canvas(Modifier.fillMaxSize().clipToBounds()) {
+                // En el primer frame de algunos ROMs el canvas llega con size 0 y un
+                // radio nulo en Brush.radialGradient revienta el draw. Se corta temprano.
+                if (size.width < 1f || size.height < 1f) return@Canvas
                 val c = Offset(size.width / 2f, size.height / 2f)
-                val r = minOf(size.width, size.height) / 2f
+                val r = (minOf(size.width, size.height) / 2f).coerceAtLeast(1f)
 
                 // 2 · cuerpo de vidrio: centro casi vacío, canto con color
                 drawCircle(
@@ -183,7 +188,7 @@ fun CrystalOrb(
                     brush = Brush.radialGradient(
                         listOf(Color.White.copy(alpha = 0.55f * intensity), Color.Transparent),
                         center = Offset(c.x - r * 0.34f, c.y - r * 0.44f),
-                        radius = r * 0.42f,
+                        radius = (r * 0.42f).coerceAtLeast(1f),
                     ),
                     topLeft = Offset(c.x - r * 0.66f, c.y - r * 0.76f),
                     size = Size(r * 0.86f, r * 0.52f),
@@ -194,7 +199,7 @@ fun CrystalOrb(
                     brush = Brush.radialGradient(
                         listOf(OrbCore.copy(alpha = 0.30f * intensity), Color.Transparent),
                         center = Offset(c.x, c.y + r * 0.62f),
-                        radius = r * 0.6f,
+                        radius = (r * 0.6f).coerceAtLeast(1f),
                     ),
                     topLeft = Offset(c.x - r * 0.8f, c.y + r * 0.16f),
                     size = Size(r * 1.6f, r * 0.9f),
@@ -218,7 +223,7 @@ fun CrystalOrb(
                 .size(width = 120.dp, height = 26.dp)
                 .align(Alignment.BottomCenter)
                 .graphicsLayer { translationY = 16.dp.toPx() }
-                .blur(18.dp)
+                .moonBlur(18.dp)
                 .background(
                     Brush.radialGradient(listOf(Color(0x59000000), Color.Transparent))
                 )
@@ -229,5 +234,15 @@ fun CrystalOrb(
 /** Pozo de luz detrás de la esfera. */
 @Composable
 fun OrbBackdrop(intensity: Float, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.blur(60.dp).background(orbWell(alpha = 0.13f * intensity)))
+    Box(modifier = modifier.moonBlur(60.dp).background(orbWell(alpha = 0.13f * intensity)))
 }
+
+/**
+ * `Modifier.blur` usa RenderEffect, que recién existe en API 31. Por debajo la
+ * documentación de Compose dice "no-op", pero en varias ROMs (MIUI 12 incluida)
+ * un RenderEffect nulo en un nodo con shadow deja artefactos o revienta el draw.
+ * Como la esfera se compone en el primer frame, acá se prefiere no desenfocar a
+ * arriesgar la app entera: el gradiente radial ya hace el trabajo visual.
+ */
+private fun Modifier.moonBlur(radius: Dp): Modifier =
+    if (Build.VERSION.SDK_INT >= 31) this.blur(radius) else this

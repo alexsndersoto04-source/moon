@@ -385,6 +385,24 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sizeLabel(bytes: Long) = MoonLog.human(bytes)
 
+    // ------------------------------------------------------------- diagnóstico
+    /** Reporte de crash sin leer todavía (el usuario lo verá en un cartel). */
+    fun pendingCrash(): String? {
+        val app = getApplication<MoonApplication>()
+        return if (com.moonshare.core.CrashReport.hasPending(app)) {
+            com.moonshare.core.CrashReport.pendingText(app)
+        } else null
+    }
+
+    fun copyCrash() {
+        val app = getApplication<MoonApplication>()
+        com.moonshare.core.CrashReport.copyToClipboard(app, com.moonshare.core.CrashReport.pendingText(app))
+    }
+
+    fun dismissCrash() {
+        com.moonshare.core.CrashReport.acknowledge(getApplication())
+    }
+
 }
 
 /** Factory mínima: la Activity ya tiene el [Application] a mano. */

@@ -41,6 +41,17 @@ class SfxPlayer(private val context: Context) {
 
     fun init() {
         if (ready) return
+        try {
+            initUnsafe()
+        } catch (e: Throwable) {
+            // Un SoundPool que no arma no puede tumbar la app: solo perdemos la gota
+            // de agua, y el usuario puede seguir transfiriendo archivos.
+            MoonLog.w("SFX", "SoundPool no disponible", e)
+            ready = false
+        }
+    }
+
+    private fun initUnsafe() {
         val attributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -50,14 +61,10 @@ class SfxPlayer(private val context: Context) {
             .setAudioAttributes(attributes)
             .build()
         pool = built
-        try {
-            volIn = built.load(context, R.raw.sfx_water_in, 1)
-            volOut = built.load(context, R.raw.sfx_water_out, 1)
-            volPair = built.load(context, R.raw.sfx_pair, 1)
-            ready = true
-        } catch (e: Exception) {
-            MoonLog.w("SFX", "no se pudieron cargar los sonidos", e)
-        }
+        volIn = built.load(context, R.raw.sfx_water_in, 1)
+        volOut = built.load(context, R.raw.sfx_water_out, 1)
+        volPair = built.load(context, R.raw.sfx_pair, 1)
+        ready = true
     }
 
     fun onFileReceived() = play(volIn, 1.0f)
