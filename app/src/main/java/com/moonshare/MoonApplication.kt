@@ -40,8 +40,9 @@ class MoonApplication : Application() {
      */
     fun warn(what: String, t: Throwable) {
         val trace = runCatching {
+            // printStackTrace no acepta Writer: solo PrintStream o PrintWriter.
             val sw = java.io.StringWriter()
-            t.printStackTrace(sw)
+            java.io.PrintWriter(sw).use { t.printStackTrace(it) }
             sw.toString().lines().drop(1).take(5).joinToString("\n").trim()
         }.getOrDefault("")
         val cause = generateSequence(t.cause) { it.cause }.lastOrNull() ?: t
