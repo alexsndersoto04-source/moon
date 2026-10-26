@@ -62,6 +62,30 @@ export ANDROID_HOME="$HOME/Android/Sdk"
    archivos o el navegador. Es un solo toggle, y es obligatorio por el sistema, no por la app.
 3. Instalar. Los permisos de la app se piden al primer arranque, con explicación previa.
 
+### Si se cierra sola (autodiagnóstico)
+
+La app trae un reportero de crashes propio, porque un `adb logcat` desde la PC es la
+peor forma de debuggear un teléfono que ni siquiera llega a mostrar una pantalla:
+
+- Cualquier excepción que mate el proceso se escribe antes de morir en el almacenamiento
+  privado de la app (`filesDir/crash/latest.log`, más hasta 4 anteriores con marca de tiempo).
+- Al volver a abrirla aparece un panel oscuro con el resumen: dispositivo, API, versión,
+  en qué fase del arranque murió (`APP_BEGIN → NOTIF → SFX → ENGINE → ACTIVITY → FIRST_FRAME → READY`)
+  y la cadena de causas.
+- Ahí están **Copiar y salir** (deja el reporte en el portapapeles para pegarlo en un issue)
+  y **ver todo** para desplegar la traza completa.
+
+Nada de esto requiere root ni permisos raros, y el reporte no sale del teléfono salvo que
+vos lo copies. El archivo en sí no es legible desde el explorador de archivos (Android lo
+impide para datos privados de otra app); para eso está el botón de copiar.
+
+Además el arranque está escrito a prueba de subsistemas rotos: notificaciones, sonido,
+motor de transferencia y cada radio van en `runCatching` separados, así que un fallo en
+`SoundPool` o en `WifiP2pManager` degrada esa función en vez de tumbar la app. Las
+corrutinas del motor y del `ViewModel` usan `CoroutineExceptionHandler`: una excepción
+dentro de un `collect` sin handler es exactamente el mecanismo que produce
+*"se queda negra y se sale"*.
+
 ---
 
 ## Qué hace y qué no va a hacer
