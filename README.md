@@ -145,6 +145,10 @@ que marca la transferencia como completa, y si el tamaño declarado no coincide 
 recibido se cancela y se borra el archivo parcial en vez de dejar basura. También se
 aceptan payloads `FILE` de versiones anteriores.
 
+**Cámara frontal por defecto** (icono de ajustes para cambiarla): es la lente correcta para
+gesticular, porque te ves la mano y la pantalla a la vez; el overlay se espeja para coincidir
+con la previsualización.
+
 **Ajustes reales** (icono de la esquina): cámara frontal/trasera, sensibilidad del gesto
 (aplicada al instante), esqueleto, vibración, mantener pantalla encendida y HUD de
 diagnóstico. Todo se guarda en `SharedPreferences` y se re-aplica al volver a la cámara.

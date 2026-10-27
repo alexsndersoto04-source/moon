@@ -281,7 +281,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     private fun dispatch(entry: MediaEntry) {
-        if (!nearby.send(entry)) return
+        if (nearby.isBusy) {
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_in_progress)))
+            return
+        }
+        if (!nearby.send(entry)) {
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_not_started)))
+            return
+        }
         haptics.confirm()
         _uiState.update {
             it.copy(

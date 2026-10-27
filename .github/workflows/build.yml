@@ -55,7 +55,9 @@ jobs:
           chmod +x gradlew
           ./gradlew --version
 
-      - name: Prepare debug keystore (used to sign the release APK)
+      # A stable signing key, created once and committed by CI. Without it every
+      # build would carry a different certificate and "install over" would fail.
+      - name: Ensure stable signing keystore
         run: |
           mkdir -p "$HOME/.android"
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
@@ -65,6 +67,21 @@ jobs:
               -alias androiddebugkey \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          if [ ! -f ci/airgesture-ci.jks ]; then
+            mkdir -p ci
+            keytool -genkeypair -v \
+              -keystore ci/airgesture-ci.jks \
+              -storetype PKCS12 \
+              -storepass airgesture -keypass airgesture \
+              -alias airgesture \
+              -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=AirGesture CI,O=AirGesture,C=VE"
+            git config user.email "ci@airgesture.local"
+            git config user.name "AirGesture CI"
+            git add -f ci/airgesture-ci.jks
+            git commit -m "chore: keystore estable de CI [skip ci]" || true
+            git push || true
           fi
 
       - name: Build release + debug APK
@@ -83,22 +100,11 @@ jobs:
           if-no-files-found: ignore
 
 
-      # TEMPORARY diagnostic (removed before hand-off).
-      - name: Publish build log on failure
-        if: failure() && github.event_name == 'push'
-        run: |
-          mkdir -p ci && head -c 400000 build.log > ci/last-build.log || true
-          git config user.email "ci@airgesture.local"
-          git config user.name "AirGesture CI"
-          git add -f ci/last-build.log
-          git commit -m "ci: build log for ${{ github.sha }} [skip ci]" || true
-          git push
-
       - name: Collect APKs
         run: |
           mkdir -p artifacts
-          cp app/build/outputs/apk/release/app-release.apk "artifacts/AirGestureTransfer-1.0.0.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "artifacts/AirGestureTransfer-1.0.0-debug.apk"
+          cp app/build/outputs/apk/release/app-release.apk "artifacts/AirGestureTransfer-1.1.0.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "artifacts/AirGestureTransfer-1.1.0-debug.apk"
           ls -lh artifacts
           sha256sum artifacts/*.apk | tee artifacts/SHA256SUMS.txt
 
@@ -106,7 +112,7 @@ jobs:
       - name: Verify APK (model bundled, ABIs present, signature valid)
         run: |
           set -euo pipefail
-          APK=artifacts/AirGestureTransfer-1.0.0.apk
+          APK=artifacts/AirGestureTransfer-1.1.0.apk
 
           echo "--- MediaPipe model inside the APK (must be Stored, not Defl) ---"
           unzip -v "$APK" | grep "hand_landmarker.task" | tee model.txt
@@ -145,13 +151,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.0.0-build${{ github.run_number }}"
+          TAG="v1.1.0-build${{ github.run_number }}"
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "AirGesture Transfer 1.0.0 (build ${{ github.run_number }})" \
+            --title "AirGesture Transfer 1.1.0 (build ${{ github.run_number }})" \
             --notes "APK generado automáticamente por GitHub Actions desde \`${{ github.sha }}\`.
 
-          **Instalación:** descarga \`AirGestureTransfer-1.0.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» para tu navegador y ábrelo.
+          **Instalación:** descarga \`AirGestureTransfer-1.1.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» para tu navegador y ábrelo. Se instala **encima** de la versión anterior: la clave de firma es estable entre builds.
 
           - Compilado: $(date -u +'%Y-%m-%d %H:%M UTC')
           - Commit: \`${{ github.sha }}\`

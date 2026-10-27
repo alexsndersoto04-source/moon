@@ -93,4 +93,6 @@ Dispositivo: %2$s</string>
     <string name="connection_none">Buscando dispositivos cercanos…</string>
     <string name="connection_peer">Conectado con %1$s</string>
     <string name="settings_reset_done">Ajustes restaurados</string>
+    <string name="transfer_in_progress">Espera: hay una transferencia en curso</string>
+    <string name="transfer_not_started">No se pudo iniciar el envío</string>
 </resources>
