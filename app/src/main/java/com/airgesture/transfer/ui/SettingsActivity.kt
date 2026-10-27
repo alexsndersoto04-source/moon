@@ -8,13 +8,14 @@ import com.airgesture.transfer.R
 import com.airgesture.transfer.core.AirGestureApp
 import com.airgesture.transfer.databinding.ActivitySettingsBinding
 import com.airgesture.transfer.util.Haptics
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Real settings: every control writes straight into [com.airgesture.transfer.core.Prefs]
- * and takes effect the moment the user returns to the camera screen (camera source
- * is re-bound, the gesture engine re-reads its sensitivity).
+ * Real settings. Every control writes straight into Prefs and the camera screen
+ * re-reads them on resume (camera lens, sensitivity, overlays, screen wake).
+ *
+ * Deliberately built from boring widgets — TextView chips, SwitchCompat and the
+ * platform SeekBar — so it cannot fail on an old or low-end device.
  */
 class SettingsActivity : AppCompatActivity() {
 
@@ -28,10 +29,35 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(binding.root)
         haptics = Haptics(this)
 
-        bindCamera()
-        bindSensitivity()
-        bindSwitches()
-        bindConnectionInfo()
+        binding.cameraFront.setOnClickListener { setFrontCamera(true) }
+        binding.cameraBack.setOnClickListener { setFrontCamera(false) }
+
+        binding.sensitivitySlider.setOnSeekBarChangeListener(
+            object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                    val value = progress / 100f
+                    updateSensitivityLabel(value)
+                    if (fromUser) prefs.sensitivity = value
+                }
+
+                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) = Unit
+                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) = Unit
+            }
+        )
+
+        binding.switchSkeleton.setOnCheckedChangeListener { _, checked ->
+            prefs.skeletonVisible = checked
+        }
+        binding.switchHaptics.setOnCheckedChangeListener { _, checked ->
+            prefs.hapticsEnabled = checked
+            if (checked) haptics.confirm()
+        }
+        binding.switchAwake.setOnCheckedChangeListener { _, checked ->
+            prefs.keepScreenOn = checked
+        }
+        binding.switchDiagnostics.setOnCheckedChangeListener { _, checked ->
+            prefs.diagnosticsVisible = checked
+        }
 
         binding.resetButton.setOnClickListener {
             prefs.resetToDefaults()
@@ -53,28 +79,16 @@ class SettingsActivity : AppCompatActivity() {
         bindConnectionInfo()
     }
 
-    // --------------------------------------------------------------- camera
-
-    private fun bindCamera() {
-        binding.cameraGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            val front = checkedId == binding.cameraFront.id
-            if (prefs.useFrontCamera != front) {
-                prefs.useFrontCamera = front
-                haptics.tick()
-            }
-        }
+    private fun setFrontCamera(front: Boolean) {
+        if (prefs.useFrontCamera == front) return
+        prefs.useFrontCamera = front
+        haptics.tick()
+        updateCameraChips()
     }
 
-    // ----------------------------------------------------------- sensitivity
-
-    private fun bindSensitivity() {
-        binding.sensitivitySlider.addOnChangeListener { _, value, fromUser ->
-            if (!fromUser) return@addOnChangeListener
-            prefs.sensitivity = value
-            updateSensitivityLabel(value)
-            haptics.tick()
-        }
+    private fun updateCameraChips() {
+        binding.cameraFront.isSelected = prefs.useFrontCamera
+        binding.cameraBack.isSelected = !prefs.useFrontCamera
     }
 
     private fun updateSensitivityLabel(value: Float) {
@@ -88,27 +102,6 @@ class SettingsActivity : AppCompatActivity() {
             getString(R.string.settings_sensitivity_value, percent, getString(label))
     }
 
-    // ------------------------------------------------------------- switches
-
-    private fun bindSwitches() {
-        binding.switchSkeleton.setOnCheckedChangeListener { _, checked ->
-            prefs.skeletonVisible = checked
-    }
-
-        binding.switchHaptics.setOnCheckedChangeListener { _, checked ->
-            prefs.hapticsEnabled = checked
-            if (checked) haptics.confirm()
-        }
-
-        binding.switchAwake.setOnCheckedChangeListener { _, checked ->
-            prefs.keepScreenOn = checked
-        }
-
-        binding.switchDiagnostics.setOnCheckedChangeListener { _, checked ->
-            prefs.diagnosticsVisible = checked
-        }
-    }
-
     private fun bindConnectionInfo() {
         val app = application as AirGestureApp
         binding.connectionStatus.text = getString(
@@ -119,11 +112,10 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun loadValues() {
-        binding.cameraGroup.check(
-            if (prefs.useFrontCamera) binding.cameraFront.id else binding.cameraBack.id
-        )
-        binding.sensitivitySlider.value = prefs.sensitivity.coerceIn(0f, 1f)
-        updateSensitivityLabel(prefs.sensitivity)
+        updateCameraChips()
+        val progress = (prefs.sensitivity.coerceIn(0f, 1f) * 100f).roundToInt()
+        binding.sensitivitySlider.progress = progress
+        updateSensitivityLabel(progress / 100f)
         binding.switchSkeleton.isChecked = prefs.skeletonVisible
         binding.switchHaptics.isChecked = prefs.hapticsEnabled
         binding.switchAwake.isChecked = prefs.keepScreenOn

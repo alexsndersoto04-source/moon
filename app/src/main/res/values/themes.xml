@@ -65,6 +65,19 @@
         <item name="rippleColor">#11000000</item>
     </style>
 
+    <style name="CameraChip" parent="TextAppearance.AirGesture.Tab">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:background">@drawable/bg_tab</item>
+        <item name="android:paddingTop">11dp</item>
+        <item name="android:paddingBottom">11dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/tab_text</item>
+    </style>
+
     <style name="SettingsSection" parent="TextAppearance.Material3.LabelSmall">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
@@ -76,12 +89,14 @@
         <item name="android:textSize">9.5sp</item>
     </style>
 
-    <style name="Widget.AirGesture.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+    <!-- Plain AppCompat switch: no Material runner-time surprises on old devices. -->
+    <style name="SettingsSwitch" parent="Widget.AppCompat.CompoundButton.Switch">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:minHeight">48dp</item>
+        <item name="android:minHeight">50dp</item>
         <item name="android:textColor">@color/ink</item>
         <item name="android:textSize">14sp</item>
+        <item name="android:paddingStart">0dp</item>
     </style>
 
     <style name="TabChip" parent="TextAppearance.AirGesture.Tab">

@@ -206,18 +206,55 @@
             </FrameLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Live push meter: shows the throw gesture building up. -->
-        <com.google.android.material.progressindicator.LinearProgressIndicator
-            android:id="@+id/pushMeter"
+        <!-- Live push meter + explicit send button (fallback that needs no gesture) -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginStart="26dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/pushMeter"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                app:indicatorColor="@color/accent"
+                app:trackColor="@color/hairline"
+                app:trackCornerRadius="2dp"
+                app:trackThickness="3dp" />
+
+            <TextView
+                android:id="@+id/sendButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/bg_pill"
+                android:backgroundTint="@color/ink"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text="@string/send_now"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Transport log: always visible so a failed send is never silent. -->
+        <TextView
+            android:id="@+id/logText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="26dp"
+            android:layout_marginTop="6dp"
             android:layout_marginEnd="26dp"
-            app:indicatorColor="@color/accent"
-            app:trackColor="@color/hairline"
-            app:trackCornerRadius="2dp"
-            app:trackThickness="3dp" />
+            android:ellipsize="start"
+            android:fontFamily="monospace"
+            android:maxLines="2"
+            android:textColor="@color/ink_faint"
+            android:textSize="9sp" />
 
         <!-- Local file shelf -->
         <FrameLayout

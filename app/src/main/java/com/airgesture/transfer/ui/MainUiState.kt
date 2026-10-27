@@ -16,7 +16,9 @@ data class MainUiState(
     val handVisible: Boolean = false,
     val nearbyState: NearbyState = NearbyState.IDLE,
     val peerName: String? = null,
-    val transfer: TransferProgress? = null
+    val transfer: TransferProgress? = null,
+    /** Last few transport log lines, oldest first. Shown in the UI on purpose. */
+    val logLines: List<String> = emptyList()
 )
 
 /**

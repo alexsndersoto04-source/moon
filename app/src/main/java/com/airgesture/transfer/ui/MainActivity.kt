@@ -109,6 +109,11 @@ class MainActivity : AppCompatActivity() {
         binding.permButton.setOnClickListener { requestPermissions() }
         binding.permSettings.setOnClickListener { openAppSettings() }
 
+        binding.sendButton.setOnClickListener {
+            haptics.tick()
+            viewModel.sendSelectedNow()
+        }
+
         binding.settingsButton.setOnClickListener {
             haptics.tick()
             startActivity(SettingsActivity.intent(this))
@@ -125,6 +130,39 @@ class MainActivity : AppCompatActivity() {
 
         collectFlows()
         applyPermissions()
+        showCrashReportIfAny()
+    }
+
+    /**
+     * A side-loaded build has no crash reporting, so the last uncaught exception
+     * is shown here with a copy button.
+     */
+    private fun showCrashReportIfAny() {
+        val report = com.airgesture.transfer.core.CrashLogger.readAndClear(this) ?: return
+        val scroll = android.widget.ScrollView(this).apply {
+            val text = android.widget.TextView(this@MainActivity).apply {
+                text = report.take(8000)
+                textSize = 10f
+                typeface = android.graphics.Typeface.MONOSPACE
+                setTextIsSelectable(true)
+                setPadding(32, 24, 32, 24)
+            }
+            addView(text)
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.crash_title)
+            .setMessage(R.string.crash_body)
+            .setView(scroll)
+            .setPositiveButton(R.string.crash_copy) { _, _ ->
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                clipboard.setPrimaryClip(
+                    android.content.ClipData.newPlainText("crash", report)
+                )
+                showTransient(getString(R.string.crash_copied))
+            }
+            .setNegativeButton(R.string.crash_close, null)
+            .show()
     }
 
     /**
@@ -269,6 +307,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.statusPill.text = statusText(state)
+        binding.logText.text = state.logLines.joinToString("\n")
         updateHint()
 
         val transfer = state.transfer

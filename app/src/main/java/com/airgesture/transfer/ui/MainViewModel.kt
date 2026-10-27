@@ -254,6 +254,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     // -------------------------------------------------------------- transfer
 
+    /** Explicit "send now" button: no gesture involved at all. */
+    fun sendSelectedNow() {
+        if (_uiState.value.transfer != null) {
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_in_progress)))
+            return
+        }
+        val state = _uiState.value
+        val entry = state.items.firstOrNull { it.key == state.selectedUri }
+            ?: state.items.firstOrNull()
+        if (entry == null) {
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.select_file_first)))
+            return
+        }
+        sendItem(entry)
+    }
+
     /** Fail-safe used by the long-press on a file card. */
     fun sendItem(entry: MediaEntry) {
         _uiState.update { it.copy(selectedUri = entry.key) }
@@ -335,6 +351,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         _events.tryEmit(UiEvent.Received(fileName))
     }
 
+    override fun onLog(line: String) {
+        _uiState.update { state ->
+            val next = (state.logLines + line).takeLast(MAX_LOG_LINES)
+            state.copy(logLines = next)
+        }
+    }
+
     override fun onTransferFailed(fileName: String?, reason: String) {
         pendingSend = null
         _uiState.update { it.copy(transfer = null) }
@@ -343,5 +366,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     companion object {
         private const val STATS_INTERVAL_MS = 500L
+        private const val MAX_LOG_LINES = 3
     }
 }

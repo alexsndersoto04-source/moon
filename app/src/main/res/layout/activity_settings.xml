@@ -33,34 +33,26 @@
             android:textColor="@color/ink_faint"
             android:textSize="12sp" />
 
-        <!-- Cámara -->
+        <!-- ── Cámara ─────────────────────────────────────────────────── -->
         <TextView
             style="@style/SettingsSection"
             android:text="@string/settings_camera_section" />
 
-        <com.google.android.material.button.MaterialButtonToggleGroup
-            android:id="@+id/cameraGroup"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:selectionRequired="true"
-            app:singleSelection="true">
+            android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
+            <TextView
                 android:id="@+id/cameraFront"
-                style="@style/Widget.AirGesture.Toggle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
+                style="@style/CameraChip"
                 android:text="@string/settings_camera_front" />
 
-            <com.google.android.material.button.MaterialButton
+            <TextView
                 android:id="@+id/cameraBack"
-                style="@style/Widget.AirGesture.Toggle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
+                style="@style/CameraChip"
                 android:text="@string/settings_camera_back" />
-        </com.google.android.material.button.MaterialButtonToggleGroup>
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
@@ -70,7 +62,7 @@
             android:textColor="@color/ink_faint"
             android:textSize="11sp" />
 
-        <!-- Sensibilidad -->
+        <!-- ── Sensibilidad ───────────────────────────────────────────── -->
         <TextView
             style="@style/SettingsSection"
             android:text="@string/settings_sensitivity" />
@@ -82,17 +74,15 @@
             android:textColor="@color/ink_soft"
             android:textSize="12sp" />
 
-        <com.google.android.material.slider.Slider
+        <SeekBar
             android:id="@+id/sensitivitySlider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:stepSize="0.05"
-            android:value="0.62"
-            android:valueFrom="0"
-            android:valueTo="1"
-            app:thumbColor="@color/ink"
-            app:trackColorActive="@color/ink"
-            app:trackColorInactive="@color/hairline_strong" />
+            android:layout_marginTop="6dp"
+            android:max="100"
+            android:progress="62"
+            android:progressTint="@color/ink"
+            android:thumbTint="@color/ink" />
 
         <TextView
             android:layout_width="match_parent"
@@ -101,40 +91,32 @@
             android:textColor="@color/ink_faint"
             android:textSize="11sp" />
 
-        <!-- Preferencias -->
+        <!-- ── Comportamiento ─────────────────────────────────────────── -->
         <TextView
             style="@style/SettingsSection"
             android:text="@string/settings_behaviour" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchSkeleton"
-            style="@style/Widget.AirGesture.Switch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            style="@style/SettingsSwitch"
             android:text="@string/settings_skeleton" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchHaptics"
-            style="@style/Widget.AirGesture.Switch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            style="@style/SettingsSwitch"
             android:text="@string/settings_haptics" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchAwake"
-            style="@style/Widget.AirGesture.Switch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            style="@style/SettingsSwitch"
             android:text="@string/settings_awake" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchDiagnostics"
-            style="@style/Widget.AirGesture.Switch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            style="@style/SettingsSwitch"
             android:text="@string/settings_diagnostics" />
 
-        <!-- Conexión -->
+        <!-- ── Conexión ───────────────────────────────────────────────── -->
         <TextView
             style="@style/SettingsSection"
             android:text="@string/settings_connection" />

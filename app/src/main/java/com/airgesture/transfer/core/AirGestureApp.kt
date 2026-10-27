@@ -17,6 +17,7 @@ class AirGestureApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        CrashLogger.install(this)
     }
 
     /** Human readable device label used by the settings screen. */

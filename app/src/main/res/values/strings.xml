@@ -95,4 +95,10 @@ Dispositivo: %2$s</string>
     <string name="settings_reset_done">Ajustes restaurados</string>
     <string name="transfer_in_progress">Espera: hay una transferencia en curso</string>
     <string name="transfer_not_started">No se pudo iniciar el envío</string>
+    <string name="send_now">Enviar</string>
+    <string name="crash_title">La app se cerró la última vez</string>
+    <string name="crash_body">Copia este texto y envíalo para que se pueda corregir:</string>
+    <string name="crash_copy">Copiar</string>
+    <string name="crash_close">Cerrar</string>
+    <string name="crash_copied">Informe copiado</string>
 </resources>

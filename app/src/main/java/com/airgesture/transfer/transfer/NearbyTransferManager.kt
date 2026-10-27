@@ -6,7 +6,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
 import com.airgesture.transfer.media.MediaEntry
 import com.google.android.gms.nearby.Nearby
@@ -22,42 +24,37 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
+import java.io.BufferedInputStream
 import java.io.DataInputStream
-import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.io.SequenceInputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Nearby Connections transport, fully automatic and with an in-band protocol.
+ * Nearby Connections transport with a fully automatic session.
  *
- * **Why a custom framing instead of FILE payloads:** FILE payloads hand the
- * receiver a scoped-storage temp file whose name and MIME must arrive in a
- * *separate* BYTES payload. Nearby does not guarantee ordering between payload
- * types, and when the metadata is missing or arrives late the file is silently
- * dropped — which is exactly the "it says sent but nothing arrives" failure.
+ * ## Why the previous version never delivered a file
+ * Both phones advertise **and** discover (that is what "no configuration" needs),
+ * so both called `requestConnection` at the same time for the same endpoint.
+ * One side then resolved as ALREADY_CONNECTED while the other stayed in a
+ * half-open state, and any later `sendPayload` went nowhere.
  *
- * **Protocol (one STREAM payload per file, self-describing):**
- * ```
- * int32  magic  'A' 'G' 'F' 'T'
- * uint8  version (1)
- * int32  nameLength   + UTF-8 name
- * int32  mimeLength   + UTF-8 mime
- * int64  size in bytes (0 = unknown, until EOF)
- * ...    raw file bytes
- * ```
- * Both ends write/read through their own buffered streams on a dedicated I/O
- * thread, so a 200 MB video never touches the heap.
+ * Two rules fix it for good:
+ *  1. **Deterministic initiator.** Only the device whose name sorts first opens
+ *     the connection. The other one just accepts the incoming request. Exactly
+ *     one handshake can ever happen per pair.
+ *  2. **ALREADY_CONNECTED means connected.** If a request races anyway, the
+ *     status is treated as success instead of tearing the session down.
  *
- * The handshake/connection layer keeps working the way that already connected
- * in the field: both devices advertise *and* discover, and the first peer is
- * auto-accepted without any confirmation UI.
+ * ## Wire format
+ * Per file: a BYTES payload with JSON metadata, and only when that payload
+ * reports SUCCESS is the FILE payload sent — the ordering the official sample
+ * uses, because Nearby does not order payloads of different types. The receiver
+ * copies the payload through the URI Nearby hands back (scoped-storage safe) and
+ * answers with a BYTES ack so the sender can honestly say "entregado".
  */
 class NearbyTransferManager(
     context: Context,
@@ -70,32 +67,55 @@ class NearbyTransferManager(
         fun onFileSent(fileName: String)
         fun onFileReceived(fileName: String, uri: Uri)
         fun onTransferFailed(fileName: String?, reason: String)
+        /** Human readable trace shown in the UI, newest last. */
+        fun onLog(line: String)
     }
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val ioExecutor = Executors.newSingleThreadExecutor { runnable ->
+    private val ioExecutor = Executors.newFixedThreadPool(2) { runnable ->
         Thread(runnable, "airgesture-transfer").apply { priority = Thread.NORM_PRIORITY }
     }
     private val connections: ConnectionsClient = Nearby.getConnectionsClient(appContext)
     private val serviceId: String = SERVICE_ID
+    private val myName: String = buildDeviceName()
 
     private var running = false
     private var connectedEndpointId: String? = null
     private var connectingEndpointId: String? = null
     private var connectedName: String? = null
     private var announcedName: String? = null
+    private var lastPeerName: String? = null
 
     // Outgoing
     private val sending = AtomicBoolean(false)
+    private var queuedEntry: MediaEntry? = null
+    private var metaPayloadId: Long = -1L
     @Volatile private var outgoingPayloadId: Long = -1L
     @Volatile private var outgoingName: String? = null
     @Volatile private var outgoingTotal: Long = 0L
+    private var outgoingDescriptor: ParcelFileDescriptor? = null
 
     // Incoming
     @Volatile private var incomingPayloadId: Long = -1L
     @Volatile private var incomingTotal: Long = 0L
-    private var incomingStream: InputStream? = null
+    private var incomingPayload: Payload? = null
+    @Volatile private var incomingName: String? = null
+
+    // Watchdog
+    private val watchdog = object : Runnable {
+        override fun run() {
+            if (!running) return
+            if (connectedEndpointId == null) {
+                log("Reintentando descubrimiento…")
+                runCatching { connections.stopAdvertising() }
+                runCatching { connections.stopDiscovery() }
+                startAdvertising()
+                startDiscovery()
+                mainHandler.postDelayed(this, WATCHDOG_MS)
+            }
+        }
+    }
 
     // ------------------------------------------------------------ lifecycle
 
@@ -105,14 +125,18 @@ class NearbyTransferManager(
         startAdvertising()
         startDiscovery()
         emitState(NearbyState.SEARCHING)
+        log("Buscando dispositivos · soy $myName")
+        mainHandler.postDelayed(watchdog, WATCHDOG_MS)
     }
 
     fun stop() {
         running = false
+        mainHandler.removeCallbacks(watchdog)
         connectedEndpointId = null
         connectingEndpointId = null
         connectedName = null
-        closeStreams()
+        queuedEntry = null
+        closeOutgoingDescriptor()
         sending.set(false)
         runCatching { connections.stopAdvertising() }
         runCatching { connections.stopDiscovery() }
@@ -121,17 +145,17 @@ class NearbyTransferManager(
     }
 
     val isConnected: Boolean get() = connectedEndpointId != null
-    val peerName: String? get() = connectedName
+    val peerName: String? get() = connectedName ?: lastPeerName
     val isBusy: Boolean get() = sending.get()
 
     // ----------------------------------------------------------- advertising
 
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(STRATEGY).build()
-        connections.startAdvertising(deviceName(), serviceId, lifecycleCallback, options)
+        connections.startAdvertising(myName, serviceId, lifecycleCallback, options)
             .addOnFailureListener { error ->
                 Log.w(TAG, "startAdvertising failed", error)
-                emitState(NearbyState.ERROR, error.message)
+                log("Aviso: no se pudo anunciar (${error.message})")
             }
     }
 
@@ -140,7 +164,7 @@ class NearbyTransferManager(
         connections.startDiscovery(serviceId, discoveryCallback, options)
             .addOnFailureListener { error ->
                 Log.w(TAG, "startDiscovery failed", error)
-                emitState(NearbyState.ERROR, error.message)
+                log("Aviso: no se pudo buscar (${error.message})")
             }
     }
 
@@ -148,12 +172,28 @@ class NearbyTransferManager(
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             if (!running) return
             if (connectedEndpointId != null || connectingEndpointId != null) return
+
+            val peer = info.endpointName.orEmpty()
+            if (peer.isBlank()) return
+
+            // Deterministic initiator: whichever name sorts first dials, the other
+            // waits. This removes the simultaneous-handshake race completely.
+            if (myName.compareTo(peer) >= 0) {
+                lastPeerName = peer
+                emitState(NearbyState.PEER_FOUND, peer)
+                log("Dispositivo cerca: $peer (esperando su conexión)")
+                return
+            }
+
             connectingEndpointId = endpointId
-            emitState(NearbyState.PEER_FOUND, info.endpointName)
-            connections.requestConnection(deviceName(), endpointId, lifecycleCallback)
+            lastPeerName = peer
+            emitState(NearbyState.PEER_FOUND, peer)
+            log("Conectando con $peer…")
+            connections.requestConnection(myName, endpointId, lifecycleCallback)
                 .addOnFailureListener { error ->
-                    Log.w(TAG, "requestConnection failed", error)
+                    log("Fallo al conectar (${error.message})")
                     if (connectingEndpointId == endpointId) connectingEndpointId = null
+                    if (connectedEndpointId == null) startDiscovery()
                 }
         }
 
@@ -167,28 +207,34 @@ class NearbyTransferManager(
 
     private val lifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
-            // Invisible pairing: accept immediately, as advertiser or as seeker.
             announcedName = info.endpointName
+            if (connectingEndpointId == null) connectingEndpointId = endpointId
             emitState(NearbyState.CONNECTING, info.endpointName)
             connections.acceptConnection(endpointId, payloadCallback)
                 .addOnFailureListener { error ->
                     Log.w(TAG, "acceptConnection failed", error)
-                    connectingEndpointId = null
+                    log("No se pudo aceptar la conexión (${error.message})")
                 }
         }
 
         override fun onConnectionResult(endpointId: String, resolution: ConnectionResolution) {
             val status = resolution.status
-            if (status.isSuccess) {
+            // ALREADY_CONNECTED is a success in disguise: the peer won the race.
+            if (status.isSuccess || status.statusCode == STATUS_ALREADY_CONNECTED) {
                 connectedEndpointId = endpointId
                 connectingEndpointId = null
-                connectedName = announcedName?.takeIf { it.isNotBlank() } ?: peerLabel(endpointId)
-                // The link is what matters now: stop advertising to save radios.
+                connectedName = announcedName?.takeIf { it.isNotBlank() }
+                    ?: lastPeerName
+                    ?: endpointId.takeLast(4).uppercase()
+                lastPeerName = connectedName
+                mainHandler.removeCallbacks(watchdog)
                 runCatching { connections.stopAdvertising() }
                 runCatching { connections.stopDiscovery() }
                 emitState(NearbyState.CONNECTED, connectedName)
+                log("Conectado a $connectedName")
             } else {
                 Log.w(TAG, "connection rejected: ${status.statusCode} ${status.statusMessage}")
+                log("Conexión rechazada (${status.statusCode})")
                 if (connectingEndpointId == endpointId) connectingEndpointId = null
                 if (connectedEndpointId == null) {
                     emitState(NearbyState.SEARCHING)
@@ -201,12 +247,15 @@ class NearbyTransferManager(
             if (connectedEndpointId == endpointId) {
                 connectedEndpointId = null
                 connectedName = null
-                closeStreams()
+                queuedEntry = null
+                closeOutgoingDescriptor()
                 sending.set(false)
                 emitState(NearbyState.SEARCHING)
+                log("Se perdió la conexión; reintentando")
                 if (running) {
                     startAdvertising()
                     startDiscovery()
+                    mainHandler.postDelayed(watchdog, WATCHDOG_MS)
                 }
             }
         }
@@ -215,59 +264,87 @@ class NearbyTransferManager(
     // -------------------------------------------------------------- sending
 
     /**
-     * Streams [entry] to the connected peer. Returns false when there is no
-     * peer yet or a transfer is already in flight — never silently "succeeds".
+     * Queues [entry] for the connected peer. Returns false when there is no peer
+     * yet or a send is already running — the caller tells the user why.
      */
     fun send(entry: MediaEntry): Boolean {
         val endpointId = connectedEndpointId ?: return false
         if (!sending.compareAndSet(false, true)) return false
 
+        queuedEntry = entry
         outgoingName = entry.name
+        outgoingTotal = entry.sizeBytes
 
-        ioExecutor.execute {
-            try {
-                val input = appContext.contentResolver.openInputStream(entry.uri)
-                    ?: throw IOException("No se pudo abrir el archivo")
+        val meta = org.json.JSONObject()
+            .put(KEY_NAME, entry.name)
+            .put(KEY_MIME, entry.mimeType)
+            .put(KEY_SIZE, entry.sizeBytes)
 
-                val fileSize = entry.sizeBytes.takeIf { it > 0 } ?: 0L
-                val header = buildHeader(entry.name, entry.mimeType, fileSize)
+        val metaPayload = Payload.fromBytes(meta.toString().toByteArray(Charsets.UTF_8))
+        metaPayloadId = metaPayload.id
+        log("Preparando ${entry.name}")
 
-                // One continuous stream: framing header followed by the file bytes.
-                // Nearby reads it to EOF on its own thread and closes it, which is
-                // what triggers the SUCCESS update.
-                val source = SequenceInputStream(ByteArrayInputStream(header), input)
-                val payload = Payload.fromStream(source)
-
-                outgoingPayloadId = payload.id
-                outgoingTotal = fileSize + header.size
-                emitProgress(entry.name, 0L, outgoingTotal, outgoing = true)
-
-                connections.sendPayload(endpointId, payload)
-                    .addOnFailureListener { error ->
-                        Log.w(TAG, "sendPayload failed", error)
-                        runCatching { source.close() }
-                        fail(entry.name, error.message ?: "Envío rechazado")
-                    }
-            } catch (error: Exception) {
-                Log.e(TAG, "send failed", error)
-                fail(entry.name, friendly(error))
+        connections.sendPayload(endpointId, metaPayload)
+            .addOnFailureListener { error ->
+                log("Error al enviar la cabecera (${error.message})")
+                sending.set(false)
+                queuedEntry = null
+                notifyFailure(entry.name, error.message ?: "Envío rechazado")
             }
-        }
         return true
     }
 
-    /** Builds `magic · version · name · mime · size` as a byte array. */
-    private fun buildHeader(name: String, mime: String, size: Long): ByteArray {
-        val buffer = java.io.ByteArrayOutputStream(HEADER_RESERVE)
-        DataOutputStream(buffer).use { out ->
-            out.writeInt(MAGIC)
-            out.writeByte(VERSION)
-            writeString(out, name)
-            writeString(out, if (mime.isBlank()) "application/octet-stream" else mime)
-            out.writeLong(size)
-            out.flush()
+    /** Second step: the FILE payload, once the metadata is confirmed. */
+    private fun startFileTransfer() {
+        val entry = queuedEntry ?: return
+        val endpointId = connectedEndpointId
+        if (endpointId == null) {
+            sending.set(false)
+            queuedEntry = null
+            notifyFailure(entry.name, "Conexión perdida")
+            return
         }
-        return buffer.toByteArray()
+
+        val descriptor = runCatching {
+            appContext.contentResolver.openFileDescriptor(entry.uri, "r")
+        }.getOrNull()
+
+        if (descriptor == null) {
+            log("No se pudo abrir el archivo")
+            sending.set(false)
+            queuedEntry = null
+            notifyFailure(entry.name, "No se pudo leer el archivo")
+            return
+        }
+
+        val payload = runCatching { Payload.fromFile(descriptor) }.getOrElse { error ->
+            Log.e(TAG, "payload build failed", error)
+            runCatching { descriptor.close() }
+            sending.set(false)
+            queuedEntry = null
+            notifyFailure(entry.name, "No se pudo preparar el envío")
+            return
+        }
+
+        closeOutgoingDescriptor()
+        outgoingDescriptor = descriptor
+        outgoingPayloadId = payload.id
+        log("Enviando ${entry.name}…")
+
+        connections.sendPayload(endpointId, payload)
+            .addOnFailureListener { error ->
+                Log.w(TAG, "sendPayload(file) failed", error)
+                log("El envío falló (${error.message})")
+                closeOutgoingDescriptor()
+                outgoingPayloadId = -1L
+                sending.set(false)
+                notifyFailure(entry.name, error.message ?: "Envío rechazado")
+            }
+    }
+
+    private fun closeOutgoingDescriptor() {
+        runCatching { outgoingDescriptor?.close() }
+        outgoingDescriptor = null
     }
 
     // ------------------------------------------------------------- receiving
@@ -275,20 +352,27 @@ class NearbyTransferManager(
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
             when (payload.type) {
+                Payload.Type.BYTES -> handleBytes(payload.asBytes())
+
+                Payload.Type.FILE -> {
+                    incomingPayloadId = payload.id
+                    incomingPayload = payload
+                    val size = runCatching { payload.asFile()?.size }.getOrNull() ?: 0L
+                    incomingTotal = size
+                    log("Recibiendo archivo (${size / 1024} KB)…")
+                }
+
                 Payload.Type.STREAM -> {
+                    // Compatibility with builds that stream the header inline.
                     incomingPayloadId = payload.id
                     val stream = runCatching { payload.asStream()?.asInputStream() }.getOrNull()
                     if (stream == null) {
                         notifyFailure(null, "No se pudo abrir el flujo entrante")
                         return
                     }
-                    incomingStream = stream
                     ioExecutor.execute { receiveStream(payload.id, stream) }
                 }
 
-                Payload.Type.FILE -> receiveLegacyFile(payload)
-
-                Payload.Type.BYTES -> Unit // unused by the current protocol
                 else -> Unit
             }
         }
@@ -297,27 +381,45 @@ class NearbyTransferManager(
             when (update.status) {
                 PayloadTransferUpdate.Status.IN_PROGRESS -> {
                     if (update.payloadId == outgoingPayloadId) {
-                        val total = if (update.totalBytes > 0) update.totalBytes else outgoingTotal
-                        emitProgress(outgoingName ?: "Archivo", update.bytesTransferred, total, true)
+                        postProgress(
+                            TransferProgress(
+                                outgoingName ?: "Archivo",
+                                update.bytesTransferred,
+                                if (update.totalBytes > 0) update.totalBytes else outgoingTotal,
+                                true
+                            )
+                        )
                     } else if (update.payloadId == incomingPayloadId) {
-                        emitProgress(
-                            incomingDisplayName ?: "Archivo",
-                            update.bytesTransferred,
-                            incomingTotal,
-                            outgoing = false
+                        postProgress(
+                            TransferProgress(
+                                incomingName ?: "Archivo",
+                                update.bytesTransferred,
+                                if (update.totalBytes > 0) update.totalBytes else incomingTotal,
+                                false
+                            )
                         )
                     }
                 }
 
                 PayloadTransferUpdate.Status.SUCCESS -> {
-                    if (update.payloadId == outgoingPayloadId) {
-                        val name = outgoingName ?: "Archivo"
-                        val total = maxOf(update.totalBytes, outgoingTotal)
-                        outgoingPayloadId = -1L
-                        outgoingTotal = 0L
-                        sending.set(false)
-                        emitProgress(name, total, total, outgoing = true)
-                        mainHandler.post { listener.onFileSent(name) }
+                    when (update.payloadId) {
+                        metaPayloadId -> {
+                            metaPayloadId = -1L
+                            startFileTransfer()
+                        }
+
+                        outgoingPayloadId -> {
+                            val name = outgoingName ?: "Archivo"
+                            val total = maxOf(update.totalBytes, outgoingTotal)
+                            outgoingPayloadId = -1L
+                            closeOutgoingDescriptor()
+                            sending.set(false)
+                            postProgress(TransferProgress(name, total, total, true))
+                            log("Enviado: $name")
+                            mainHandler.post { listener.onFileSent(name) }
+                        }
+
+                        incomingPayloadId -> persistIncoming()
                     }
                 }
 
@@ -326,36 +428,130 @@ class NearbyTransferManager(
                     if (update.payloadId == outgoingPayloadId) {
                         val name = outgoingName
                         outgoingPayloadId = -1L
+                        closeOutgoingDescriptor()
                         sending.set(false)
-                        fail(name, "La transferencia se interrumpió")
+                        log("Transferencia interrumpida")
+                        notifyFailure(name, "La transferencia se interrumpió")
+                    } else if (update.payloadId == incomingPayloadId) {
+                        clearIncoming()
+                        notifyFailure(incomingName, "No se pudo recibir el archivo")
                     }
                 }
             }
         }
     }
 
-    @Volatile private var incomingDisplayName: String? = null
+    private fun handleBytes(bytes: ByteArray?) {
+        if (bytes == null) return
+        val text = runCatching { String(bytes, Charsets.UTF_8) }.getOrNull() ?: return
+        if (text == ACK_TOKEN) {
+            log("El otro teléfono confirmó la recepción")
+            return
+        }
+        runCatching {
+            val json = org.json.JSONObject(text)
+            incomingName = json.optString(KEY_NAME, "Archivo").let { sanitize(it) }
+            incomingTotal = json.optLong(KEY_SIZE, 0L)
+        }
+    }
 
-    /** Reads the framing header, then copies the payload into Downloads. */
-    private fun receiveStream(payloadId: Long, rawStream: InputStream) {
-        var inserted: Uri? = null
+    /**
+     * Copies the finished FILE payload into the public Downloads collection.
+     * Nearby hands back a content URI with read/write access, which is the only
+     * scoped-storage-safe way to touch it.
+     */
+    private fun persistIncoming() {
+        val payload = incomingPayload
+        val filePayload = payload?.asFile()
+        val uri = runCatching { filePayload?.asUri() }.getOrNull()
+        val javaFile: File? = runCatching { filePayload?.asJavaFile() }.getOrNull()
+        val name = sanitize(incomingName ?: javaFile?.name ?: "Archivo_recibido")
         val resolver = appContext.contentResolver
+
+        ioExecutor.execute {
+            var inserted: Uri? = null
+            try {
+                val source: InputStream = when {
+                    uri != null -> runCatching { resolver.openInputStream(uri) }.getOrNull()
+                    javaFile != null -> runCatching { javaFile.inputStream() }.getOrNull()
+                    else -> null
+                } ?: throw IOException("El archivo recibido no es accesible")
+
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, name)
+                    put(MediaStore.Downloads.MIME_TYPE, guessMime(name))
+                    put(
+                        MediaStore.Downloads.RELATIVE_PATH,
+                        "${android.os.Environment.DIRECTORY_DOWNLOADS}/AirGesture"
+                    )
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val target = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IOException("No se pudo crear el archivo de destino")
+                inserted = target
+
+                BufferedInputStream(source, BUFFER).use { input ->
+                    val output = resolver.openOutputStream(target)
+                        ?: throw IOException("No se pudo escribir el archivo")
+                    output.use { sink ->
+                        val buffer = ByteArray(BUFFER)
+                        var written = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            sink.write(buffer, 0, read)
+                            written += read
+                        }
+                        sink.flush()
+                        if (incomingTotal > 0 && written != incomingTotal) {
+                            throw IOException("Se recibieron $written de $incomingTotal bytes")
+                        }
+                    }
+                }
+
+                val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+                runCatching { resolver.update(target, done, null, null) }
+
+                log("Guardado en Descargas/AirGesture: $name")
+                val finalUri = target
+                mainHandler.post { listener.onFileReceived(name, finalUri) }
+                sendAck()
+            } catch (error: Exception) {
+                Log.e(TAG, "persist failed", error)
+                if (inserted != null) runCatching { resolver.delete(inserted, null, null) }
+                notifyFailure(name, error.message ?: "No se pudo guardar el archivo")
+            } finally {
+                runCatching { payload?.close() }
+                clearIncoming()
+            }
+        }
+    }
+
+    /** Tells the peer the file really landed on disk. */
+    private fun sendAck() {
+        val endpointId = connectedEndpointId ?: return
+        runCatching {
+            connections.sendPayload(
+                endpointId,
+                Payload.fromBytes(ACK_TOKEN.toByteArray(Charsets.UTF_8))
+            )
+        }
+    }
+
+    /** Legacy inline-stream protocol (build 1.1.0 and earlier). */
+    private fun receiveStream(payloadId: Long, rawStream: InputStream) {
+        val resolver = appContext.contentResolver
+        var inserted: Uri? = null
         try {
-            val source = runCatching { DataInputStream(rawStream) }.getOrNull()
-                ?: throw IOException("Flujo entrante inválido")
-
-            val magic = source.readInt()
-            if (magic != MAGIC) throw IOException("Formato no reconocido")
+            val source = DataInputStream(rawStream)
+            if (source.readInt() != MAGIC) throw IOException("Formato no reconocido")
             val version = source.readByte().toInt()
-            if (version != VERSION) throw IOException("Versión no soportada ($version)")
-
+            if (version != VERSION) throw IOException("Versión no soportada")
             val name = sanitize(readString(source))
             val mime = readString(source).ifBlank { "application/octet-stream" }
             val size = source.readLong()
+            incomingName = name
             incomingTotal = if (size > 0) size else 0L
-            incomingDisplayName = name
-
-            emitProgress(name, 0L, incomingTotal, outgoing = false)
 
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
@@ -370,109 +566,59 @@ class NearbyTransferManager(
                 ?: throw IOException("No se pudo crear el archivo de destino")
             inserted = target
 
-            val output = resolver.openOutputStream(target)
-                ?: throw IOException("No se pudo escribir el archivo de destino")
-
             var written = 0L
+            val output = resolver.openOutputStream(target) ?: throw IOException("Sin destino")
             output.use { sink ->
-                val copy = ByteArray(BUFFER)
+                val buffer = ByteArray(BUFFER)
                 while (true) {
-                    val read = source.read(copy)
+                    val read = source.read(buffer)
                     if (read <= 0) break
-                    sink.write(copy, 0, read)
+                    sink.write(buffer, 0, read)
                     written += read
                 }
                 sink.flush()
             }
-
             if (incomingTotal > 0 && written != incomingTotal) {
-                throw IOException("Recibidos $written de $incomingTotal bytes")
+                throw IOException("Se recibieron $written de $incomingTotal bytes")
             }
-
             val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
             runCatching { resolver.update(target, done, null, null) }
-
-            emitProgress(name, written, written, outgoing = false)
-            val finalName = name
+            log("Guardado en Descargas/AirGesture: $name")
             val finalUri = target
-            mainHandler.post { listener.onFileReceived(finalName, finalUri) }
+            mainHandler.post { listener.onFileReceived(name, finalUri) }
         } catch (error: Exception) {
-            Log.e(TAG, "receive failed", error)
+            Log.e(TAG, "stream receive failed", error)
             if (inserted != null) runCatching { resolver.delete(inserted, null, null) }
-            val message = when (error) {
-                is EOFException -> "El envío se cortó antes de terminar"
-                else -> friendly(error)
-            }
-            notifyFailure(incomingDisplayName, message)
+            val message = if (error is EOFException) "El envío se cortó antes de terminar"
+            else error.message ?: "No se pudo recibir el archivo"
+            notifyFailure(incomingName, message)
         } finally {
             runCatching { rawStream.close() }
-            if (incomingPayloadId == payloadId) incomingPayloadId = -1L
-            incomingStream = null
-            incomingDisplayName = null
-            incomingTotal = 0L
-        }
-    }
-
-    /**
-     * Compatibility path: an older build sends FILE payloads. Keep accepting
-     * them so mixed versions can still talk to each other.
-     */
-    private fun receiveLegacyFile(payload: Payload) {
-        incomingPayloadId = payload.id
-        val filePayload = payload.asFile() ?: return
-        val uri = runCatching { filePayload.asUri() }.getOrNull()
-        val javaFile: File? = runCatching { filePayload.asJavaFile() }.getOrNull()
-        val name = javaFile?.name ?: "Archivo recibido"
-        incomingDisplayName = name
-
-        ioExecutor.execute {
-            val resolver = appContext.contentResolver
-            var inserted: Uri? = null
-            try {
-                val source: InputStream = when {
-                    uri != null -> runCatching { resolver.openInputStream(uri) }.getOrNull()
-                    javaFile != null -> runCatching { javaFile.inputStream() }.getOrNull()
-                    else -> null
-                } ?: throw IOException("No se pudo leer el archivo temporal")
-
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, sanitize(name))
-                    put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
-                    put(
-                        MediaStore.Downloads.RELATIVE_PATH,
-                        "${android.os.Environment.DIRECTORY_DOWNLOADS}/AirGesture"
-                    )
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                }
-                val target = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: throw IOException("No se pudo crear el archivo de destino")
-                inserted = target
-                source.use { input ->
-                    resolver.openOutputStream(target)?.use { output ->
-                        input.copyTo(output, BUFFER)
-                        output.flush()
-                    } ?: throw IOException("No se pudo escribir el archivo")
-                }
-                val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
-                runCatching { resolver.update(target, done, null, null) }
-                mainHandler.post { listener.onFileReceived(sanitize(name), target) }
-            } catch (error: Exception) {
-                Log.e(TAG, "legacy receive failed", error)
-                if (inserted != null) runCatching { resolver.delete(inserted, null, null) }
-                notifyFailure(name, friendly(error))
-            } finally {
-                incomingPayloadId = -1L
-                incomingDisplayName = null
-            }
+            if (incomingPayloadId == payloadId) clearIncoming()
         }
     }
 
     // --------------------------------------------------------------- helpers
 
-    private fun writeString(output: DataOutputStream, value: String) {
-        val bytes = value.toByteArray(Charsets.UTF_8)
-        output.writeInt(bytes.size)
-        output.write(bytes)
+    private fun clearIncoming() {
+        incomingPayloadId = -1L
+        incomingPayload = null
+        incomingName = null
+        incomingTotal = 0L
+    }
+
+    private fun guessMime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        "mp4" -> "video/mp4"
+        "mkv" -> "video/x-matroska"
+        "mp3" -> "audio/mpeg"
+        "m4a" -> "audio/mp4"
+        "wav" -> "audio/wav"
+        "pdf" -> "application/pdf"
+        else -> "application/octet-stream"
     }
 
     private fun readString(input: DataInputStream): String {
@@ -484,83 +630,60 @@ class NearbyTransferManager(
         return String(bytes, Charsets.UTF_8)
     }
 
-    private fun sanitize(name: String): String {
-        val clean = name.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001F]"), "_").trim()
+    private fun sanitize(raw: String): String {
+        val clean = raw.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001F]"), "_").trim()
         val safe = clean.ifBlank { "Archivo_recibido" }
-        return if (safe.length > MAX_NAME_LENGTH) {
-            val dot = safe.lastIndexOf('.')
-            if (dot > 0 && safe.length - dot <= 10) {
-                safe.take(MAX_NAME_LENGTH - (safe.length - dot)) + safe.substring(dot)
-            } else {
-                safe.take(MAX_NAME_LENGTH)
-            }
+        if (safe.length <= MAX_NAME_LENGTH) return safe
+        val dot = safe.lastIndexOf('.')
+        return if (dot > 0 && safe.length - dot <= 10) {
+            safe.take(MAX_NAME_LENGTH - (safe.length - dot)) + safe.substring(dot)
         } else {
-            safe
+            safe.take(MAX_NAME_LENGTH)
         }
     }
 
-    private fun friendly(error: Throwable): String = when (error) {
-        is IllegalArgumentException -> "Archivo no válido"
-        is SecurityException -> "Sin permiso para leer el archivo"
-        is java.io.FileNotFoundException -> "El archivo ya no está disponible"
-        else -> error.message ?: "Fallo de transferencia"
-    }
-
-    private fun closeStreams() {
-        runCatching { incomingStream?.close() }
-        incomingStream = null
-    }
-
-    private fun fail(fileName: String?, reason: String) {
-        sending.set(false)
-        notifyFailure(fileName, reason)
-    }
-
-    private fun deviceName(): String {
+    private fun buildDeviceName(): String {
         val model = Build.MODEL?.trim().orEmpty().ifBlank { "Android" }
-        val short = if (model.length > 16) model.take(16) else model
+        val short = if (model.length > 14) model.take(14) else model
         val androidId = runCatching {
-            android.provider.Settings.Secure.getString(
-                appContext.contentResolver,
-                android.provider.Settings.Secure.ANDROID_ID
-            )
+            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
         }.getOrNull().orEmpty()
-        val suffix = androidId.takeLast(2).uppercase()
-        return if (suffix.isNotEmpty()) "$short·$suffix" else short
+        val suffix = androidId.takeLast(3).uppercase()
+        return if (suffix.isNotEmpty()) "$short-$suffix" else short
     }
-
-    private fun peerLabel(endpointId: String): String = endpointId.takeLast(4).uppercase()
 
     private fun emitState(state: NearbyState, detail: String? = null) {
         mainHandler.post { listener.onStateChanged(state, detail) }
     }
 
-    private fun emitProgress(fileName: String, bytes: Long, total: Long, outgoing: Boolean) {
-        mainHandler.post {
-            listener.onTransferProgress(
-                TransferProgress(
-                    fileName = fileName,
-                    bytesTransferred = bytes,
-                    totalBytes = total,
-                    outgoing = outgoing
-                )
-            )
-        }
+    private fun log(line: String) {
+        Log.d(TAG, line)
+        mainHandler.post { listener.onLog(line) }
+    }
+
+    private fun postProgress(progress: TransferProgress) {
+        mainHandler.post { listener.onTransferProgress(progress) }
     }
 
     private fun notifyFailure(fileName: String?, reason: String) {
+        log("Error: $reason")
         mainHandler.post { listener.onTransferFailed(fileName, reason) }
     }
 
     companion object {
         private const val TAG = "NearbyTransfer"
-        private const val SERVICE_ID = "com.airgesture.transfer.P2P"
-        private const val MAGIC = 0x41474654 // 'AGFT'
+        private const val SERVICE_ID = "com.airgesture.transfer.P2P.v2"
+        private const val KEY_NAME = "n"
+        private const val KEY_MIME = "m"
+        private const val KEY_SIZE = "s"
+        private const val ACK_TOKEN = "AGFT-ACK"
+        private const val MAGIC = 0x41474654
         private const val VERSION = 1
         private const val BUFFER = 64 * 1024
         private const val MAX_STRING_BYTES = 4096
         private const val MAX_NAME_LENGTH = 120
-        private const val HEADER_RESERVE = 256
+        private const val WATCHDOG_MS = 6000L
+        private const val STATUS_ALREADY_CONNECTED = 8003
         private val STRATEGY: Strategy = Strategy.P2P_CLUSTER
     }
 }
