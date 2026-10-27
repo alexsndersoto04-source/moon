@@ -92,7 +92,7 @@ fun HomeScreen(
             vm.startReceiving()
         } else {
             permissionMessage =
-                "MoonShare necesita el permiso de Dispositivos cercanos o Ubicación para activar Wi-Fi Direct. Sin ese permiso Android bloquea la Disponibilidad."
+                "MoonShare necesita los permisos de cercanía de Android para encontrar y conectarse con el otro teléfono. Sin esos permisos, Android bloquea la Disponibilidad."
         }
     }
     fun startAvailability() {

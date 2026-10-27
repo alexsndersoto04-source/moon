@@ -19,12 +19,19 @@ object MoonPermissions {
 
     /** Necesarios para que exista la red Wi-Fi Direct (sin ellos, discover() revienta). */
     fun nearby(): List<String> = buildList {
+        // Nearby Connections combina Bluetooth y Wi-Fi según el equipo. Pedimos el
+        // conjunto real por versión en vez de descubrir el faltante al primer error.
+        if (Build.VERSION.SDK_INT >= 31) {
+            add(Manifest.permission.BLUETOOTH_SCAN)
+            add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             add(Manifest.permission.NEARBY_WIFI_DEVICES)
-        } else {
-            // API 29..32: WFD pide ubicación (aunque no geolocalicemos nada). Las dos:
-            // pedir solo FINE en 31/32 hace que el usuario pueda rechazar sin notar que
-            // está matando el pareo.
+        }
+        if (Build.VERSION.SDK_INT <= 32) {
+            // API 29..32: descubrimiento cercano y Wi-Fi Direct piden ubicación
+            // aunque MoonShare no geolocalice nada.
             add(Manifest.permission.ACCESS_COARSE_LOCATION)
             add(Manifest.permission.ACCESS_FINE_LOCATION)
         }

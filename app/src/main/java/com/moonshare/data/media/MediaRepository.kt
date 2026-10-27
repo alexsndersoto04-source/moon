@@ -48,8 +48,7 @@ class MediaRepository(private val context: Context) {
     /** Convierte cualquier URI externo (picker, intent de otra app) en un ítem. */
     fun fromUri(uri: Uri, forcedCategory: String = MediaCategory.All.id): FileItem? {
         val name = Filesx.nameOf(context, uri)
-        val size = Filesx.sizeOf(context, uri)
-        if (size <= 0L && uri.scheme == "content") return null
+        val size = Filesx.sizeOf(context, uri).coerceAtLeast(0L)
         val mime = Filesx.typeOf(context, uri)
         return FileItem(
             id = stableId(uri.toString()),

@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
  * Servicio en primer plano que mantiene vivo el [TransferEngine] mientras hay una
  * transferencia en curso o el teléfono está "abierto a recibir".
  *
- * Sin esto, Android 12+ mata los sockets y MIUI corta Wi-Fi Direct en cuanto la
+ * Sin esto, Android 12+ puede detener la conexión y MIUI puede cortar el proceso en cuanto la
  * Activity pasa a segundo plano. Es el precio de la promesa "paso y ya está":
  * la app necesita un ancla de proceso.
  */

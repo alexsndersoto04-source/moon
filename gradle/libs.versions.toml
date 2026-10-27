@@ -12,6 +12,7 @@ coroutines = "1.8.1"
 junit = "4.13.2"
 androidxTest = "1.6.1"
 robolectric = "4.12.2"
+nearby = "19.3.0"
 androidxTestCore = "1.5.0"
 
 [libraries]
@@ -36,6 +37,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTest" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+play-services-nearby = { group = "com.google.android.gms", name = "play-services-nearby", version.ref = "nearby" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -318,7 +318,7 @@ private fun PermissionGate(vm: MoonViewModel) {
         val denied = result.filterValues { !it }.keys
         pending = pending.filterNot { it in result.keys }
         if (denied.isNotEmpty() && denied.containsAll(MoonPermissions.nearby())) {
-            MoonLog.w("UI", "sin permisos de cercanos: Wi-Fi Direct no va a arrancar")
+            MoonLog.w("UI", "sin permisos de cercanos: la conexión de proximidad no va a arrancar")
         }
         vm.setOnboarded(true)
         show = false
@@ -353,7 +353,7 @@ private fun PermissionGate(vm: MoonViewModel) {
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Wi-Fi Direct mueve los datos, NFC los presenta. No pasa nada por internet ni por ningún servidor.",
+                    "NFC reconoce el acercamiento y Nearby Connections mueve los datos. No pasa nada por internet ni por ningún servidor.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = InkFaint,
                     textAlign = TextAlign.Center,
@@ -371,7 +371,7 @@ private fun PermissionGate(vm: MoonViewModel) {
                     // Los textos viven en strings.xml (unicos, traducibles); Lint venia
                     // marcando esos recursos como muertos porque la pantalla los tenía
                     // escritos a mano encima.
-                    GrantRow(Icons.Rounded.Shield, "Wi-Fi Direct", stringResource(R.string.perm_nearby_rationale))
+                    GrantRow(Icons.Rounded.Shield, "Conexión cercana", stringResource(R.string.perm_nearby_rationale))
                     GrantRow(Icons.Rounded.NearMe, "Tus archivos", stringResource(R.string.perm_media_rationale))
                     if (Build.VERSION.SDK_INT >= 33) {
                         GrantRow(Icons.Rounded.NearMe, "Notificaciones", stringResource(R.string.perm_notif_rationale))

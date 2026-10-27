@@ -74,18 +74,18 @@ object SaveSink {
     }
 
     fun streamFor(context: Context, opened: Opened): OutputStream {
-        val uri = opened.uri
-        return if (uri != null) {
-            context.contentResolver.openOutputStream(uri, "w")
-                ?: error("no se pudo abrir el OutputStream de $uri")
-        } else {
-            opened.file!!.outputStream()
-        }
+        // Si hay File, es destino privado: se escribe el File directamente. La Uri
+        // de FileProvider solo sirve para compartirlo después, no como destino.
+        opened.file?.let { return it.outputStream() }
+        val uri = opened.uri ?: error("destino sin Uri ni archivo")
+        return context.contentResolver.openOutputStream(uri, "w")
+            ?: error("no se pudo abrir el OutputStream de $uri")
     }
 
     /** Quita IS_PENDING → el archivo ya es visible para la galería y otros apps. */
     fun publish(context: Context, opened: Opened, bytesWritten: Long) {
-        val uri = opened.uri ?: return // File: no hay nada que publicar
+        if (opened.file != null) return // File privado: ya quedó guardado.
+        val uri = opened.uri ?: return
         runCatching {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -99,11 +99,12 @@ object SaveSink {
 
     /** Se llama cuando el usuario cancela a mitad: no dejamos archivos huérfanos. */
     fun discard(context: Context, opened: Opened) {
-        val uri = opened.uri
-        if (uri != null) {
+        if (opened.file != null) {
+            runCatching { opened.file.delete() }
+            return
+        }
+        opened.uri?.let { uri ->
             runCatching { context.contentResolver.delete(uri, null, null) }
-        } else {
-            runCatching { opened.file?.delete() }
         }
     }
 }

@@ -7,7 +7,7 @@ Elegís fotos, videos, música, documentos o cualquier archivo, juntás los dos 
 MoonShare usa:
 
 - **NFC** para identificar al otro teléfono durante el acercamiento.
-- **Wi-Fi Direct** para transportar los archivos a alta velocidad.
+- **Nearby Connections** para negociar y transportar los archivos sin configurar una red a mano.
 - **SHA-256** para comprobar que cada archivo llegó completo y sin daños.
 
 No hay cuentas, servidores, nube ni conexión a Internet.
@@ -46,7 +46,7 @@ MoonShare está diseñado para acercarse lo máximo posible a la experiencia de 
 | Dos Android con MoonShare, desbloqueados y Disponibilidad activa | Elegir, acercar y transferir sin aceptar el envío |
 | MoonShare minimizado en el receptor | La Disponibilidad permanece activa mediante el servicio en primer plano |
 | Primera instalación | Android exige otorgar permisos de dispositivos cercanos, archivos y notificaciones |
-| Primera conexión en algunos fabricantes | Android puede mostrar su propio diálogo de Wi-Fi Direct; ninguna app puede omitirlo siempre |
+| Primera conexión en algunos fabricantes | Android puede pedir permisos o mostrar avisos del sistema; ninguna app puede omitirlos siempre |
 | Receptor bloqueado, apagado, sin NFC/Wi-Fi o con la Disponibilidad desactivada | Android no permite garantizar el inicio automático |
 | Sin MoonShare en el otro teléfono | No se puede completar la transferencia |
 | iPhone / AirDrop | No es interoperable: AirDrop es un protocolo cerrado de Apple |
@@ -78,7 +78,7 @@ Los Ajustes contienen únicamente opciones conectadas al comportamiento real: no
 - Cada archivo viaja con su tamaño y hash SHA-256.
 - El receptor recalcula el hash: si el tamaño o el hash no coincide, descarta el archivo y no lo marca como recibido.
 
-Wi-Fi Direct cifra el enlace inalámbrico según la versión y capacidades de Android. MoonShare no envía archivos por NFC: NFC solo transporta la identificación del acercamiento porque es demasiado lento para archivos.
+Nearby Connections elige el medio disponible entre los teléfonos y cifra el enlace según sus capacidades. MoonShare no envía archivos por NFC: NFC solo transporta la identificación del acercamiento porque es demasiado lento para archivos.
 
 ---
 
@@ -135,7 +135,7 @@ La CI ejecuta:
 
 ### En teléfonos reales
 
-NFC, Wi-Fi Direct, los diálogos del sistema y las restricciones de cada fabricante no se pueden probar honestamente en un emulador. Antes de considerar una versión terminada, debe verificarse con dos Android:
+NFC, Nearby Connections, los diálogos del sistema y las restricciones de cada fabricante no se pueden probar honestamente en un emulador. Antes de considerar una versión terminada, debe verificarse con dos Android:
 
 1. Instalación limpia y primera concesión de permisos.
 2. Disponibilidad activada y app minimizada.
@@ -162,9 +162,7 @@ com.moonshare
 │   └── TransferService      Disponibilidad y transferencias minimizadas
 ├── net/
 │   ├── MoonProtocol         Protocolo binario y mensajes de control
-│   ├── SendEndpoint         Envío, progreso y SHA-256 saliente
-│   ├── ReceiveEndpoint      Recepción, guardado y SHA-256 entrante
-│   └── wifi/                Wi-Fi Direct
+│   └── nearby/              Descubrimiento, conexión y Payload.File
 ├── nfc/
 │   ├── MoonCardService      El receptor se anuncia como tag NDEF
 │   ├── NfcHandoff           El emisor lee el acercamiento
@@ -175,7 +173,7 @@ com.moonshare
 
 ### Decisiones principales
 
-**El receptor lidera el enlace.** Cuando la Disponibilidad está activa, el receptor crea el grupo Wi-Fi Direct y escucha en la dirección esperada del propietario del grupo. Así, después del toque, el emisor sabe adónde conectarse.
+**Nearby negocia el enlace.** Cuando la Disponibilidad está activa, el receptor se anuncia con una identidad efímera. Después del toque, el emisor reconoce esa identidad entre los teléfonos cercanos y Nearby Connections negocia el medio de transporte. MoonShare no supone una IP ni crea un grupo Wi-Fi Direct a mano.
 
 **El toque es el gesto de consentimiento.** No se reemplaza por un temporizador ni por aceptar automáticamente cualquier conexión: el receptor exige que el código efímero haya sido leído recientemente por NFC.
 

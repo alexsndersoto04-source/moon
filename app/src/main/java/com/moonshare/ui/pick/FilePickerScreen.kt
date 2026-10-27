@@ -98,8 +98,9 @@ fun FilePickerScreen(
     // En cuanto hay una selección, el teléfono ya está escuchando el acercamiento.
     // No existe un paso posterior de "Enviar": el toque NFC dispara el envío.
     DisposableEffect(ui.selected.isNotEmpty(), ui.settings.nfcBumpEnabled, vm.nfcSupported) {
-        if (ui.selected.isNotEmpty() && ui.settings.nfcBumpEnabled && vm.nfcSupported) {
-            vm.startNfcScan()
+        if (ui.selected.isNotEmpty()) {
+            vm.prepareToSend()
+            if (ui.settings.nfcBumpEnabled && vm.nfcSupported) vm.startNfcScan()
         }
         onDispose {
             if (ui.selected.isEmpty()) vm.stopNfcScan()

@@ -42,13 +42,16 @@ data class UiState(
     val settings: MoonSettings = MoonSettings(),
     val catalog: CatalogState = CatalogState(),
     val selected: Set<String> = emptySet(),
+    val selectedById: Map<String, FileItem> = emptyMap(),
     val nfcSupported: Boolean = false,
     val nfcReading: Boolean = false,
     val history: List<HistoryEntry> = emptyList(),
     val folderAccess: Boolean = false,
 ) {
+    // La selección no depende de la categoría visible: elegir fotos, pasar a videos
+    // y elegir uno más conserva ambos archivos reales con su Uri y tamaño.
     val selectedItems: List<FileItem>
-        get() = catalog.items.filter { it.id in selected }
+        get() = selectedById.values.toList()
     val selectedBytes: Long get() = selectedItems.sumOf { it.size }
 }
 
@@ -72,8 +75,8 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     val ready: Boolean get() = engine != null
 
     /** Flujos con respaldo: la UI consume siempre, haya o no haya motor. */
-    val peers: StateFlow<List<android.net.wifi.p2p.WifiP2pDevice>> =
-        engine?.discoveredPeers ?: MutableStateFlow(emptyList())
+    val nearbyDevices: StateFlow<List<com.moonshare.net.nearby.NearbyDevice>> =
+        engine?.nearbyDevices ?: MutableStateFlow(emptyList())
     val nfcSupported: Boolean get() = engine?.nfcSupported ?: false
     val handoffToken: com.moonshare.nfc.PairingToken? get() = engine?.nfcHandoffToken
     fun notifyPaired() { engine?.notifyPaired() }
@@ -212,21 +215,25 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------- selección
     fun toggle(item: FileItem) {
         _ui.update {
-            val sel = it.selected.toMutableSet()
-            if (!sel.remove(item.id)) sel.add(item.id)
-            it.copy(selected = sel)
+            val byId = it.selectedById.toMutableMap()
+            if (byId.remove(item.id) == null) byId[item.id] = item
+            it.copy(selected = byId.keys.toSet(), selectedById = byId)
         }
     }
 
     fun selectAll() = _ui.update { st ->
-        st.copy(selected = st.catalog.items.map { it.id }.toSet())
+        val byId = st.selectedById + st.catalog.items.associateBy { it.id }
+        st.copy(selected = byId.keys.toSet(), selectedById = byId)
     }
 
-    fun clearSelection() = _ui.update { it.copy(selected = emptySet()) }
+    fun clearSelection() = _ui.update { it.copy(selected = emptySet(), selectedById = emptyMap()) }
 
     fun invertSelection() = _ui.update { st ->
-        val all = st.catalog.items.map { it.id }.toSet()
-        st.copy(selected = all - st.selected)
+        val byId = st.selectedById.toMutableMap()
+        st.catalog.items.forEach { item ->
+            if (byId.remove(item.id) == null) byId[item.id] = item
+        }
+        st.copy(selected = byId.keys.toSet(), selectedById = byId)
     }
 
     /** Total de la selección, ya sumando los ítems agregados desde otra app. */
@@ -265,8 +272,10 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
             externalItems = items
             _incomingShare.emit(uris)
             _ui.update { st ->
+                val byId = st.selectedById + items.associateBy { it.id }
                 st.copy(
-                    selected = st.selected + items.map { it.id },
+                    selected = byId.keys.toSet(),
+                    selectedById = byId,
                     catalog = st.catalog.copy(
                         category = MediaCategory.All,
                         items = (items + st.catalog.items).distinctBy { it.id },
@@ -365,8 +374,20 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
         engine?.clearError()
     }
 
-    /** Fuerza un `discoverPeers()` para refrescar la lista (botón "Buscar"). */
+    /** Inicia/renueva el descubrimiento Nearby para el respaldo sin NFC. */
     fun refreshPeers() = engine?.refreshPeers()
+
+    fun prepareToSend() = engine?.prepareToSend()
+
+    fun sendToNearbyEndpoint(endpointId: String) {
+        val items = _ui.value.selectedItems.ifEmpty { externalItems }
+        if (items.isEmpty()) {
+            engine?.failWith("Elegí primero qué enviar")
+            return
+        }
+        TransferService.ensureForSending(getApplication())
+        engine?.sendToNearbyEndpoint(items, endpointId)
+    }
 
     // ------------------------------------------------------------- ajustes
     private fun edit(block: suspend (SettingsStore) -> Unit) {

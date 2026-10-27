@@ -152,6 +152,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
 
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.play.services.nearby)
     implementation(libs.kotlinx.coroutines.android)
 
     debugImplementation(libs.androidx.ui.tooling)

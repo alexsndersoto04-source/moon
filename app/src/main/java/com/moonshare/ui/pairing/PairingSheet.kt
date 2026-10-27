@@ -64,7 +64,7 @@ import com.moonshare.vm.sizeLabel
 fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit, onDismiss: () -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val engine by vm.engineState.collectAsState()
-    val peers by vm.peers.collectAsState()
+    val peers by vm.nearbyDevices.collectAsState()
     val token by vm.nfcToken.collectAsState()
     var notice by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
@@ -73,6 +73,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit, onDismiss: () -> Unit = 
     val bytes = items.sumOf { it.size }
 
     DisposableEffect(ui.settings.nfcBumpEnabled, vm.nfcSupported) {
+        vm.prepareToSend()
         scanning = if (ui.settings.nfcBumpEnabled && vm.nfcSupported) {
             vm.startNfcScan { msg -> notice = msg }
         } else {
@@ -164,7 +165,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit, onDismiss: () -> Unit = 
             }
         }
 
-        if (!vm.nfcSupported || !ui.settings.nfcBumpEnabled) {
+        if (!vm.nfcSupported || !ui.settings.nfcBumpEnabled || peers.isNotEmpty()) {
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Wifi, null, tint = Aqua, modifier = Modifier.size(18.dp))
@@ -195,16 +196,12 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit, onDismiss: () -> Unit = 
                     modifier = Modifier.height((peers.size * 58).dp.coerceAtMost(180.dp)),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    items(peers, key = { it.deviceAddress ?: it.deviceName ?: it.hashCode().toString() }) { device ->
+                    items(peers, key = { it.endpointId }) { device ->
                         Row(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                                 .clickable {
-                                    val manual = com.moonshare.nfc.PairingToken(
-                                        deviceAddress = device.deviceAddress ?: "",
-                                        deviceName = device.deviceName ?: "Teléfono",
-                                    )
-                                    vm.sendSelected(manual)
+                                    vm.sendToNearbyEndpoint(device.endpointId)
                                     onDone()
                                 }
                                 .padding(horizontal = 14.dp, vertical = 13.dp),
@@ -213,7 +210,7 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit, onDismiss: () -> Unit = 
                             Box(Modifier.size(8.dp).clip(CircleShape).background(Aqua))
                             Spacer(Modifier.width(11.dp))
                             Text(
-                                device.deviceName?.takeIf { it.isNotBlank() } ?: "Teléfono sin nombre",
+                                device.deviceName.ifBlank { "Teléfono sin nombre" },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,

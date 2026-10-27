@@ -9,7 +9,7 @@ import com.moonshare.core.MoonLog
 /**
  * El teléfono que va a RECIBIR se disfraza de tag NDEF (NFC Forum Type 4) con la
  * emulación HCE de Android. El otro teléfono, al acercar, lo lee como un tag
- * cualquiera y obtiene la dirección Wi-Fi Direct del receptor.
+ * cualquiera y obtiene la identidad efímera del receptor.
  *
  * Resultado: ni lista de dispositivos, ni "¿aceitás conectar con…?", ni PIN.
  * Un golpe. Y como usamos la AID estándar de NDEF (D2760000850101) no hace falta

@@ -13,7 +13,7 @@
     <string name="nfc_aid_group_description">Token de pareo MoonShare</string>
 
     <!-- Permisos -->
-    <string name="perm_nearby_rationale">Necesito permiso de dispositivos cercanos para crear la red Wi-Fi Direct entre los dos teléfonos.</string>
+    <string name="perm_nearby_rationale">Necesito los permisos de cercanía de Android para encontrar y conectar con el otro teléfono.</string>
     <string name="perm_media_rationale">Necesito leer tus fotos, videos y música para mostrarte qué podés enviar.</string>
     <string name="perm_notif_rationale">Necesito notificaciones para mostrarte el progreso sin que el sistema corte la transferencia.</string>
 

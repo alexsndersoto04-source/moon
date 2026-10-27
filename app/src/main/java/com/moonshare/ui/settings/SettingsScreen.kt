@@ -99,7 +99,7 @@ fun SettingsScreen(vm: MoonViewModel, onBack: () -> Unit, onHistory: () -> Unit)
         Card {
             SettingRow(
                 "Emparejar al juntar los teléfonos",
-                "El toque NFC identifica al otro teléfono y autoriza ese envío. Los datos viajan por Wi-Fi Direct.",
+                "El toque NFC identifica al otro teléfono y autoriza ese envío. Nearby Connections transporta los datos sin configurar una red.",
                 control = { MoonSwitch(s.nfcBumpEnabled) { vm.setNfcBump(it) } },
             )
             SettingRow(
@@ -149,7 +149,7 @@ fun SettingsScreen(vm: MoonViewModel, onBack: () -> Unit, onHistory: () -> Unit)
         Spacer(Modifier.height(18.dp))
         SectionLabel("Permisos")
         Card {
-            PermRow("Dispositivos cercanos", "Permite crear el enlace Wi-Fi Direct", MoonPermissions.hasAll(context, MoonPermissions.nearby()))
+            PermRow("Dispositivos cercanos", "Permite encontrar y conectar con el otro teléfono", MoonPermissions.hasAll(context, MoonPermissions.nearby()))
             PermRow("Fotos, videos y música", "Permite elegir qué enviar", MoonPermissions.hasAll(context, MoonPermissions.media()))
             PermRow("Notificaciones", "Muestra el progreso y mantiene viva la transferencia", MoonPermissions.hasAll(context, MoonPermissions.notifications()))
             SettingRow(
