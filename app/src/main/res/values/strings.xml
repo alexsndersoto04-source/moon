@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AirGesture</string>
+    <string name="brand">AirGesture</string>
+    <string name="brand_sub">Transferencia por gestos</string>
+
+    <string name="tab_images">Imágenes</string>
+    <string name="tab_videos">Videos</string>
+    <string name="tab_pdfs">PDFs</string>
+    <string name="tab_audio">Música</string>
+
+    <string name="hint_idle">Abre la mano para explorar · cierra el puño para elegir · empuja hacia delante para enviar</string>
+    <string name="hint_grab">Archivo seleccionado. Empuja la mano hacia delante para enviar.</string>
+    <string name="hint_sending">Enviando…</string>
+    <string name="hint_receiving">Recibiendo…</string>
+
+    <string name="status_searching">Buscando dispositivos cercanos</string>
+    <string name="status_nearby">Dispositivo detectado</string>
+    <string name="status_connected">Conectado</string>
+    <string name="status_offline">Sin dispositivos por ahora</string>
+    <string name="status_no_hand">Muestra tu mano a la cámara</string>
+    <string name="status_hand">Mano detectada</string>
+    <string name="status_transfer_progress">%1$s enviado</string>
+    <string name="status_sent">Enviado</string>
+    <string name="status_received">Archivo recibido: %1$s</string>
+    <string name="status_error">%1$s</string>
+
+    <string name="empty_images">No hay imágenes en el dispositivo</string>
+    <string name="empty_videos">No hay videos en el dispositivo</string>
+    <string name="empty_pdfs">No hay PDFs en el dispositivo</string>
+    <string name="empty_audio">No hay música en el dispositivo</string>
+
+    <string name="perm_title">Todo listo en un gesto</string>
+    <string name="perm_body">AirGesture necesita cámara y acceso a tus archivos para detectar tu mano y transferir sin cables. Nada sale de tus dispositivos.</string>
+    <string name="perm_cta">Activar</string>
+    <string name="perm_settings">Abrir ajustes</string>
+    <string name="perm_denied">Faltan permisos esenciales para continuar.</string>
+
+    <string name="sending_file">Enviando %1$s</string>
+    <string name="select_file_first">Cierra el puño para elegir un archivo</string>
+    <string name="cd_camera_preview">Previsualización de la cámara</string>
+    <string name="status_sending_progress">Enviando %1$d%%</string>
+    <string name="status_receiving_progress">Recibiendo %1$d%%</string>
+    <string name="status_connected_to">Conectado a %1$s</string>
+    <string name="waiting_peer">Buscando un dispositivo para enviar</string>
+    <string name="sent_named">Enviado: %1$s</string>
+    <string name="received_named">Recibido: %1$s</string>
+    <string name="no_media_permission">Concede acceso a tus archivos para verlos aquí</string>
+    <string name="skeleton_toggled">Superposición de mano %1$s</string>
+    <string name="enabled">activada</string>
+    <string name="disabled">oculta</string>
+    <string name="loading">Cargando…</string>
+    <string name="camera_unavailable">No se encontró una cámara disponible</string>
+</resources>
