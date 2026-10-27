@@ -61,6 +61,9 @@ object MoonProtocol {
         @SerialName("id") val deviceId: String,
         @SerialName("v") val version: Int = VERSION,
         @SerialName("m") val maxParallel: Int = 1,
+        // Nonce efímero entregado por NFC. Si coincide con el token que el receptor
+        // acaba de servir durante el toque, ese toque ya expresó el consentimiento.
+        @SerialName("k") val tapNonce: String = "",
     )
 
     @Serializable

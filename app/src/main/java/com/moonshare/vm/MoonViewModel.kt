@@ -84,7 +84,7 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     /** Pulsos de la esfera + sonido, reemitidos desde el engine. */
-    val pulses: kotlinx.coroutines.flow.SharedFlow<com.moonshare.transfer.OrbPulse> =
+    val pulses: kotlinx.coroutines.flow.SharedFlow<com.moonshare.transfer.TransferEvent> =
         engine?.pulses ?: kotlinx.coroutines.flow.MutableSharedFlow()
 
     val engineState: StateFlow<com.moonshare.transfer.EngineState> =
@@ -238,7 +238,9 @@ class MoonViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         consumeNfc()
-        TransferService.start(getApplication())
+        // El emisor no debe levantar su propio grupo de recepción: solo necesita que
+        // el servicio mantenga vivo el proceso mientras dura el envío.
+        TransferService.ensureForSending(getApplication())
         engine?.send(items, viaNfc)
     }
 

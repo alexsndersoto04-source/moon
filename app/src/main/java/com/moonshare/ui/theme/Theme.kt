@@ -53,20 +53,23 @@ private val MoonDarkScheme = darkColorScheme(
 )
 
 private val MoonLightScheme = lightColorScheme(
-    primary = AquaDeep,
+    primary = Aqua,
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD8F6F1),
-    onPrimaryContainer = Color(0xFF071A1A),
+    primaryContainer = Color(0xFFEAF2FF),
+    onPrimaryContainer = Color(0xFF0B3D91),
     secondary = Blue,
     onSecondary = Color(0xFFFFFFFF),
     background = DayBg,
     onBackground = InkHighLight,
     surface = DaySurface,
     onSurface = InkHighLight,
-    surfaceVariant = Color(0xFFE7EEF1),
+    surfaceVariant = Color(0xFFEEF3F8),
     onSurfaceVariant = InkMediumLight,
-    outline = Color(0xFFB6C4C9),
+    outline = Color(0xFFD7E0EA),
+    outlineVariant = Color(0xFFE7EDF3),
     error = Danger,
+    onError = Color(0xFFFFFFFF),
+    scrim = Color(0x66101828),
 )
 
 @Composable

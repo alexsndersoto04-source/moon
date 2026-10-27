@@ -76,7 +76,7 @@ data class EngineState(
 }
 
 /** Evento puntual: la UI lo usa para disparar la esfera y el pulso háptico. */
-data class OrbPulse(val kind: Kind, val itemName: String, val nonce: Long) {
+data class TransferEvent(val kind: Kind, val itemName: String, val nonce: Long) {
     enum class Kind { FileIn, FileOut, Paired, Failed }
 }
 
@@ -129,7 +129,7 @@ class TransferEngine(
     private val _state = MutableStateFlow(EngineState(deviceName = myName()))
     val state: StateFlow<EngineState> = _state.asStateFlow()
 
-    private val _pulses = MutableSharedFlow<OrbPulse>(
+    private val _pulses = MutableSharedFlow<TransferEvent>(
         replay = 0, extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val pulses = _pulses.asSharedFlow()
@@ -137,6 +137,7 @@ class TransferEngine(
     private val _offer = MutableStateFlow<PendingOffer?>(null)
     val pendingOffer: StateFlow<PendingOffer?> = _offer.asStateFlow()
 
+    private var lastPublishedGroup: android.net.wifi.p2p.WifiP2pGroup? = null
     private var receiveEndpoint: ReceiveEndpoint? = null
     private var sendEndpoint: SendEndpoint? = null
     private var hostJob: Job? = null
@@ -155,10 +156,21 @@ class TransferEngine(
                 sfx.volume = s.waterSfxVolume
                 sfx.hapticsEnabled = s.hapticsEnabled
                 MoonLog.verbose = s.verboseLogs
+                if (!s.nfcBumpEnabled) {
+                    PairingTokenHolder.publish(null)
+                } else if (_state.value.isHosting && PairingTokenHolder.current == null) {
+                    lastPublishedGroup?.let { publishToken(it) }
+                }
             }
         }
         scope.launch {
-            wfd.events.collect { msg -> _state.update { it.copy(error = msg, phase = EnginePhase.Failed) } }
+            wfd.events.collect { msg ->
+                _state.update { state ->
+                    // Un aviso de radio no debe tumbar visualmente una recepción activa.
+                    if (state.isHosting || state.phase == EnginePhase.Transferring) state.copy(error = msg)
+                    else state.copy(error = msg, phase = EnginePhase.Failed)
+                }
+            }
         }
     }
 
@@ -216,7 +228,7 @@ class TransferEngine(
                     phase = EnginePhase.Hosting,
                     mode = EngineMode.Idle,
                     isHosting = true,
-                    canAdvertiseNfc = true,
+                    canAdvertiseNfc = currentSettings.nfcBumpEnabled,
                     linkReady = true,
                     statusText = "Esperando el acercamiento",
                     error = null,
@@ -233,6 +245,7 @@ class TransferEngine(
         receiveEndpoint?.stop()
         receiveEndpoint = null
         PairingTokenHolder.publish(null)
+        lastPublishedGroup = null
         wfd.removeGroup(silent = true)
         _state.update {
             it.copy(isHosting = false, canAdvertiseNfc = false, linkReady = false, phase = EnginePhase.Idle, statusText = "")
@@ -241,12 +254,14 @@ class TransferEngine(
 
     /** El token que un teléfono cercano lee al pegar el suyo contra este. */
     private fun publishToken(group: android.net.wifi.p2p.WifiP2pGroup) {
+        lastPublishedGroup = group
         val me = wfd.thisDevice.value
         val address = me?.deviceAddress ?: group.owner?.deviceAddress ?: UNKNOWN_ADDRESS
         val token = PairingToken(
             deviceAddress = address,
             deviceName = myName(),
             port = currentSettings.listenPort,
+            nonce = UUID.randomUUID().toString(),
         )
         PairingTokenHolder.publish(token)
         MoonLog.i(TAG, "token NFC listo addr=$address port=${token.port}")
@@ -257,6 +272,8 @@ class TransferEngine(
      * Manda [items] al teléfono destino. [viaNfc] viene del golpe; si es null se usa
      * el par ya escolhido en la lista de dispositivos.
      */
+    fun sendToDevice(items: List<FileItem>, token: PairingToken) = send(items, token)
+
     fun send(items: List<FileItem>, viaNfc: PairingToken? = null) {
         if (items.isEmpty()) return
         // Los ítems de SAF/DocumentFile a veces reportan size=0: sin el tamaño real
@@ -280,10 +297,16 @@ class TransferEngine(
             wfd.discover()
             return
         }
-        launchSend(sized, address, token?.deviceName.orEmpty(), token?.port ?: currentSettings.listenPort)
+        launchSend(sized, address, token?.deviceName.orEmpty(), token?.port ?: currentSettings.listenPort, token?.nonce.orEmpty())
     }
 
-    private fun launchSend(items: List<FileItem>, address: String, nameHint: String, port: Int) {
+    private fun launchSend(
+        items: List<FileItem>,
+        address: String,
+        nameHint: String,
+        port: Int,
+        tapNonce: String = "",
+    ) {
         _state.update {
             it.copy(
                 phase = EnginePhase.Joining, mode = EngineMode.Sending, error = null,
@@ -319,6 +342,7 @@ class TransferEngine(
                 deviceName = myName(),
                 deviceId = deviceId(),
                 listener = sendListener,
+                tapNonce = tapNonce,
             ).also { it.speedLimitKbps = currentSettings.speedLimitKbps }
             sendEndpoint = endpoint
 
@@ -326,23 +350,21 @@ class TransferEngine(
             sendEndpoint = null
             if (failure != null && failure != "cancelado") {
                 failAll(failure)
+            } else if (failure == "cancelado") {
+                failAll("Envío cancelado")
             } else {
                 finishSession()
             }
-            cleanupAfterSend()
+            cleanupLinkAfterSend()
         }
     }
 
-    private fun cleanupAfterSend() {
+    /** Suelta el enlace sin pisar el estado final (Listo/Falló) que debe ver el usuario. */
+    private fun cleanupLinkAfterSend() {
         if (!currentSettings.persistGroupAfterSend) {
             wfd.cancelConnect()
         }
-        _state.update {
-            it.copy(
-                phase = EnginePhase.Idle, mode = EngineMode.Idle,
-                statusText = "", linkReady = false,
-            )
-        }
+        _state.update { it.copy(linkReady = false) }
     }
 
     private fun ensureRadioOpen() {
@@ -357,10 +379,11 @@ class TransferEngine(
     var nfcHandoffToken: PairingToken? = null
 
     private fun pickManualAddress(): String? {
+        // Nunca al primer teléfono que aparezca: enviar al dispositivo equivocado es
+        // mucho peor que pedir que la persona lo toque en la lista o acerque por NFC.
         val connected = wfd.peers.value.firstOrNull { it.status == WifiP2pDevice.CONNECTED }
         val chosen = _state.value.peers.firstOrNull { it.deviceAddress == lastPeerAddress }
             ?: connected
-            ?: wfd.peers.value.firstOrNull()
         return chosen?.deviceAddress
     }
 
@@ -405,7 +428,7 @@ class TransferEngine(
         }
         publishTasks()
         _state.update { it.copy(phase = EnginePhase.Failed, mode = EngineMode.Idle, statusText = "", error = reason) }
-        scope.launch { pulse(OrbPulse.Kind.Failed, "", 0) }
+        scope.launch { pulse(TransferEvent.Kind.Failed, "", 0) }
     }
 
     private fun finishSession() {
@@ -431,31 +454,37 @@ class TransferEngine(
                 ),
             )
         }
-        scope.launch { delay(2500); if (_state.value.phase == EnginePhase.Done) setIdle() }
-    }
-
-    private fun setIdle() {
-        if (_state.value.mode == EngineMode.Idle && _state.value.phase == EnginePhase.Done) {
-            _state.update { it.copy(phase = if (it.isHosting) EnginePhase.Hosting else EnginePhase.Idle, statusText = "") }
+        scope.launch {
+            delay(3200)
+            if (_state.value.phase == EnginePhase.Done) {
+                _state.update {
+                    it.copy(
+                        mode = EngineMode.Idle,
+                        phase = if (it.isHosting) EnginePhase.Hosting else EnginePhase.Idle,
+                        statusText = if (it.isHosting) "Disponible" else "",
+                        speedBps = 0L,
+                    )
+                }
+            }
         }
     }
 
-    private suspend fun pulse(kind: OrbPulse.Kind, name: String, size: Long) {
-        _pulses.emit(OrbPulse(kind, name, System.nanoTime()))
+    private suspend fun pulse(kind: TransferEvent.Kind, name: String, size: Long) {
+        _pulses.emit(TransferEvent(kind, name, System.nanoTime()))
         when (kind) {
-            OrbPulse.Kind.FileIn -> { sfx.onFileReceived(); sfx.tick() }
-            OrbPulse.Kind.FileOut -> {
+            TransferEvent.Kind.FileIn -> { sfx.onFileReceived(); sfx.tick() }
+            TransferEvent.Kind.FileOut -> {
                 if (!currentSettings.soundOnReceiveOnly) sfx.onFileSent()
                 sfx.tick()
             }
-            OrbPulse.Kind.Paired -> { sfx.onPaired() }
-            OrbPulse.Kind.Failed -> Unit
+            TransferEvent.Kind.Paired -> { sfx.onPaired() }
+            TransferEvent.Kind.Failed -> Unit
         }
     }
 
     /** Se llama desde la UI cuando alguien pega su teléfono y pareamos con éxito. */
     fun notifyPaired() {
-        scope.launch { pulse(OrbPulse.Kind.Paired, "", 0) }
+        scope.launch { pulse(TransferEvent.Kind.Paired, "", 0) }
     }
 
     // ============================================================ consent
@@ -524,7 +553,7 @@ class TransferEngine(
             }
             val name = synchronized(tasksLock) { tasks[itemId]?.name } ?: ""
             scope.launch {
-                pulse(if (ok) OrbPulse.Kind.FileIn else OrbPulse.Kind.Failed, name, 0)
+                pulse(if (ok) TransferEvent.Kind.FileIn else TransferEvent.Kind.Failed, name, 0)
                 if (ok) {
                     val t = synchronized(tasksLock) { tasks[itemId] }
                     if (currentSettings.historyEnabled) {
@@ -548,8 +577,15 @@ class TransferEngine(
             fromName: String,
             tasks: List<TransferTask>,
             timeoutMs: Long,
+            tapNonce: String,
         ): List<String> {
             tasks.forEach { t -> onTaskQueued(t.copy(state = TaskState.AwaitingConsent)) }
+            val tapConsent = PairingTokenHolder.hasFreshTapConsent(tapNonce)
+            if (tapConsent) {
+                MoonLog.i(TAG, "toque NFC aceptado como consentimiento de $fromName")
+                _state.update { it.copy(phase = EnginePhase.Transferring, statusText = "Recibiendo de $fromName") }
+                return tasks.map { it.itemId }
+            }
             if (currentSettings.autoAccept) {
                 _state.update { it.copy(phase = EnginePhase.Transferring, statusText = "Recibiendo de $fromName") }
                 return tasks.map { it.itemId }
@@ -596,13 +632,14 @@ class TransferEngine(
             }
             val name = synchronized(tasksLock) { tasks[itemId]?.name } ?: ""
             scope.launch {
-                pulse(if (ok) OrbPulse.Kind.FileOut else OrbPulse.Kind.Failed, name, 0)
+                pulse(if (ok) TransferEvent.Kind.FileOut else TransferEvent.Kind.Failed, name, 0)
                 if (ok && currentSettings.historyEnabled) {
                     settings.appendHistory(
                         com.moonshare.data.model.HistoryEntry(
                             timestampMs = System.currentTimeMillis(),
                             direction = "Send", name = name,
-                            size = 0L, peer = peerName, ok = true,
+                            size = synchronized(tasksLock) { tasks[itemId]?.size } ?: 0L,
+                            peer = peerName, ok = true,
                         )
                     )
                 }

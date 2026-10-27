@@ -3,53 +3,42 @@ package com.moonshare.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Paleta MoonShare.
- *
- * Criterio: UI neutra y un solo acento, como hace iOS. El turquesa NO se usa de
- * adorno en botones ni en chips — vive en la esfera y en el agua del progreso, que es
- * el único lugar donde la app "se pone linda": cuando un archivo está pasando.
- * Ningún color de borde, ninguna superficie de relleno agresiva.
+ * Sistema visual de MoonShare: blanco, gris neutro y un solo azul.
+ * Profesional y silencioso. Sin neón, sin cristal futurista y sin bordes decorativos.
  */
+val Aqua = Color(0xFF0A6CFF) // nombre histórico usado por la UI; hoy es el azul principal
+val AquaSoft = Color(0xFF5B9DFF)
+val AquaDeep = Color(0xFF0757CC)
+val Blue = Color(0xFF0A6CFF)
+val BlueSoft = Color(0xFF5B9DFF)
+val BlueDeep = Color(0xFF0B3D91)
 
-// Acento (azul de sistema, no neón)
-val Aqua = Color(0xFF3F8EF7)
-val AquaSoft = Color(0xFF82BAFF)
-val AquaDeep = Color(0xFF1C5FB8)
-val Blue = Color(0xFF0A84FF)
-val BlueSoft = Color(0xFF6E9EFF)
-val BlueDeep = Color(0xFF0E2C4A)
+val NightBg = Color(0xFFFFFFFF)
+val NightBgAmoled = Color(0xFFFFFFFF)
+val NightSurface = Color(0xFFFFFFFF)
+val NightSurfaceHigh = Color(0xFFEEF3F8)
 
-// Superficies oscuras: negro real y grises de elevación mínimos
-val NightBg = Color(0xFF000000)
-val NightBgAmoled = Color(0xFF000000)
-val NightSurface = Color(0xFF0A0A0B)
-val NightSurfaceHigh = Color(0xFF141416)
+val GlassFillDark = Color(0xFFF4F7FA)
+val GlassFillDarkStrong = Color(0xFFEDF2F7)
+val GlassTopLight = Color(0xFFFFFFFF)
+val GlassBottomShade = Color(0xFFF7F9FC)
+val GlassFillLight = Color(0xFFFFFFFF)
 
-// Vidrio: rellenos casi invisibles (antes se leían "tarjeta futurista")
-val GlassFillDark = Color(0x0AFFFFFF)
-val GlassFillDarkStrong = Color(0x12FFFFFF)
-val GlassTopLight = Color(0x0AFFFFFF)
-val GlassBottomShade = Color(0x06000000)
-val GlassFillLight = Color(0xB3FFFFFF)
-
-// Superficies claras
-val DayBg = Color(0xFFF2F2F7)
+val DayBg = Color(0xFFFFFFFF)
 val DaySurface = Color(0xFFFFFFFF)
 
-// Texto: jerarquía por color y tamaño, nunca por contorno
-val InkHigh = Color(0xFFFFFFFF)
-val InkMedium = Color(0xFF98989F)
-val InkFaint = Color(0xFF5A5A60)
-val InkHighLight = Color(0xFF000000)
-val InkMediumLight = Color(0xFF6D6D72)
+val InkHigh = Color(0xFF101828)
+val InkMedium = Color(0xFF667085)
+val InkFaint = Color(0xFF8A94A6)
+val InkHighLight = Color(0xFF101828)
+val InkMediumLight = Color(0xFF667085)
 
-// Semánticos (iOS system colors, apagados lo justo)
-val Ok = Color(0xFF30D158)
-val Warn = Color(0xFFFF9F0A)
-val Danger = Color(0xFFFF453A)
+val Ok = Color(0xFF12805C)
+val Warn = Color(0xFFB54708)
+val Danger = Color(0xFFD92D20)
 
-// Esfera: azul + turquesa, como se pidió. Acá sí puede brillar.
-val OrbCore = Color(0xFFCFF3EE)
-val OrbMid = Color(0xFF2E93B8)
-val OrbEdge = Color(0xFF0C2740)
-val OrbGlow = Color(0x2E3F8EF7)
+// Conservados solo por compatibilidad de nombres; ya no existe una esfera en la app.
+val OrbCore = Color(0xFFDCEBFF)
+val OrbMid = Color(0xFF0A6CFF)
+val OrbEdge = Color(0xFFDCEBFF)
+val OrbGlow = Color(0x1A0A6CFF)

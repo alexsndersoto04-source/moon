@@ -28,8 +28,12 @@ interface EndpointListener {
      * Solo del lado que recibe: pide consentimiento al usuario. Suspende hasta que
      * acepte, rechace o expire [timeoutMs]. Devuelve los ids aceptados (vacío = todo rechazado).
      */
-    suspend fun awaitConsent(fromName: String, tasks: List<TransferTask>, timeoutMs: Long): List<String> =
-        tasks.map { it.itemId }
+    suspend fun awaitConsent(
+        fromName: String,
+        tasks: List<TransferTask>,
+        timeoutMs: Long,
+        tapNonce: String = "",
+    ): List<String> = tasks.map { it.itemId }
 
     /** El receptor necesita saber el destino antes de escribir: lo provee el engine. */
     fun consentTimeoutMs(): Long = 120_000L

@@ -64,7 +64,7 @@ fun CrashDialogHost(vm: MoonViewModel) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color(0xF205080B))
+            .background(Color(0x99101828))
             .padding(22.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -72,7 +72,7 @@ fun CrashDialogHost(vm: MoonViewModel) {
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(28.dp))
-                .background(Color.White.copy(alpha = 0.045f))
+                .background(Color.White)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -115,7 +115,7 @@ fun CrashDialogHost(vm: MoonViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0x0D000000))
+                    .background(Color(0xFFF2F4F7))
                     .let { m ->
                         if (expanded) m
                             .heightIn(max = 360.dp)

@@ -44,8 +44,8 @@ import com.moonshare.ui.theme.InkFaint
 import com.moonshare.ui.theme.PillShape
 
 /**
- * Piezas compartidas. Ninguna dibuja un borde: los controles se delimitan por
- * relleno y por la sombra tintada de [com.moonshare.ui.glass.moonGlass].
+ * Piezas compartidas. Sin bordes decorativos: los controles se distinguen por
+ * fondo, color y espacio, como en una app de sistema.
  */
 
 @Composable
@@ -111,7 +111,7 @@ fun MoonSwitch(
     onChange: (Boolean) -> Unit,
 ) {
     val track by animateColorAsState(
-        if (checked) Aqua.copy(alpha = 0.32f) else Color.White.copy(alpha = 0.07f),
+        if (checked) Aqua else Color(0xFFE3E9F0),
         tween(180), label = "track",
     )
     Box(
@@ -129,7 +129,7 @@ fun MoonSwitch(
                 .size(25.dp)
                 .scale(knobScale)
                 .clip(CircleShape)
-                .background(if (checked) Aqua else Color.White.copy(alpha = 0.55f))
+                .background(Color.White)
         )
     }
 }
@@ -152,7 +152,7 @@ fun MoonSlider(
         modifier = modifier.height(30.dp),
         colors = SliderDefaults.colors(
             thumbColor = Aqua,
-            inactiveTrackColor = Color.White.copy(alpha = 0.10f),
+            inactiveTrackColor = Color(0xFFE3E9F0),
             activeTrackColor = Aqua.copy(alpha = 0.75f),
         ),
     )
@@ -202,7 +202,7 @@ fun PrimaryButton(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (enabled) tint else Color.White.copy(alpha = 0.08f))
+            .background(if (enabled) tint else Color(0xFFE3E9F0))
             .clickable(enabled = enabled && !loading) { onClick() }
             .padding(horizontal = 18.dp, vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
@@ -275,7 +275,7 @@ fun GlowProgress(progress: Float, modifier: Modifier = Modifier, color: Color = 
             .fillMaxWidth()
             .height(3.dp)
             .clip(RoundedCornerShape(2.dp))
-            .background(Color.White.copy(alpha = 0.06f))
+            .background(Color(0xFFE6EEF7))
     ) {
         Box(
             Modifier
@@ -294,14 +294,14 @@ fun CheckDot(checked: Boolean, modifier: Modifier = Modifier) {
             .size(24.dp)
             .clip(CircleShape)
             .background(
-                if (checked) Aqua else Color.White.copy(alpha = 0.10f)
+                if (checked) Aqua else Color(0xFFE3E9F0)
             ),
         contentAlignment = Alignment.Center,
     ) {
         if (checked) {
             Icon(
                 Icons.Rounded.Check, contentDescription = null,
-                tint = Color(0xFF06231F),
+                tint = Color.White,
                 modifier = Modifier.size(15.dp),
             )
         }

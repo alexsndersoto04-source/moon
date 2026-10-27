@@ -134,6 +134,7 @@ class ReceiveEndpoint(
                 fromName = offer.fromName.ifBlank { hello.name },
                 tasks = tasks,
                 timeoutMs = listener.consentTimeoutMs(),
+                tapNonce = hello.tapNonce,
             )
         }
         val acceptedSet = accepted.toSet()
@@ -213,6 +214,7 @@ class ReceiveEndpoint(
         MoonLog.i(TAG, "entrando ${begin.name} (${MoonLog.human(begin.size)}) [$already/$total]")
         val opened = SaveSink.open(context, begin.name, begin.mime, begin.size, saveToGallery)
         var written = 0L
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         var ok = true
         var error: String? = null
         val startedAt = System.nanoTime()
@@ -227,6 +229,7 @@ class ReceiveEndpoint(
                         MoonProtocol.Type.CHUNK -> {
                             val (_, data) = frame.chunk() ?: continue
                             out.write(data)
+                            digest.update(data)
                             written += data.size
                             val now = System.nanoTime()
                             if (now - lastEmit > 60_000_000) { // ~16 Hz, no más
@@ -242,8 +245,19 @@ class ReceiveEndpoint(
                         MoonProtocol.Type.END -> {
                             out.flush()
                             val end = frame.read<MoonProtocol.End>()
-                            if (end != null && end.bytes in 1 until written) {
-                                MoonLog.w(TAG, "tamaño declarado ${end.bytes} < recibido $written")
+                            val actualSha = digest.digest().joinToString("") { "%02x".format(it) }
+                            val verified = end != null && end.bytes == written &&
+                                (end.sha256.isNullOrBlank() || end.sha256.equals(actualSha, ignoreCase = true))
+                            if (!verified) {
+                                SaveSink.discard(context, opened)
+                                val reason = when {
+                                    end == null -> "final de archivo inválido"
+                                    end.bytes != written -> "archivo incompleto: llegaron $written de ${end.bytes} bytes"
+                                    else -> "el archivo llegó dañado (verificación SHA-256 distinta)"
+                                }
+                                listener.onFileFinished(begin.id, ok = false, error = reason)
+                                ack(output, begin, written, ok = false)
+                                return already
                             }
                             SaveSink.publish(context, opened, written)
                             listener.onFileFinished(begin.id, ok = true)
@@ -280,11 +294,12 @@ class ReceiveEndpoint(
         return already + (if (ok) 1 else 0)
     }
 
-    private fun ack(output: DataOutputStream, begin: MoonProtocol.Begin, written: Long) {
+    private fun ack(output: DataOutputStream, begin: MoonProtocol.Begin, written: Long, ok: Boolean = true) {
         output.write(
             MoonProtocol.encode(
                 MoonProtocol.Type.END,
-                MoonProtocol.json.encodeToString(MoonProtocol.End(id = begin.id, streamId = begin.streamId, bytes = written)
+                MoonProtocol.json.encodeToString(
+                    MoonProtocol.End(id = begin.id, streamId = begin.streamId, bytes = written, ok = ok)
                 )
             )
         )

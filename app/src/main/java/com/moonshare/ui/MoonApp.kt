@@ -56,8 +56,6 @@ import com.moonshare.R
 import com.moonshare.core.MoonLog
 import com.moonshare.core.perm.MoonPermissions
 import com.moonshare.ui.common.PrimaryButton
-import com.moonshare.ui.glass.CrystalOrb
-import com.moonshare.ui.glass.moonGlass
 import com.moonshare.ui.history.HistoryScreen
 import com.moonshare.ui.home.HomeScreen
 import com.moonshare.ui.pairing.PairingSheet
@@ -66,6 +64,9 @@ import com.moonshare.ui.settings.SettingsScreen
 import com.moonshare.ui.theme.Aqua
 import com.moonshare.ui.theme.InkFaint
 import com.moonshare.ui.theme.MoonTheme
+import com.moonshare.transfer.EngineMode
+import com.moonshare.transfer.EnginePhase
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.moonshare.ui.transfer.TransferScreen
 import com.moonshare.vm.MoonViewModel
 
@@ -82,12 +83,8 @@ fun MoonApp(vm: MoonViewModel) {
     val ui by vm.ui.collectAsState()
     var showPairing by remember { mutableStateOf(false) }
 
-    MoonTheme(dark = true, amoled = ui.settings.amoledBlack) {
-        val backdrop = remember(ui.settings.amoledBlack) {
-            Brush.linearGradient(
-                listOf(Color(0xFF0A1620), Color(0xFF06090D), Color(0xFF04070A))
-            )
-        }
+    MoonTheme(dark = false, amoled = false) {
+        val backdrop = remember { Brush.linearGradient(listOf(Color.White, Color.White)) }
         Box(
             Modifier
                 .fillMaxSize()
@@ -107,6 +104,7 @@ fun MoonApp(vm: MoonViewModel) {
                         onSend = { nav.navigate(Routes.PICK) },
                         onOpenTransfer = { nav.navigate(Routes.TRANSFER) },
                         onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                        onHistory = { nav.navigate(Routes.HISTORY) },
                     )
                 }
                 composable(Routes.PICK) {
@@ -114,6 +112,7 @@ fun MoonApp(vm: MoonViewModel) {
                         vm = vm,
                         onBack = { nav.popBackStack() },
                         onPairing = { showPairing = true },
+                        onSendStarted = { nav.navigate(Routes.TRANSFER) { popUpTo(Routes.HOME) } },
                     )
                 }
                 composable(Routes.TRANSFER) {
@@ -143,6 +142,120 @@ fun MoonApp(vm: MoonViewModel) {
             }
 
             PermissionGate(vm)
+            TransferPresenceOverlay(
+                vm = vm,
+                hidden = showPairing,
+                onOpen = { nav.navigate(Routes.TRANSFER) },
+            )
+        }
+    }
+}
+
+/**
+ * Efecto translúcido de presencia: aparece sobre cualquier pantalla cuando un
+ * envío/recepción está vivo. Es información, no un adorno futurista: quién,
+ * qué archivo, cuánto falta y cancelar si hace falta.
+ */
+@Composable
+private fun TransferPresenceOverlay(vm: MoonViewModel, hidden: Boolean, onOpen: () -> Unit) {
+    val engine by vm.engineState.collectAsState()
+    val show = !hidden && (
+        engine.mode != EngineMode.Idle ||
+            engine.phase == EnginePhase.Joining ||
+            engine.phase == EnginePhase.Handshaking ||
+            engine.phase == EnginePhase.Done ||
+            engine.phase == EnginePhase.Failed
+        )
+    AnimatedVisibility(
+        visible = show,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(140)),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 18.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(Color.White.copy(alpha = 0.94f))
+                    .clickable {
+                        if (engine.phase != EnginePhase.Done && engine.phase != EnginePhase.Failed) onOpen()
+                    }
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(42.dp).clip(CircleShape)
+                            .background(if (engine.phase == EnginePhase.Failed) Color(0xFFFEE4E0) else Color(0xFFEAF2FF)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.NearMe, null,
+                            tint = if (engine.phase == EnginePhase.Failed) Color(0xFFD92D20) else Aqua,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            when {
+                                engine.phase == EnginePhase.Done && engine.mode == EngineMode.Receiving -> "Recepción completada"
+                                engine.phase == EnginePhase.Done -> "Envío completado"
+                                engine.phase == EnginePhase.Failed -> "La transferencia se interrumpió"
+                                engine.mode == EngineMode.Receiving -> "Recibiendo de ${engine.peerName}"
+                                engine.mode == EngineMode.Sending -> "Enviando a ${engine.peerName}"
+                                engine.phase == EnginePhase.Joining -> "Conectando con el otro teléfono"
+                                else -> engine.statusText.ifBlank { "Preparando la transferencia" }
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            engine.error ?: engine.statusText.ifBlank {
+                                engine.tasks.firstOrNull { it.state.name == "Streaming" }?.name
+                                    ?: "${engine.tasks.count { it.state.name == "Done" }} de ${engine.tasks.size} archivos"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkFaint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (engine.mode != EngineMode.Idle && engine.phase != EnginePhase.Done) {
+                        Text(
+                            "Cancelar",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color(0xFFD92D20),
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                                .clickable { vm.cancelTransfer() }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+                if (engine.tasks.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        Modifier.fillMaxWidth().height(5.dp).clip(CircleShape)
+                            .background(Color(0xFFE6EEF7)),
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth(engine.progress.coerceIn(0f, 1f))
+                                .height(5.dp).clip(CircleShape).background(Aqua),
+                        )
+                    }
+                    Spacer(Modifier.height(7.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${(engine.progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = Aqua)
+                        if (engine.speedBps > 0) {
+                            Text(MoonLog.rate(engine.speedBps.toDouble()), style = MaterialTheme.typography.labelMedium, color = InkFaint)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -166,7 +279,7 @@ private fun PairingOverlay(vm: MoonViewModel, onDismiss: () -> Unit, onDone: () 
             // Sin AnimatedVisibility acá: la hoja vive un `if` en el composition scope
             // del Box, y animarla pedía un scope de Column/Row. El feedback de entrada
             // lo da la propia hoja (el glifo de NFC late), así que no se pierde nada.
-            PairingSheet(vm = vm, onDone = onDone)
+            PairingSheet(vm = vm, onDone = onDone, onDismiss = onDismiss)
         }
     }
 }
@@ -209,15 +322,17 @@ private fun PermissionGate(vm: MoonViewModel) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color(0xF204070A))
+                .background(Color.White)
                 .padding(horizontal = 26.dp),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // La esfera en el arranque cuenta la promesa; en la pantalla principal
-                // ya no: ahi estorba (era el detalle que mas "diseño futurista" sumaba).
-                Box(Modifier.size(104.dp)) {
-                    CrystalOrb(progress = 0f, intensity = 0.75f)
+                // Marca simple y reconocible; la explicación de permisos va debajo.
+                Box(
+                    Modifier.size(76.dp).clip(CircleShape).background(Aqua),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.NearMe, null, tint = Color.White, modifier = Modifier.size(34.dp))
                 }
                 Spacer(Modifier.height(22.dp))
                 Text(
@@ -239,7 +354,8 @@ private fun PermissionGate(vm: MoonViewModel) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .moonGlass(elevation = 16.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(vertical = 8.dp),
                 ) {
                     // Los textos viven en strings.xml (unicos, traducibles); Lint venia

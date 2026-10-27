@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Nfc
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SelectAll
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -77,7 +79,12 @@ import kotlinx.coroutines.withContext
  * el botón de abajo ya dice cuántos bytes van a salir.
  */
 @Composable
-fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Unit) {
+fun FilePickerScreen(
+    vm: MoonViewModel,
+    onBack: () -> Unit,
+    onPairing: () -> Unit,
+    onSendStarted: () -> Unit = {},
+) {
     val ui by vm.ui.collectAsState()
     val catalog = ui.catalog
     val categories = remember {
@@ -85,6 +92,21 @@ fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Uni
             MediaCategory.Photos, MediaCategory.Videos, MediaCategory.Audio,
             MediaCategory.Docs, MediaCategory.Apps, MediaCategory.All,
         )
+    }
+    val nfcToken by vm.nfcToken.collectAsState()
+
+    // En cuanto hay una selección, el teléfono ya está escuchando el acercamiento.
+    // No existe un paso posterior de "Enviar": el toque NFC dispara el envío.
+    DisposableEffect(ui.selected.isNotEmpty(), ui.settings.nfcBumpEnabled, vm.nfcSupported) {
+        if (ui.selected.isNotEmpty() && ui.settings.nfcBumpEnabled && vm.nfcSupported) {
+            vm.startNfcScan()
+        }
+        onDispose {
+            if (ui.selected.isEmpty()) vm.stopNfcScan()
+        }
+    }
+    LaunchedEffect(nfcToken) {
+        if (nfcToken != null) onSendStarted()
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -94,7 +116,7 @@ fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Uni
                 Modifier
                     .size(40.dp)
                     .clip(CircleShapeLocal)
-                    .background(Color.White.copy(alpha = 0.05f))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
@@ -149,8 +171,8 @@ fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Uni
             singleLine = true,
             shape = PillShape,
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.White.copy(alpha = 0.05f),
-                unfocusedContainerColor = Color.White.copy(alpha = 0.04f),
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 cursorColor = Aqua,
@@ -211,7 +233,7 @@ fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Uni
                 Box(
                     Modifier
                         .clip(PillShape)
-                        .background(Color.White.copy(alpha = 0.05f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { vm.openFolderPicker() }
                         .padding(horizontal = 14.dp, vertical = 13.dp),
                 ) {
@@ -224,10 +246,14 @@ fun FilePickerScreen(vm: MoonViewModel, onBack: () -> Unit, onPairing: () -> Uni
                 Spacer(Modifier.width(10.dp))
             }
             PrimaryButton(
-                text = if (ui.selected.isEmpty()) "Elegí algo" else "Enviar ${ui.selected.size}",
+                text = when {
+                    ui.selected.isEmpty() -> "Elegí un archivo"
+                    vm.nfcSupported && ui.settings.nfcBumpEnabled -> "Acercá el otro teléfono"
+                    else -> "Ver teléfonos cercanos"
+                },
                 onClick = { if (ui.selected.isNotEmpty()) onPairing() },
                 enabled = ui.selected.isNotEmpty(),
-                icon = Icons.Rounded.Share,
+                icon = Icons.Rounded.Nfc,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -240,7 +266,7 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     Box(
         Modifier
             .clip(PillShape)
-            .background(if (selected) Aqua.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.05f))
+            .background(if (selected) Aqua else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
             .padding(horizontal = 15.dp, vertical = 9.dp),
     ) {
@@ -248,7 +274,7 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
             label,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) Aqua else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -261,7 +287,7 @@ private fun FileCell(item: FileItem, selected: Boolean, onClick: () -> Unit) {
             .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.linearGradient(
-                    listOf(Color.White.copy(alpha = if (selected) 0.10f else 0.055f), Color(0x0A000000))
+                    listOf(if (selected) Color(0xFFDCEBFF) else Color(0xFFF4F7FA), Color(0xFFF4F7FA))
                 )
             )
             .clickable(onClick = onClick)
@@ -281,7 +307,7 @@ private fun FileCell(item: FileItem, selected: Boolean, onClick: () -> Unit) {
                             else -> Icons.Rounded.FileOpen
                         },
                         null,
-                        tint = if (selected) Aqua else Color.White.copy(alpha = 0.4f),
+                        tint = if (selected) Aqua else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp),
                     )
                     Column {
@@ -355,12 +381,12 @@ private fun MediaThumb(uri: String, modifier: Modifier = Modifier) {
     } else {
         Box(
             modifier.background(
-                Brush.linearGradient(listOf(Color(0xFF101922), Color(0xFF0A0F14)))
+                Brush.linearGradient(listOf(Color(0xFFEEF3F8), Color(0xFFE5EDF5)))
             )
         ) {
             Icon(
                 Icons.Rounded.Videocam, null,
-                tint = Color.White.copy(alpha = 0.14f),
+                tint = InkFaint,
                 modifier = Modifier.align(Alignment.Center).size(22.dp),
             )
         }

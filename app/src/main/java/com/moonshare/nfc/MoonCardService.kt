@@ -23,6 +23,7 @@ class MoonCardService : HostApduService() {
 
         return when {
             apdu.isSelectByAid() -> {
+                if (apdu.dataStartsWith(NDEF_AID)) PairingTokenHolder.markServed()
                 selected = if (apdu.dataStartsWith(NDEF_AID)) FILE_NDEF else FILE_NONE
                 MoonLog.d(TAG, "select AID → ${if (selected == FILE_NDEF) "ok" else "no-nuestra"}")
                 return if (selected == FILE_NDEF) SW_OK else SW_NOT_FOUND
@@ -63,7 +64,10 @@ class MoonCardService : HostApduService() {
 
     /** [NLEN][NDEF message] — el formato del archivo NDEF de un tag Type 4. */
     private fun ndefFile(): ByteArray {
-        val token = PairingTokenHolder.current ?: return EMPTY
+        // Se emite con hora actual en cada lectura. Antes el token nacía una sola vez al
+        // activar la recepción y vencía a los 5 minutos aunque el teléfono siguiera disponible.
+        val token = PairingTokenHolder.current?.refreshed() ?: return EMPTY
+        PairingTokenHolder.markServed()
         return try {
             // Registro de TEXTO en vez de URI: `NdefRecord.createUri` obliga al lector a
             // re-parsear el prefijo, y getUri() no está en todas las ROMs. Con texto el
@@ -183,10 +187,31 @@ object PairingTokenHolder {
     var current: PairingToken? = null
         private set
 
+    /** Última vez que el otro teléfono leyó realmente nuestro NDEF por NFC. */
+    @Volatile
+    var lastServedAtMs: Long = 0L
+        private set
+
     val isAdvertising: Boolean get() = current != null
 
     fun publish(token: PairingToken?) {
         current = token
+        if (token == null) lastServedAtMs = 0L
         MoonLog.d("HCE", if (token == null) "dejo de anunciar" else "anunciando ${token.deviceAddress}")
+    }
+
+    fun markServed() {
+        lastServedAtMs = System.currentTimeMillis()
+    }
+
+    /**
+     * El toque físico es el consentimiento: solo vale para el nonce anunciado por este
+     * teléfono y durante una ventana breve después de que el emisor leyó el token.
+     */
+    fun hasFreshTapConsent(nonce: String?, now: Long = System.currentTimeMillis()): Boolean {
+        val token = current ?: return false
+        if (nonce.isNullOrBlank() || nonce != token.nonce) return false
+        val age = now - lastServedAtMs
+        return lastServedAtMs > 0L && age in 0..90_000L
     }
 }

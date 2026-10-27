@@ -30,15 +30,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -49,10 +45,8 @@ import com.moonshare.data.model.TaskState
 import com.moonshare.data.model.TransferTask
 import com.moonshare.transfer.EngineMode
 import com.moonshare.transfer.EnginePhase
-import com.moonshare.transfer.OrbPulse
 import com.moonshare.ui.common.GhostButton
 import com.moonshare.ui.common.GlowProgress
-import com.moonshare.ui.glass.CrystalOrb
 import com.moonshare.ui.theme.Aqua
 import com.moonshare.ui.theme.Danger
 import com.moonshare.ui.theme.InkFaint
@@ -62,19 +56,13 @@ import com.moonshare.vm.MoonViewModel
 import com.moonshare.vm.sizeLabel
 
 /**
- * Pantalla de la sesión en curso: la esfera grande arriba como medidor y la cola
- * abajo, con un estado visible por archivo. Sin diálogos modales: se puede ir y
- * venir, la transferencia vive en el servicio.
+ * Pantalla de la sesión en curso: resumen claro de progreso y una fila por
+ * archivo. La transferencia vive en el servicio, no en esta pantalla.
  */
 @Composable
 fun TransferScreen(vm: MoonViewModel, onBack: () -> Unit) {
     val engine by vm.engineState.collectAsState()
     val ui by vm.ui.collectAsState()
-
-    var pulse by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
-        vm.pulses.collect { p: OrbPulse -> pulse = p.nonce }
-    }
 
     val active = engine.mode != EngineMode.Idle
     val tasks = engine.tasks
@@ -84,7 +72,7 @@ fun TransferScreen(vm: MoonViewModel, onBack: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(40.dp).clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.05f))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
@@ -125,40 +113,34 @@ fun TransferScreen(vm: MoonViewModel, onBack: () -> Unit) {
 
         Spacer(Modifier.height(8.dp))
 
-        // ------------------------------------------------- esfera medidora
-        if (ui.settings.orbEnabled) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(232.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                CrystalOrb(
-                    modifier = Modifier.size(200.dp),
-                    progress = engine.progress,
-                    pulseNonce = pulse,
-                    intensity = ui.settings.orbIntensity,
-                    reducedMotion = ui.settings.reduceMotion,
-                    active = active,
+        // Resumen sobrio: porcentaje y bytes. Sin esfera ni espectáculo visual.
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "${(engine.progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.alpha(if (ui.settings.orbEnabled) 1f else 0f),
-                ) {
-                    Text(
-                        "${tasks.count { it.state == TaskState.Done }}/${tasks.size}",
-                        style = NumericStyle,
-                        color = if (active) Aqua else Color.White.copy(alpha = 0.22f),
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "${tasks.sumOf { it.transferred }.sizeLabel()} de ${tasks.sumOf { it.size }.sizeLabel()}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = InkFaint,
-                    )
-                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "${tasks.count { it.state == TaskState.Done }} de ${tasks.size}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 7.dp),
+                )
             }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "${tasks.sumOf { it.transferred }.sizeLabel()} de ${tasks.sumOf { it.size }.sizeLabel()}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkFaint,
+            )
         }
+        Spacer(Modifier.height(16.dp))
 
         GlowProgress(
             progress = engine.progress,
@@ -233,7 +215,7 @@ private fun TaskRow(task: TransferTask) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.035f))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

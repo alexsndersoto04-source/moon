@@ -1,13 +1,10 @@
 package com.moonshare.ui.pairing
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Nfc
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
@@ -43,49 +41,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.moonshare.data.model.FileItem
-import com.moonshare.nfc.NfcAvailability
-import com.moonshare.ui.common.PrimaryButton
 import com.moonshare.ui.theme.Aqua
 import com.moonshare.ui.theme.Danger
 import com.moonshare.ui.theme.InkFaint
-import com.moonshare.ui.theme.Ok
-import com.moonshare.ui.theme.PillShape
 import com.moonshare.vm.MoonViewModel
 import com.moonshare.vm.sizeLabel
 
 /**
- * La hoja de pareo. Es el corazón de la promesa "se unen los teléfonos y se pasa":
- * acá el usuario acerca el teléfono (o toca un dispositivo de la lista) y el envío
- * arranca sin otro paso.
+ * Hoja translúcida de proximidad. Aparece al elegir archivos: no pide tocar
+ * “Enviar”. El lector NFC queda activo y, al juntar los teléfonos, el token
+ * dispara la transferencia automáticamente.
  *
- * Tres rutas, de mejor a peor:
- *   1. golpe de NFC → el token trae la dirección del par → connect() directo
- *   2. tap en la lista de descubiertos → mismo connect(), un toque más
- *   3. "reintentar" si la radio del otro lado todavía no levantó el grupo
+ * La lista de dispositivos es solo un respaldo explícito para equipos sin NFC;
+ * nunca se elige un teléfono automáticamente desde esa lista.
  */
 @Composable
-fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
+fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit, onDismiss: () -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val engine by vm.engineState.collectAsState()
     val peers by vm.peers.collectAsState()
     val token by vm.nfcToken.collectAsState()
-    var scanning by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var scanning by remember { mutableStateOf(false) }
 
-    val items = ui.selectedItems.ifEmpty { ui.catalog.items.filter { it.id in ui.selected } }
+    val items = ui.selectedItems
     val bytes = items.sumOf { it.size }
 
-    DisposableEffect(Unit) {
-        if (ui.settings.nfcBumpEnabled && vm.nfcSupported) {
-            scanning = vm.startNfcScan { msg -> notice = msg }
+    DisposableEffect(ui.settings.nfcBumpEnabled, vm.nfcSupported) {
+        scanning = if (ui.settings.nfcBumpEnabled && vm.nfcSupported) {
+            vm.startNfcScan { msg -> notice = msg }
+        } else {
+            vm.refreshPeers()
+            false
         }
         onDispose { vm.stopNfcScan() }
     }
 
-    // El token ya dispara el envío por sí solo; acá sólo acompañamos la salida.
     LaunchedEffect(token) {
         if (token != null) {
             vm.notifyPaired()
@@ -96,199 +92,185 @@ fun PairingSheet(vm: MoonViewModel, onDone: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
-            .padding(horizontal = 20.dp, vertical = 18.dp)
+            .clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp))
+            .background(Color.White.copy(alpha = 0.97f))
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // asa de arrastre: el único "indicador" que se permite, y es luz, no línea
-        Box(
-            Modifier
-                .align(Alignment.CenterHorizontally)
-                .width(38.dp).height(4.dp)
-                .clip(PillShape)
-                .background(Color.White.copy(alpha = 0.18f))
-        )
-        Spacer(Modifier.height(18.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BumpGlyph(active = scanning)
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Acercá los dos teléfonos",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    when {
-                        scanning -> "Leyendo el otro aparato por NFC…"
-                        !ui.nfcSupported -> "Este teléfono no tiene NFC: elegilo de la lista"
-                        else -> "Encendé NFC en el otro y tocalo contra este"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (scanning) Aqua else InkFaint,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                .background(Aqua.copy(alpha = 0.08f))
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "${items.size} archivo(s)",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    "${bytes.sizeLabel()} · destino: ${engine.peerName.ifBlank { "sin parear todavía" }}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = InkFaint,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Text(
-            "Dispositivos alcanzables",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp),
-        )
-        Spacer(Modifier.height(6.dp))
-
-        if (peers.isEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = 0.04f))
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier.size(36.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { onDismiss() },
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Wifi, null, tint = InkFaint, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(10.dp))
+                Icon(Icons.Rounded.Close, "Cerrar", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+        ProximityGlyph(active = scanning)
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "Acercá el otro teléfono",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(7.dp))
+        Text(
+            when {
+                scanning -> "Al juntarse, el envío empieza solo."
+                !vm.nfcSupported -> "Este teléfono no tiene NFC. Elegí el otro equipo de la lista."
+                !ui.settings.nfcBumpEnabled -> "El emparejamiento al acercar está desactivado en Ajustes."
+                else -> "Verificá que NFC esté encendido en los dos teléfonos."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = InkFaint,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(0.9f),
+        )
+
+        Spacer(Modifier.height(18.dp))
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                "${items.size} archivo(s) listos",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                bytes.sizeLabel(),
+                style = MaterialTheme.typography.bodySmall,
+                color = InkFaint,
+            )
+            items.take(2).forEach { item ->
+                Spacer(Modifier.height(7.dp))
                 Text(
-                    "Nada todavía. El otro teléfono tiene que estar en “Recibiendo”.",
+                    item.name,
                     style = MaterialTheme.typography.bodySmall,
-                    color = InkFaint,
-                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+            }
+        }
+
+        if (!vm.nfcSupported || !ui.settings.nfcBumpEnabled) {
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Wifi, null, tint = Aqua, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
+                    "Dispositivos cercanos",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
                     "Buscar",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelLarge,
                     color = Aqua,
                     modifier = Modifier.clickable { vm.refreshPeers() },
                 )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.height((peers.size * 56).dp.coerceAtMost(190.dp)),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(peers, key = { it.deviceAddress ?: (it.deviceName ?: it.hashCode().toString()) }) { dev ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.04f))
-                            .clickable {
-                                val t = com.moonshare.nfc.PairingToken(
-                                    deviceAddress = dev.deviceAddress ?: "",
-                                    deviceName = dev.deviceName ?: "dispositivo",
-                                )
-                                vm.sendSelected(t)
-                                onDone()
-                            }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier.size(9.dp).clip(CircleShape).background(
-                                if (dev.status == 0) Ok else InkFaint
+            Spacer(Modifier.height(8.dp))
+            if (peers.isEmpty()) {
+                Text(
+                    "Todavía no aparece ninguno. El otro teléfono debe tener la Disponibilidad activada.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkFaint,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.height((peers.size * 58).dp.coerceAtMost(180.dp)),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(peers, key = { it.deviceAddress ?: it.deviceName ?: it.hashCode().toString() }) { device ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable {
+                                    val manual = com.moonshare.nfc.PairingToken(
+                                        deviceAddress = device.deviceAddress ?: "",
+                                        deviceName = device.deviceName ?: "Teléfono",
+                                    )
+                                    vm.sendSelected(manual)
+                                    onDone()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(Aqua))
+                            Spacer(Modifier.width(11.dp))
+                            Text(
+                                device.deviceName?.takeIf { it.isNotBlank() } ?: "Teléfono sin nombre",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
                             )
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            dev.deviceName ?: "anónimo",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            when (dev.status) {
-                                0 -> "disponible"
-                                1 -> "conectándose"
-                                2 -> "conectado"
-                                else -> "ocupado"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = InkFaint,
-                        )
+                            Text("Enviar", style = MaterialTheme.typography.labelLarge, color = Aqua)
+                        }
                     }
                 }
             }
         }
 
-        AnimatedVisibility(visible = notice != null, enter = fadeIn(), exit = fadeOut()) {
-            notice?.let {
-                Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Danger,
-                    )
-                }
-            }
+        notice?.let {
+            Spacer(Modifier.height(14.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Danger, textAlign = TextAlign.Center)
         }
-
-        Spacer(Modifier.height(18.dp))
-        PrimaryButton(
-            text = if (token != null) "Pareado, pasando…" else "Enviar igual al último",
-            onClick = {
-                val last = vm.handoffToken
-                if (last == null && peers.isEmpty()) {
-                    notice = "Nada elegido: acercá los teléfonos o tocá un dispositivo."
-                } else {
-                    vm.sendSelected(last)
-                    onDone()
-                }
-            },
-            icon = Icons.Rounded.Nfc,
-            enabled = items.isNotEmpty(),
-        )
-        Spacer(Modifier.height(6.dp))
+        engine.error?.let {
+            Spacer(Modifier.height(10.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Danger, textAlign = TextAlign.Center)
+        }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
-/** El ícono del "acercar": dos dispositivos con ondas que laten. */
 @Composable
-private fun BumpGlyph(active: Boolean) {
-    val t = rememberInfiniteTransition(label = "bump")
-    val pulse by t.animateFloat(
-        initialValue = 0.25f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
-        label = "p",
+private fun ProximityGlyph(active: Boolean) {
+    val transition = rememberInfiniteTransition(label = "proximity")
+    val pulse by transition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing)),
+        label = "pulse",
     )
-    Box(
-        Modifier.size(54.dp).clip(CircleShape)
-            .background(if (active) Aqua.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            Icons.Rounded.Nfc, null,
-            tint = if (active) Aqua else InkFaint,
-            modifier = Modifier.size(24.dp).alpha(if (active) 0.55f + pulse * 0.45f else 1f),
+    Box(Modifier.size(118.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(112.dp).clip(CircleShape)
+                .background(Aqua.copy(alpha = if (active) 0.06f + pulse * 0.04f else 0.07f)),
         )
+        Box(
+            Modifier.size(82.dp).clip(CircleShape)
+                .background(Aqua.copy(alpha = if (active) 0.10f + pulse * 0.05f else 0.10f)),
+        )
+        Box(
+            Modifier.size(56.dp).clip(CircleShape).background(Aqua),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Nfc, null,
+                tint = Color.White,
+                modifier = Modifier.size(27.dp).alpha(if (active) 0.65f + pulse * 0.35f else 1f),
+            )
+        }
     }
 }
 
-/** Resumen compacto de lo que se va a pasar, reutilizado en la hoja y en el home. */
+/** Resumen compacto reutilizado por otras pantallas. */
 @Composable
 fun SelectionSummary(items: List<FileItem>, modifier: Modifier = Modifier) {
     if (items.isEmpty()) return
@@ -297,14 +279,14 @@ fun SelectionSummary(items: List<FileItem>, modifier: Modifier = Modifier) {
             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     it.name,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(it.size.sizeLabel(), style = MaterialTheme.typography.labelSmall, color = InkFaint)
+                Text(it.sizeLabel(), style = MaterialTheme.typography.labelSmall, color = InkFaint)
             }
         }
         if (items.size > 3) {

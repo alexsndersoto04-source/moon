@@ -80,7 +80,7 @@ fun BootFailureScreen(text: String, phase: String, onCopy: () -> Unit, onContinu
 private fun BootButton(text: String, primary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .background(if (primary) Color(0xFF39D5C4) else Color.White.copy(alpha = 0.07f))
+            .background(if (primary) Color(0xFF0A6CFF) else Color.White.copy(alpha = 0.07f))
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center,
@@ -88,7 +88,7 @@ private fun BootButton(text: String, primary: Boolean, onClick: () -> Unit, modi
         BasicText(
             text,
             style = TextStyle(
-                color = if (primary) Color(0xFF04221F) else Color(0xFFD7E2EA),
+                color = if (primary) Color.White else Color(0xFFD7E2EA),
                 fontSize = 14.sp,
             ),
         )

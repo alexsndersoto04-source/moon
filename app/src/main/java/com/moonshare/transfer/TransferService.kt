@@ -87,9 +87,21 @@ class TransferService : android.app.Service() {
         // startForeground() de este arranque.
         goForeground()
         when (intent?.action) {
-            ACTION_START -> engine?.startReceiving()
+            ACTION_START -> {
+                setAvailabilityEnabled(true)
+                engine?.startReceiving()
+            }
+
+            // Solo mantener vivo el proceso durante un envío. NO debe ponerse a
+            // recibir ni crear un grupo propio: eso competía con el grupo del receptor.
+            ACTION_ENSURE -> Unit
+
+            // Android puede resucitar un servicio START_STICKY con intent null. Si la
+            // persona había dejado la disponibilidad encendida, se restaura.
+            null -> if (isAvailabilityEnabled()) engine?.startReceiving()
 
             ACTION_STOP -> {
+                setAvailabilityEnabled(false)
                 engine?.stopReceiving()
                 stopSelfSafely()
             }
@@ -157,6 +169,14 @@ class TransferService : android.app.Service() {
         wakeLock = null
     }
 
+    private fun setAvailabilityEnabled(enabled: Boolean) {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_AVAILABLE, enabled).apply()
+    }
+
+    private fun isAvailabilityEnabled(): Boolean =
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_AVAILABLE, false)
+
     private fun stopSelfSafely() {
         // Cortarse sin haber hecho foreground es la violacion exacta del contrato: el
         // sistema igual espera su startForeground(). Se satisface primero y se corta despues.
@@ -182,7 +202,10 @@ class TransferService : android.app.Service() {
 
     companion object {
         private const val TAG = "Svc"
+        private const val PREFS = "moon_availability"
+        private const val KEY_AVAILABLE = "enabled"
         const val ACTION_START = "com.moonshare.action.START"
+        const val ACTION_ENSURE = "com.moonshare.action.ENSURE"
         const val ACTION_STOP = "com.moonshare.action.STOP"
         const val ACTION_ACCEPT = "com.moonshare.action.ACCEPT"
         const val ACTION_DECLINE = "com.moonshare.action.DECLINE"
@@ -193,6 +216,14 @@ class TransferService : android.app.Service() {
             runCatching {
                 if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(i) else context.startService(i)
             }.onFailure { MoonLog.w(TAG, "no se pudo levantar el servicio: ${it.message}") }
+        }
+
+        /** Mantiene vivo un envío sin activar la recepción en este teléfono. */
+        fun ensureForSending(context: Context) {
+            val i = Intent(context, TransferService::class.java).setAction(ACTION_ENSURE)
+            runCatching {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(i) else context.startService(i)
+            }.onFailure { MoonLog.w(TAG, "no se pudo asegurar el servicio de envío: ${it.message}") }
         }
 
         fun stop(context: Context) {

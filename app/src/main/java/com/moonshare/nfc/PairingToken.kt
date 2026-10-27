@@ -19,6 +19,9 @@ data class PairingToken(
     val issuedAt: Long = System.currentTimeMillis(),
     val nonce: String = "",
 ) {
+    /** Copia con marca temporal nueva: un token anunciado durante horas no debe vencer mientras el receptor sigue disponible. */
+    fun refreshed(now: Long = System.currentTimeMillis()): PairingToken = copy(issuedAt = now)
+
     fun toUriString(): String = Uri.Builder()
         .scheme(SCHEME)
         .authority(HOST)

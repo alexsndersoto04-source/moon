@@ -21,6 +21,7 @@ class SendEndpoint(
     private val deviceName: String,
     private val deviceId: String,
     private val listener: EndpointListener,
+    private val tapNonce: String = "",
 ) {
 
     @Volatile
@@ -59,7 +60,8 @@ class SendEndpoint(
             output.write(
                 MoonProtocol.encode(
                     MoonProtocol.Type.HELLO,
-                    MoonProtocol.json.encodeToString(MoonProtocol.Hello(deviceName, deviceId)
+                    MoonProtocol.json.encodeToString(
+                        MoonProtocol.Hello(deviceName, deviceId, tapNonce = tapNonce)
                     )
                 )
             )
@@ -149,6 +151,7 @@ class SendEndpoint(
         output.flush()
 
         var sent = 0L
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         val startedAt = System.nanoTime()
         var lastEmit = 0L
         val buf = ByteArray(MoonProtocol.CHUNK_SIZE)
@@ -160,6 +163,7 @@ class SendEndpoint(
                     val n = src.read(buf)
                     if (n <= 0) break
                     output.write(MoonProtocol.encodeChunk(streamId, buf, 0, n))
+                    digest.update(buf, 0, n)
                     sent += n
                     pace(sent, startedAt)
 
@@ -184,10 +188,12 @@ class SendEndpoint(
                 return
             }
 
+            val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
             output.write(
                 MoonProtocol.encode(
                     MoonProtocol.Type.END,
-                    MoonProtocol.json.encodeToString(MoonProtocol.End(item.id, streamId, sent)
+                    MoonProtocol.json.encodeToString(
+                        MoonProtocol.End(item.id, streamId, sent, sha256 = sha256)
                     )
                 )
             )
@@ -200,7 +206,8 @@ class SendEndpoint(
                 listener.onFileFinished(item.id, ok = false, error = "sin confirmación")
                 return
             }
-            if (confirm.type == MoonProtocol.Type.END) {
+            val end = confirm.read<MoonProtocol.End>()
+            if (confirm.type == MoonProtocol.Type.END && end?.ok == true && end.bytes == sent) {
                 listener.onFileFinished(item.id, ok = true)
             } else {
                 listener.onFileFinished(item.id, ok = false, error = "el receptor rechazó el archivo")
@@ -234,9 +241,9 @@ class SendEndpoint(
         const val CONNECT_TIMEOUT_MS = 12_000
 
         /**
-         * Tiene que superar el timeout de consentimiento del receptor (default 120 s)
-         * o el emisor se rinde mientras el otro todavía está decidiendo.
+         * Tiene que superar la espera máxima de consentimiento configurable (600 s)
+         * o el emisor se rendiría mientras el receptor todavía está decidiendo.
          */
-        const val READ_TIMEOUT_MS = 150_000
+        const val READ_TIMEOUT_MS = 660_000
     }
 }
