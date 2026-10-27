@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
 
     private var providerRef: ProcessCameraProvider? = null
     private var cameraStarted = false
+    private var cameraRequestPending = false
     private var permissionRequested = false
     private var diagnosticsVisible = false
     private var boundFrontCamera: Boolean? = null
@@ -148,9 +149,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (boundFrontCamera != null && boundFrontCamera != prefs.useFrontCamera) {
-            // Camera source changed: drop the binding and let onStart re-create it.
+            // Camera source changed: drop the binding and rebuild it now.
             runCatching { providerRef?.unbindAll() }
             cameraStarted = false
+            boundFrontCamera = null
             startCameraIfNeeded()
         }
     }
@@ -358,11 +360,13 @@ class MainActivity : AppCompatActivity() {
     // ----------------------------------------------------------------- camera
 
     private fun startCameraIfNeeded() {
-        if (cameraStarted) return
+        if (cameraStarted || cameraRequestPending) return
         if (!Permissions.granted(this, Manifest.permission.CAMERA)) return
 
+        cameraRequestPending = true
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
+            cameraRequestPending = false
             val provider = runCatching { future.get() }.getOrNull() ?: return@addListener
             providerRef = provider
             bindCamera(provider)
