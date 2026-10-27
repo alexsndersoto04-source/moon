@@ -178,8 +178,10 @@ class FrameConverter {
 
     private fun decodeJpeg(image: ImageProxy, target: Bitmap): Boolean {
         val plane = image.planes.firstOrNull() ?: return false
-        val bytes = ByteArray(plane.buffer.remaining())
-        plane.buffer.duplicate().rewind().get(bytes)
+        val duplicate = plane.buffer.duplicate()
+        duplicate.rewind()
+        val bytes = ByteArray(duplicate.remaining())
+        duplicate.get(bytes)
         val decoded = runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
             ?: return false
         if (decoded.width == target.width && decoded.height == target.height) {
