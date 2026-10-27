@@ -100,18 +100,6 @@ jobs:
           if-no-files-found: ignore
 
 
-      # TEMPORARY diagnostic (removed before hand-off).
-      - name: Publish build log on failure
-        if: failure() && github.event_name == 'push'
-        run: |
-          mkdir -p ci && head -c 400000 build.log > ci/last-build.log || true
-          git config user.email "ci@airgesture.local"
-          git config user.name "AirGesture CI"
-          git add -f ci/last-build.log
-          git commit -m "ci: build log for ${{ github.sha }} [skip ci]" || true
-          git pull --rebase || true
-          git push || true
-
       - name: Collect APKs
         run: |
           mkdir -p artifacts
@@ -136,6 +124,15 @@ jobs:
 
           echo "--- DEX count ---"
           unzip -l "$APK" | grep -cE "classes[0-9]*\.dex"
+
+          echo "--- Permissions that make BLE discovery work ---"
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
+          "$BUILD_TOOLS_DIR/aapt2" dump permissions "$APK" > perms.txt
+          cat perms.txt
+          grep -q "android.permission.ACCESS_FINE_LOCATION" perms.txt
+          grep -q "android.permission.BLUETOOTH_SCAN" perms.txt
+          grep -q "android.permission.BLUETOOTH_ADVERTISE" perms.txt
+          grep -q "android.permission.NEARBY_WIFI_DEVICES" perms.txt
 
           echo "--- Signature ---"
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)

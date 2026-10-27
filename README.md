@@ -116,22 +116,30 @@ Si algo falla, el texto dice exactamente dónde. Además hay un botón **Enviar*
 archivo seleccionado sin usar ningún gesto: sirve para separar «problema de gesto» de
 «problema de red» en un solo toque.
 
-### Por qué antes no llegaba nada (corregido en 1.2.0)
+### Requisitos para que dos teléfonos se encuentren (1.3.0)
 
-Ambos teléfonos anuncian y buscan a la vez (es lo que permite no configurar nada), así que
-**los dos abrían la conexión al mismo tiempo**. Una parte se quedaba en una sesión a medias y
-los payloads se descartaban en silencio. Ahora:
+Nearby Connections descubre por **BLE**, y el escaneo BLE falla **en silencio** si algo
+falta. La app ahora lo comprueba sola y muestra un aviso con botón cuando:
 
-- Solo inicia la conexión el dispositivo cuyo nombre ordena primero; el otro espera y acepta.
-- Si el que esperaba no recibe la llamada en 2,5 s, la hace él (red de seguridad).
-- `ALREADY_CONNECTED` se trata como éxito en vez de desmontar la sesión.
-- Un watchdog reintenta el descubrimiento cada 6 s mientras no haya conexión.
+1. **Falta el permiso** de ubicación / dispositivos cercanos → botón *Permitir*.
+2. **Bluetooth apagado** → botón *Activar*.
+3. **Ubicación del sistema apagada** → botón *Abrir* (Android la exige para escanear BLE,
+   aunque la app no use tu posición para nada).
 
-El envío usa el flujo documentado por Google: metadatos en un payload `BYTES`, y **solo
-cuando ese payload confirma SUCCESS** se envía el archivo como `FILE` desde un
-`ParcelFileDescriptor` (cero copias en memoria). El receptor copia con `asUri()` a
-`Descargas/AirGesture` y responde un **ACK**, que es lo que hace aparecer «El otro teléfono
-confirmó la recepción»: verificación real, no una suposición.
+Además se eliminó `neverForLocation` del manifiesto: Android documenta que ese flag
+**filtra beacons BLE de los resultados**, y Nearby los necesita para encontrar al otro
+teléfono. Era la causa de que se quedara en «Buscando…» para siempre sin ningún error.
+
+Los dos teléfonos deben tener la app **abierta** (la sesión vive mientras el proceso exista)
+y la misma red de radios encendida. Se anuncia y se busca en dos `serviceId` para que una
+versión antigua en el otro teléfono también pueda emparejarse.
+
+### Qué se envía y cómo se confirma
+
+Metadatos en un payload `BYTES`, y **solo cuando ese payload confirma SUCCESS** se envía el
+archivo como `FILE` desde un `ParcelFileDescriptor` (cero copias en memoria). El receptor
+copia con `asUri()` a `Descargas/AirGesture` y responde un **ACK**: eso es lo que hace
+aparecer «El otro teléfono confirmó la recepción». Verificación real, no una suposición.
 
 ## 3. Arquitectura
 
