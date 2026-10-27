@@ -9,7 +9,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Size
-import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -28,19 +27,21 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.airgesture.transfer.R
+import com.airgesture.transfer.core.GestureState
 import com.airgesture.transfer.databinding.ActivityMainBinding
 import com.airgesture.transfer.media.MediaEntry
 import com.airgesture.transfer.media.MediaKind
 import com.airgesture.transfer.transfer.NearbyState
 import com.airgesture.transfer.util.Haptics
 import com.airgesture.transfer.util.Permissions
+import com.airgesture.transfer.vision.OverlayFrame
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
- * The whole experience lives in this single screen: camera, gesture feedback,
- * the local file shelf and the transfer status. There are no settings, no
- * pairing dialogs and no second activity on purpose.
+ * Single-screen experience: camera, live gesture feedback, the local file shelf
+ * and the transfer status. No settings, no pairing dialogs, no second activity.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -55,14 +56,19 @@ class MainActivity : AppCompatActivity() {
 
     private val uiHandler = Handler(Looper.getMainLooper())
 
-    private var cameraProvider: ProcessCameraProvider? = null
+    private var providerRef: ProcessCameraProvider? = null
     private var cameraStarted = false
     private var permissionRequested = false
+    private var diagnosticsVisible = false
 
     private var lastItems: List<MediaEntry>? = null
     private var lastSelectedUri: String? = null
     private var transientMessage: String? = null
     private var transientUntilMs = 0L
+
+    private var lastHandSeenAtMs = 0L
+    private var handChipState: Boolean? = null
+    private var currentState = MainUiState()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -72,7 +78,7 @@ class MainActivity : AppCompatActivity() {
 
     private val clearTransient = Runnable {
         transientMessage = null
-        render(viewModel.uiState.value)
+        render(currentState)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,7 +88,10 @@ class MainActivity : AppCompatActivity() {
 
         haptics = Haptics(this)
 
-        adapter = FileAdapter(viewModel::selectItem)
+        adapter = FileAdapter(
+            onSelect = viewModel::selectItem,
+            onSendNow = { entry -> viewModel.sendItem(entry) }
+        )
         binding.filesList.apply {
             layoutManager = LinearLayoutManager(this@MainActivity, RecyclerView.HORIZONTAL, false)
             adapter = this@MainActivity.adapter
@@ -91,16 +100,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         bindTabs()
+
         binding.permButton.setOnClickListener { requestPermissions() }
         binding.permSettings.setOnClickListener { openAppSettings() }
+
+        // Long-press the title: diagnostics HUD (fps, inference time, source format,
+        // closure and push values). Essential to verify the pipeline on real hardware.
         binding.brandTitle.setOnLongClickListener {
-            val enabled = viewModel.toggleSkeleton()
-            binding.handOverlay.setSkeletonVisible(enabled)
-            showTransient(getString(R.string.skeleton_toggled, getString(if (enabled) R.string.enabled else R.string.disabled)))
+            diagnosticsVisible = !diagnosticsVisible
+            binding.diagnostics.isVisible = diagnosticsVisible
+            haptics.tick()
             true
         }
 
-        binding.handOverlay.setSkeletonVisible(viewModel.skeletonEnabled)
+        binding.handOverlay.setSkeletonVisible(true)
         collectFlows()
         applyPermissions()
     }
@@ -113,7 +126,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         viewModel.stopSession()
-        runCatching { cameraProvider?.unbindAll() }
+        runCatching { providerRef?.unbindAll() }
         cameraStarted = false
     }
 
@@ -126,13 +139,12 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------- bindings
 
     private fun bindTabs() {
-        val tabs = listOf(
+        listOf(
             binding.tabImages to MediaKind.IMAGES,
             binding.tabVideos to MediaKind.VIDEOS,
             binding.tabPdfs to MediaKind.PDFS,
             binding.tabAudio to MediaKind.AUDIO
-        )
-        tabs.forEach { (view, kind) ->
+        ).forEach { (view, kind) ->
             view.setOnClickListener {
                 haptics.tick()
                 viewModel.selectKind(kind)
@@ -144,7 +156,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { viewModel.uiState.collect(::render) }
-                launch { viewModel.frames.collect { binding.handOverlay.submit(it) } }
+                launch { viewModel.frames.collect(::onFrame) }
+                launch { viewModel.stats.collect(::onStats) }
                 launch {
                     viewModel.events.collect { event ->
                         when (event) {
@@ -158,9 +171,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ------------------------------------------------------- live feedback
+
+    private fun onFrame(frame: OverlayFrame) {
+        binding.handOverlay.submit(frame)
+        binding.pushMeter.setProgressCompat((frame.thrust * 100f).toInt().coerceIn(0, 100), false)
+
+        val handVisible = frame.landmarks != null
+        if (handVisible) lastHandSeenAtMs = SystemClock.uptimeMillis()
+
+        if (handChipState != handVisible) {
+            handChipState = handVisible
+            binding.handChip.setText(
+                if (handVisible) R.string.hand_chip_detected else R.string.hand_chip_none
+            )
+            if (handVisible) haptics.tick()
+            updateHint()
+        }
+    }
+
+    private fun onStats(stats: TrackingStats) {
+        if (!diagnosticsVisible) return
+        binding.diagnostics.text = buildString {
+            append(String.format(Locale.US, "fps %d · %d ms\n", stats.fps, stats.inferenceMs))
+            append("mano ${stats.handFrames} · ${stats.conversionMode}\n")
+            append(String.format(Locale.US, "cierre %.2f · empuje %.2f\n", stats.closure, stats.push))
+            append("cuadros ${stats.frames} · fallos ${stats.conversionFailures}\n")
+            append(if (stats.modelReady) "modelo ok · dedos ${stats.landmarks}" else "modelo: ${stats.modelError}")
+        }
+        updateHint()
+    }
+
     // -------------------------------------------------------------- rendering
 
     private fun render(state: MainUiState) {
+        currentState = state
+
         binding.tabImages.isSelected = state.kind == MediaKind.IMAGES
         binding.tabVideos.isSelected = state.kind == MediaKind.VIDEOS
         binding.tabPdfs.isSelected = state.kind == MediaKind.PDFS
@@ -182,7 +228,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.statusPill.text = statusText(state)
-        binding.hintText.text = hintText(state)
+        updateHint()
 
         val transfer = state.transfer
         binding.progressBar.isVisible = transfer != null
@@ -203,30 +249,32 @@ class MainActivity : AppCompatActivity() {
         state.transfer?.let { transfer ->
             val percent = (transfer.fraction * 100f).toInt().coerceIn(0, 100)
             return if (transfer.outgoing) {
-                getString(R.string.status_sending_progress, percent)
+                getString(R.string.status_sending_short, percent)
             } else {
-                getString(R.string.status_receiving_progress, percent)
+                getString(R.string.status_receiving_short, percent)
             }
         }
         return when (state.nearbyState) {
-            NearbyState.CONNECTED -> state.peerName?.let { getString(R.string.status_connected_to, it) }
-                ?: getString(R.string.status_connected)
-
-            NearbyState.CONNECTING, NearbyState.PEER_FOUND -> getString(R.string.status_nearby)
-            NearbyState.SEARCHING, NearbyState.IDLE -> getString(R.string.status_searching)
-            NearbyState.ERROR -> getString(R.string.status_offline)
+            NearbyState.CONNECTED -> state.peerName?.take(14) ?: getString(R.string.status_connected)
+            NearbyState.CONNECTING, NearbyState.PEER_FOUND -> getString(R.string.status_peer_short)
+            NearbyState.SEARCHING, NearbyState.IDLE -> getString(R.string.status_searching_short)
+            NearbyState.ERROR -> getString(R.string.status_offline_short)
             NearbyState.PERMISSION_REQUIRED -> getString(R.string.perm_denied)
         }
     }
 
-    private fun hintText(state: MainUiState): String {
-        if (transientMessage != null && SystemClock.uptimeMillis() < transientUntilMs) {
-            return transientMessage.orEmpty()
+    private fun updateHint() {
+        val now = SystemClock.uptimeMillis()
+        if (transientMessage != null && now < transientUntilMs) {
+            binding.hintText.text = transientMessage
+            return
         }
-        return when (state.gestureState) {
-            com.airgesture.transfer.core.GestureState.THROW_VECTOR -> getString(R.string.hint_sending)
-            com.airgesture.transfer.core.GestureState.GRAB_FIST -> getString(R.string.hint_grab)
-            com.airgesture.transfer.core.GestureState.IDLE -> getString(R.string.hint_idle)
+        val noHandFor = if (lastHandSeenAtMs == 0L) Long.MAX_VALUE else now - lastHandSeenAtMs
+        binding.hintText.text = when {
+            currentState.gestureState == GestureState.THROW_VECTOR -> getString(R.string.hint_sending)
+            currentState.gestureState == GestureState.GRAB_FIST -> getString(R.string.hint_grab)
+            noHandFor > NO_HAND_HINT_MS -> getString(R.string.hint_no_hand)
+            else -> getString(R.string.hint_idle)
         }
     }
 
@@ -235,7 +283,7 @@ class MainActivity : AppCompatActivity() {
         transientUntilMs = SystemClock.uptimeMillis() + TRANSIENT_MS
         uiHandler.removeCallbacks(clearTransient)
         uiHandler.postDelayed(clearTransient, TRANSIENT_MS)
-        render(viewModel.uiState.value)
+        updateHint()
     }
 
     // ------------------------------------------------------------ permissions
@@ -277,7 +325,7 @@ class MainActivity : AppCompatActivity() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
             val provider = runCatching { future.get() }.getOrNull() ?: return@addListener
-            cameraProvider = provider
+            providerRef = provider
             bindCamera(provider)
         }, ContextCompat.getMainExecutor(this))
     }
@@ -316,7 +364,6 @@ class MainActivity : AppCompatActivity() {
             provider.bindToLifecycle(this, selector, preview, analysis)
             cameraStarted = true
             binding.handOverlay.mirrorHorizontally = selector == CameraSelector.DEFAULT_FRONT_CAMERA
-            binding.previewView.visibility = View.VISIBLE
         }.onFailure { error ->
             cameraStarted = false
             showTransient(error.message ?: getString(R.string.camera_unavailable))
@@ -334,5 +381,6 @@ class MainActivity : AppCompatActivity() {
         private const val ANALYSIS_WIDTH = 640
         private const val ANALYSIS_HEIGHT = 480
         private const val TRANSIENT_MS = 2800L
+        private const val NO_HAND_HINT_MS = 5000L
     }
 }

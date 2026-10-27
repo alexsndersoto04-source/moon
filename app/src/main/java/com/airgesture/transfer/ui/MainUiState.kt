@@ -19,6 +19,25 @@ data class MainUiState(
     val transfer: TransferProgress? = null
 )
 
+/**
+ * Live numbers for the diagnostics overlay (long-press the title to show).
+ * Updated at most twice per second so it never competes with the camera thread.
+ */
+data class TrackingStats(
+    val fps: Int = 0,
+    val inferenceMs: Long = 0L,
+    val frames: Long = 0L,
+    val handFrames: Long = 0L,
+    val conversionFailures: Long = 0L,
+    val conversionMode: String = "—",
+    val handVisible: Boolean = false,
+    val landmarks: Int = 0,
+    val closure: Float = 0f,
+    val push: Float = 0f,
+    val modelReady: Boolean = false,
+    val modelError: String? = null
+)
+
 /** One-shot notifications for the status line. */
 sealed interface UiEvent {
     data class Sent(val name: String) : UiEvent

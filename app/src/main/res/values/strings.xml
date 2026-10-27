@@ -9,8 +9,8 @@
     <string name="tab_pdfs">PDFs</string>
     <string name="tab_audio">Música</string>
 
-    <string name="hint_idle">Abre la mano para explorar · cierra el puño para elegir · empuja hacia delante para enviar</string>
-    <string name="hint_grab">Archivo seleccionado. Empuja la mano hacia delante para enviar.</string>
+    <string name="hint_idle">Mueve la mano para elegir · empújala hacia la cámara para enviar</string>
+    <string name="hint_grab">Listo: empuja la mano hacia la cámara para enviar.</string>
     <string name="hint_sending">Enviando…</string>
     <string name="hint_receiving">Recibiendo…</string>
 
@@ -51,4 +51,18 @@
     <string name="disabled">oculta</string>
     <string name="loading">Cargando…</string>
     <string name="camera_unavailable">No se encontró una cámara disponible</string>
+
+    <!-- Short statuses for the header pill -->
+    <string name="status_searching_short">Buscando…</string>
+    <string name="status_peer_short">Cerca</string>
+    <string name="status_offline_short">Sin conexión</string>
+    <string name="status_sending_short">Enviando %1$d%%</string>
+    <string name="status_receiving_short">Recibiendo %1$d%%</string>
+
+    <!-- Live hand feedback -->
+    <string name="hand_chip_none">Muestra tu mano</string>
+    <string name="hand_chip_detected">Mano detectada</string>
+    <string name="hint_no_hand">Acerca la mano a la cámara: buena luz y un fondo liso ayudan mucho.</string>
+    <string name="hint_push">Empuja la mano hacia el teléfono para enviar</string>
+    <string name="sent_short">Enviado</string>
 </resources>

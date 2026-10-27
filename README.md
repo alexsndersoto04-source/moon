@@ -41,36 +41,62 @@ Requests y manualmente (`workflow_dispatch`). El job:
 
 ---
 
-## 2. Los gestos
+## 2. Los gestos (naturales, sin poses)
 
-| Gesto | Estado | Acción |
-|---|---|---|
-| Mano abierta | `STATE_IDLE` | Explorar la estantería de archivos |
-| Deslizar la mano en horizontal | `STATE_IDLE` | Pasar al archivo siguiente / anterior |
-| Cierre firme del puño (3 frames) | `STATE_GRAB_FIST` | Selecciona el archivo activo (`onFistClosed()`) |
-| Empujar el puño hacia la cámara | `STATE_THROW_VECTOR` | Envía el archivo al dispositivo cercano |
-| Abrir la mano | `STATE_IDLE` | Suelta la selección |
+**No hay que hacer ninguna pose concreta.** La app no pide puño cerrado, ni dedos
+estirados, ni mantener nada quieto. Basta con mover la mano.
 
-El gesto de lanzamiento combina **tres señales independientes** y exige que al menos dos
-coincidan, por eso no se dispara al inclinar o agitar el teléfono:
+| Lo que haces | Lo que pasa |
+|---|---|
+| Mueves la mano a la cámara | La app la detecta (chip «Mano detectada», esqueleto sutil) |
+| Deslizas la mano a izquierda/derecha | Cambia el archivo activo (umbral bajo, cualquier pose) |
+| **Empujas la mano hacia el teléfono** | Envía el archivo activo al dispositivo cercano |
+| Cierras la mano un momento | Solo feedback: háptico + «Listo» (no es obligatorio) |
+| Mantienes pulsada una tarjeta | Envío inmediato (respaldo por si el gesto no sale) |
 
-1. Crecimiento aparente de la mano (acercarse a la lente = escala creciente).
-2. Profundidad `z` de los *landmarks* de MediaPipe.
-3. Aceleración lineal del dispositivo en el eje de avance (`TYPE_LINEAR_ACCELERATION`, filtrada).
+El empuje se reconoce fusionando **cuatro señales independientes** y usando el *pico*
+de cada una dentro de una ventana corta, así un gesto rápido y natural cuenta igual que
+uno lento:
 
-El puño se detecta comparando la punta de cada dedo con su articulación PIP respecto al
-centro de la palma: es invariante a la escala y no necesita calibración. Hay histéresis
-por frames (nunca decide con un frame ruidoso) y *cooldown* por evento.
+1. Crecimiento aparente de la mano (te acercas a la lente).
+2. Profundidad `z` de los landmarks de MediaPipe.
+3. Velocidad de la palma en cualquier dirección (detecta el *flick*).
+4. Acelerómetro lineal del teléfono en el eje de avance.
 
-Un toque en la tira de archivos o en las pestañas sigue funcionando como alternativa.
+Se necesitan al menos **dos señales de acuerdo**: mover la mano de lado o agitar el
+teléfono por sí solo no dispara un envío. Después de cada lanzamiento el detector se
+desarma y solo se rearma cuando el empuje baja, de modo que un gesto nunca envía dos veces
+(y no hay que «resetear» nada).
 
-### Ajustar la sensibilidad
+La barra fina bajo la cámara es el **medidor de empuje**: se llena mientras el gesto se
+reconoce. Si llega al final y no envía, es que no hay dispositivo conectado todavía.
 
-`app/src/main/java/com/airgesture/transfer/core/Prefs.kt` → `DEFAULT_SENSITIVITY`
-(`0f` = estricto, `1f` = muy fácil). Los umbrales base viven en
-`vision/GestureInterpreter.kt` (constantes al final del archivo).
+### Sensibilidad
 
----
+Por defecto está en `0.62` (eager), pensada para que funcione a la primera.
+Ajusta `DEFAULT_SENSITIVITY` en `vision/GestureInterpreter.kt` (o `Prefs.kt`): `0` = muy
+estricto, `1` = muy fácil. Todos los umbrales están juntos al final de
+`GestureInterpreter.kt`.
+
+### Diagnóstico en pantalla (importante si algo no funciona)
+
+Mantén pulsado el título **AirGesture** y aparece un HUD con números reales:
+
+```
+fps 12 · 78 ms          ← frames de inferencia por segundo y coste de cada una
+mano 340 · RGBA         ← frames con mano detectada y formato de origen del frame
+cierre 0.42 · empuje 0.31
+cuadros 1204 · fallos 0 ← frames analizados y fallos de conversión
+modelo ok · dedos 21    ← modelo MediaPipe cargado y landmarks recibidos
+```
+
+Cómo leerlo:
+
+- `fps 0` y `cuadros` congelado → la cámara no está entregando frames.
+- `fallos` subiendo → la conversión de imagen falla en tu dispositivo (mándame ese número).
+- `mano 0` con `fps > 0` → los frames llegan pero MediaPipe no ve la mano: acerca la
+  mano, mejora la luz, usa un fondo liso y que la mano entre completa en el encuadre.
+- `dedos 21` y `mano > 0` → el tracking funciona; si no envía, mira el medidor de empuje.
 
 ## 3. Arquitectura
 
@@ -154,7 +180,8 @@ ABIs incluidas: `arm64-v8a`, `armeabi-v7a`.
 - La transferencia vive mientras la app está en primer plano: no hay `ForegroundService`,
   así que si el sistema mata el proceso a mitad de envío, se cancela.
 - Los umbrales de gesto están afinados por razones físicas, no con un dataset: pueden
-  necesitar retoque según la iluminación y la mano. Están todos en un solo archivo.
+  necesitar retoque según la iluminación y la mano. Están todos en un solo archivo y se
+  pueden ver en vivo con el HUD de diagnóstico.
 - La variante *release* no está minificada (`minifyEnabled false`) para no arriesgar
   reflexión en MediaPipe / Nearby. La firma es la keystore de depuración del CI: sirve
   para instalar y probar, no para Play Store.

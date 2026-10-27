@@ -16,7 +16,8 @@ import com.airgesture.transfer.util.Formatters
  * thumbnails are loaded asynchronously and cancelled by tag on recycle.
  */
 class FileAdapter(
-    private val onSelect: (MediaEntry) -> Unit
+    private val onSelect: (MediaEntry) -> Unit,
+    private val onSendNow: (MediaEntry) -> Unit
 ) : ListAdapter<MediaEntry, FileAdapter.Holder>(DIFF) {
 
     var selectedKey: String? = null
@@ -55,7 +56,11 @@ class FileAdapter(
             binding.fileName.text = Formatters.shorten(entry.name, 24)
             binding.fileMeta.text = metaFor(entry)
             binding.fileCard.setOnClickListener { onSelect(entry) }
-            binding.fileCard.contentDescription = "${entry.name}, ${metaFor(entry)}"
+            binding.fileCard.setOnLongClickListener {
+                onSendNow(entry)
+                true
+            }
+            binding.fileCard.contentDescription = "${entry.name}, ${metaFor(entry)}. Mantén pulsado para enviar."
 
             ThumbnailLoader.load(context, entry, binding.thumb)
             applySelection(selected)

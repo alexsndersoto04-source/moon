@@ -8,20 +8,30 @@ import kotlin.math.hypot
 import kotlin.math.max
 
 /**
- * Pure-Kotlin gesture state machine. No Android imports, no allocations per
- * frame beyond one small [Reading] and one history sample, so it is safe to run
- * inside the camera analyzer thread.
+ * Pose-agnostic gesture engine.
  *
- * Detection strategy (scale invariant, no calibration):
- *  - A finger is *extended* when its tip is farther from the palm centre than
- *    its PIP joint, and *curled* when it is closer. The normalised delta is
- *    averaged over four fingers with weights that trust the noisier pinky less.
- *  - Fist / open decisions are debounced over consecutive frames (hysteresis)
- *    so a single noisy frame can never select a file.
- *  - The throw combines three independent cues: apparent hand growth
- *    (Z translation shows up as scale), palm depth (MediaPipe z) and the
- *    accelerometer's forward axis. Two cues must agree, which is why the
- *    gesture does not fire while the phone is simply tilted.
+ * Design rule: **no required pose**. The only thing the user has to do is move
+ * the hand toward the phone, however they like — open palm, half fist, fingers
+ * spread. Nothing is "hold this exact shape for N frames".
+ *
+ * What is measured:
+ *  - `closure` 0..1 — how curled the fingers are (scale invariant, no calibration).
+ *    It is only used for feedback and for the soft "grab" state; the throw does
+ *    **not** require it.
+ *  - `push` 0..1 — forward-motion confidence fused from four independent cues:
+ *      a) apparent hand growth   (getting closer to the lens)
+ *      b) MediaPipe depth rate   (z decreasing)
+ *      c) palm speed             (any direction, catches quick flicks)
+ *      d) accelerometer forward  (the phone itself thrusting toward the peer)
+ *    Each cue is measured as the *peak instantaneous rate* inside a short
+ *    window, so a fast flick that returns to rest still counts.
+ *
+ * Re-arming: after a throw the detector disarms itself and only re-arms when the
+ * push confidence falls back below `REARM_LEVEL`. That is what stops a single
+ * gesture from firing twice, without asking the user to perform any "reset pose".
+ *
+ * Everything here is pure Kotlin with no per-frame allocations beyond one small
+ * sample and one reading, so it is safe on the camera thread.
  */
 class GestureInterpreter {
 
@@ -48,25 +58,25 @@ class GestureInterpreter {
     private val history = ArrayDeque<Sample>(HISTORY_CAPACITY)
 
     private var state: GestureState = GestureState.IDLE
-
-    private var fistFrames = 0
-    private var openFrames = 0
-    private var missingFrames = 0
-
-    private var lastFistEmitMs = 0L
-    private var lastThrowMs = 0L
-    private var lastSwipeMs = 0L
     private var throwFlashUntilMs = 0L
 
-    private var smoothedThrust = 0f
-    private var smoothedOpen = 0f
-    private var smoothedFist = 0f
+    private var lastThrowMs = 0L
+    private var lastSwipeMs = 0L
+    private var lastFistEventMs = 0L
 
-    private var sx = 0f
-    private var sy = 0f
-    private var sSize = 0f
+    private var pushArmed = true
+    private var missingFrames = 0
+    private var closed = false
 
-    var sensitivity: Float = 0.55f
+    private var smoothedClosure = 0f
+    private var smoothedPush = 0f
+
+    private var palmX = 0f
+    private var palmY = 0f
+    private var palmSize = 0f
+
+    /** 0 = strict, 1 = eager. Read from the tuning screen / prefs. */
+    var sensitivity: Float = DEFAULT_SENSITIVITY
         set(value) {
             field = value.coerceIn(0f, 1f)
         }
@@ -74,13 +84,12 @@ class GestureInterpreter {
     fun reset() {
         history.clear()
         state = GestureState.IDLE
-        fistFrames = 0
-        openFrames = 0
-        missingFrames = 0
-        smoothedThrust = 0f
-        smoothedFist = 0f
-        smoothedOpen = 0f
         throwFlashUntilMs = 0L
+        pushArmed = true
+        missingFrames = 0
+        closed = false
+        smoothedClosure = 0f
+        smoothedPush = 0f
     }
 
     /**
@@ -99,61 +108,50 @@ class GestureInterpreter {
         missingFrames = 0
 
         val palm = palmCentre(landmarks)
-        val handSize = max(distance(landmarks[WRIST], landmarks[MIDDLE_MCP]), MIN_HAND_SIZE)
+        val size = max(distance(landmarks[WRIST], landmarks[MIDDLE_MCP]), MIN_HAND_SIZE)
+        palmX = palm[0]
+        palmY = palm[1]
+        palmSize = size
 
-        val fist = fistStrength(landmarks, palm)
-        val open = openStrength(landmarks, palm)
+        val closure = closure(landmarks, palm)
 
-        // Exponential smoothing keeps the overlay calm without adding latency
-        // that would be perceptible for the state transitions.
-        smoothedFist = smoothedFist + ALPHA * (fist - smoothedFist)
-        smoothedOpen = smoothedOpen + ALPHA * (open - smoothedOpen)
+        pushSample(nowMs, palm, size, landmarks[MIDDLE_MCP].z())
 
-        pushSample(nowMs, palm, handSize, landmarks[MIDDLE_MCP].z())
-
-        val thrust = if (state == GestureState.GRAB_FIST) {
-            thrustScore(nowMs, forwardAccel)
-        } else {
-            0f
-        }
-        smoothedThrust = smoothedThrust + ALPHA * (thrust - smoothedThrust)
+        val rawPush = pushConfidence(nowMs, forwardAccel)
+        smoothedPush += PUSH_SMOOTHING * (rawPush - smoothedPush)
+        smoothedClosure += CLOSURE_SMOOTHING * (closure - smoothedClosure)
 
         var event = GestureEvent.NONE
+        val strictness = 1.15f - 0.45f * sensitivity
 
-        // ---- Fist -> select ------------------------------------------------
-        if (smoothedFist > FIST_ENTER_THRESHOLD) fistFrames++ else fistFrames = max(fistFrames - 1, 0)
-        if (smoothedOpen > OPEN_ENTER_THRESHOLD) openFrames++ else openFrames = max(openFrames - 1, 0)
-
-        if (state != GestureState.GRAB_FIST && fistFrames >= FIST_ENTER_FRAMES) {
-            state = GestureState.GRAB_FIST
-            lastFistEmitMs = nowMs
+        // ---- Soft grab: pure feedback, never a requirement -------------------
+        if (!closed && smoothedClosure > GRAB_LEVEL && nowMs - lastFistEventMs > 400L) {
+            closed = true
+            lastFistEventMs = nowMs
             event = GestureEvent.FIST_CLOSED
-            openFrames = 0
-        }
-
-        // ---- Open palm -> release -----------------------------------------
-        if (state == GestureState.GRAB_FIST && openFrames >= OPEN_RELEASE_FRAMES) {
-            state = GestureState.IDLE
+        } else if (closed && smoothedClosure < RELEASE_LEVEL) {
+            closed = false
             event = GestureEvent.HAND_OPENED
-            fistFrames = 0
-            throwFlashUntilMs = 0L
         }
 
-        // ---- Throw ---------------------------------------------------------
-        if (state == GestureState.GRAB_FIST &&
+        // ---- Throw: any pose, four fused cues -------------------------------
+        val threshold = THROW_LEVEL * strictness
+        if (!pushArmed && rawPush < REARM_LEVEL) pushArmed = true
+
+        if (pushArmed &&
             nowMs - lastThrowMs > THROW_COOLDOWN_MS &&
-            smoothedThrust >= THROW_THRESHOLD
+            smoothedPush >= threshold
         ) {
+            pushArmed = false
             lastThrowMs = nowMs
             throwFlashUntilMs = nowMs + THROW_FLASH_MS
             event = GestureEvent.THROW
         }
 
-        // ---- Lateral swipe (browsing) --------------------------------------
-        if (state == GestureState.IDLE &&
-            event == GestureEvent.NONE &&
-            nowMs - lastSwipeMs > SWIPE_COOLDOWN_MS &&
-            smoothedOpen > SWIPE_OPEN_THRESHOLD
+        // ---- Lateral browse: low threshold, any pose -----------------------
+        if (event == GestureEvent.NONE &&
+            smoothedPush < SWIPE_SUPPRESS_PUSH &&
+            nowMs - lastSwipeMs > SWIPE_COOLDOWN_MS
         ) {
             val swipe = detectSwipe(nowMs)
             if (swipe != GestureEvent.NONE) {
@@ -162,53 +160,45 @@ class GestureInterpreter {
             }
         }
 
-        val reportedState = when {
+        state = when {
             nowMs < throwFlashUntilMs -> GestureState.THROW_VECTOR
-            state == GestureState.GRAB_FIST -> GestureState.GRAB_FIST
+            smoothedClosure > GRAB_LEVEL -> GestureState.GRAB_FIST
             else -> GestureState.IDLE
         }
 
-        sx = palm[0]
-        sy = palm[1]
-        sSize = handSize
-
         return Reading(
-            state = reportedState,
+            state = state,
             event = event,
             handVisible = true,
-            fistStrength = smoothedFist.coerceIn(0f, 1f),
-            openStrength = smoothedOpen.coerceIn(0f, 1f),
-            thrustStrength = smoothedThrust.coerceIn(0f, 1f),
-            palmX = sx,
-            palmY = sy,
-            handSize = sSize
+            fistStrength = smoothedClosure.coerceIn(0f, 1f),
+            openStrength = (1f - smoothedClosure).coerceIn(0f, 1f),
+            thrustStrength = smoothedPush.coerceIn(0f, 1f),
+            palmX = palmX,
+            palmY = palmY,
+            handSize = palmSize
         )
     }
 
     private fun onHandMissing(nowMs: Long): Reading {
         missingFrames++
         history.clear()
-        smoothedThrust = 0f
-        smoothedFist = 0f
-        smoothedOpen = 0f
-        fistFrames = 0
-        openFrames = 0
+        smoothedPush = 0f
+        smoothedClosure = 0f
+        closed = false
+        pushArmed = true
 
-        var event = GestureEvent.NONE
-        if (missingFrames >= MISSING_FRAMES_RELEASE && state == GestureState.GRAB_FIST) {
-            state = GestureState.IDLE
-            event = GestureEvent.HAND_OPENED
-        }
+        if (missingFrames >= MISSING_FRAMES_RESET) state = GestureState.IDLE
+
         return Reading(
             state = if (nowMs < throwFlashUntilMs) GestureState.THROW_VECTOR else state,
-            event = event,
+            event = GestureEvent.NONE,
             handVisible = false,
             fistStrength = 0f,
             openStrength = 0f,
             thrustStrength = 0f,
-            palmX = sx,
-            palmY = sy,
-            handSize = sSize
+            palmX = palmX,
+            palmY = palmY,
+            handSize = palmSize
         )
     }
 
@@ -225,7 +215,12 @@ class GestureInterpreter {
         return floatArrayOf(x / count, y / count)
     }
 
-    private fun fistStrength(landmarks: List<NormalizedLandmark>, palm: FloatArray): Float {
+    /**
+     * Average finger curl, 0 = fully extended, 1 = fully closed.
+     * A finger is curled when its tip is closer to the palm centre than its PIP
+     * joint; the ratio is normalised so hand size and distance do not matter.
+     */
+    private fun closure(landmarks: List<NormalizedLandmark>, palm: FloatArray): Float {
         var sum = 0f
         var weight = 0f
         for (i in FINGERS.indices) {
@@ -234,24 +229,7 @@ class GestureInterpreter {
             val pipDistance = distance2D(landmarks[finger.pip], palm)
             if (pipDistance < MIN_HAND_SIZE) continue
             val ratio = (tipDistance - pipDistance) / pipDistance
-            val curl = clamp(-ratio / FIST_RATIO_SCALE)
-            sum += curl * finger.weight
-            weight += finger.weight
-        }
-        return if (weight <= 0f) 0f else sum / weight
-    }
-
-    private fun openStrength(landmarks: List<NormalizedLandmark>, palm: FloatArray): Float {
-        var sum = 0f
-        var weight = 0f
-        for (i in FINGERS.indices) {
-            val finger = FINGERS[i]
-            val tipDistance = distance2D(landmarks[finger.tip], palm)
-            val pipDistance = distance2D(landmarks[finger.pip], palm)
-            if (pipDistance < MIN_HAND_SIZE) continue
-            val ratio = (tipDistance - pipDistance) / pipDistance
-            val extension = clamp(ratio / OPEN_RATIO_SCALE)
-            sum += extension * finger.weight
+            sum += clamp(-ratio / CURL_SCALE) * finger.weight
             weight += finger.weight
         }
         return if (weight <= 0f) 0f else sum / weight
@@ -266,43 +244,61 @@ class GestureInterpreter {
     }
 
     /**
-     * 0..1 forward-thrust confidence. Requires the fist to *grow* (moving toward
-     * the lens) or the palm depth to shrink, and rewards accelerometer agreement.
+     * Forward confidence in 0..1. Uses peak rates inside the window instead of
+     * endpoint deltas, which makes short natural flicks count and long slow
+     * drifts not count.
      */
-    private fun thrustScore(nowMs: Long, forwardAccel: Float): Float {
-        if (history.size < 4) return 0f
-        val newest = history.last()
-        val oldest = history.first()
-        val dtSeconds = (newest.timeMs - oldest.timeMs) / 1000f
-        if (dtSeconds < MIN_WINDOW_SECONDS) return 0f
+    private fun pushConfidence(nowMs: Long, forwardAccel: Float): Float {
+        if (history.size < 3) return 0f
 
-        val speed = hypot(newest.x - oldest.x, newest.y - oldest.y) / dtSeconds
-        val growth = (newest.size - oldest.size) / max(oldest.size, MIN_HAND_SIZE) / dtSeconds
-        val depthRate = (oldest.depth - newest.depth) / dtSeconds // toward camera = positive
+        var peakGrowth = 0f
+        var peakDepth = 0f
+        var peakSpeed = 0f
 
-        // Sensitivity 0 -> stricter, 1 -> eager.
-        val strictness = 1.15f - 0.45f * sensitivity
+        var previous = history.first()
+        for (i in 1 until history.size) {
+            val current = history.elementAt(i)
+            val dt = (current.timeMs - previous.timeMs) / 1000f
+            if (dt < MIN_DT_SECONDS) {
+                previous = current
+                continue
+            }
+            val baseSize = max(previous.size, MIN_HAND_SIZE)
+            val growth = (current.size - previous.size) / baseSize / dt
+            val depthRate = (previous.depth - current.depth) / dt
+            val speed = hypot(current.x - previous.x, current.y - previous.y) / dt
 
-        val cGrowth = clamp(growth / (GROWTH_THRESHOLD * strictness))
-        val cSpeed = clamp(speed / (SPEED_THRESHOLD * strictness))
-        val cAccel = clamp(forwardAccel / (ACCEL_THRESHOLD * strictness))
-        val cDepth = clamp(depthRate / (DEPTH_THRESHOLD * strictness))
+            if (growth > peakGrowth) peakGrowth = growth
+            if (depthRate > peakDepth) peakDepth = depthRate
+            if (speed > peakSpeed) peakSpeed = speed
+            previous = current
+        }
 
-        val score = 0.40f * cGrowth + 0.22f * cSpeed + 0.24f * cAccel + 0.14f * cDepth
+        val windowSeconds = (nowMs - history.first().timeMs) / 1000f
+        // Ignore windows that are too short to be meaningful at the very start.
+        val windowFactor = clamp(windowSeconds / MIN_WINDOW_SECONDS)
 
-        // At least two cues must be meaningful: a phone waving in the air alone
-        // (accel only) or a hand approaching alone must not trigger a send.
-        val meaningful = (if (cGrowth > 0.35f) 1 else 0) +
-            (if (cSpeed > 0.35f) 1 else 0) +
-            (if (cAccel > 0.35f) 1 else 0) +
-            (if (cDepth > 0.35f) 1 else 0)
-        if (meaningful < 2) return score * 0.5f
+        val cGrowth = clamp(peakGrowth / GROWTH_THRESHOLD)
+        val cDepth = clamp(peakDepth / DEPTH_THRESHOLD)
+        val cSpeed = clamp(peakSpeed / SPEED_THRESHOLD)
+        val cAccel = clamp(forwardAccel / ACCEL_THRESHOLD)
 
-        return score
+        val fusion = 0.30f * cGrowth + 0.20f * cDepth + 0.18f * cSpeed + 0.32f * cAccel
+
+        // A single cue on its own (only the phone moving, only the hand moving
+        // sideways) is downgraded instead of firing.
+        val cues = (if (cGrowth > 0.30f) 1 else 0) +
+            (if (cDepth > 0.30f) 1 else 0) +
+            (if (cSpeed > 0.30f) 1 else 0) +
+            (if (cAccel > 0.35f) 1 else 0)
+        val shaped = if (cues >= 2) fusion else fusion * 0.55f
+
+        return (shaped * windowFactor).coerceIn(0f, 1f)
     }
 
+    /** Small lateral movement of the palm cycles through the shelf. */
     private fun detectSwipe(nowMs: Long): GestureEvent {
-        if (history.size < 4) return GestureEvent.NONE
+        if (history.size < 3) return GestureEvent.NONE
         val newest = history.last()
         val oldest = history.first()
         val dtSeconds = (newest.timeMs - oldest.timeMs) / 1000f
@@ -330,6 +326,7 @@ class GestureInterpreter {
 
     companion object {
         const val LANDMARK_COUNT = 21
+        const val DEFAULT_SENSITIVITY = 0.62f
 
         private const val WRIST = 0
         private const val MIDDLE_MCP = 9
@@ -342,35 +339,39 @@ class GestureInterpreter {
             Finger(pip = 18, tip = 20, weight = 0.8f)  // pinky
         )
 
-        private const val ALPHA = 0.55f
         private const val MIN_HAND_SIZE = 0.02f
+        private const val CURL_SCALE = 0.26f
 
-        private const val FIST_RATIO_SCALE = 0.28f
-        private const val OPEN_RATIO_SCALE = 0.33f
+        private const val CLOSURE_SMOOTHING = 0.5f
+        private const val PUSH_SMOOTHING = 0.45f
 
-        private const val FIST_ENTER_THRESHOLD = 0.62f
-        private const val OPEN_ENTER_THRESHOLD = 0.58f
-        private const val FIST_ENTER_FRAMES = 3
-        private const val OPEN_RELEASE_FRAMES = 2
-        private const val MISSING_FRAMES_RELEASE = 6
+        private const val GRAB_LEVEL = 0.55f
+        private const val RELEASE_LEVEL = 0.35f
 
-        private const val HISTORY_MS = 380L
-        private const val HISTORY_CAPACITY = 48
-        private const val MIN_WINDOW_SECONDS = 0.10f
-        private const val MIN_SWIPE_SECONDS = 0.14f
+        private const val HISTORY_MS = 420L
+        private const val HISTORY_CAPACITY = 60
+        private const val MIN_DT_SECONDS = 0.012f
+        private const val MIN_WINDOW_SECONDS = 0.09f
+        private const val MIN_SWIPE_SECONDS = 0.12f
 
-        private const val GROWTH_THRESHOLD = 0.55f
-        private const val SPEED_THRESHOLD = 1.8f
-        private const val ACCEL_THRESHOLD = 2.4f
-        private const val DEPTH_THRESHOLD = 1.9f
-        private const val THROW_THRESHOLD = 0.62f
-        private const val THROW_COOLDOWN_MS = 1400L
-        private const val THROW_FLASH_MS = 650L
+        // Peak-rate thresholds for the four fusion cues.
+        private const val GROWTH_THRESHOLD = 0.80f
+        private const val DEPTH_THRESHOLD = 2.20f
+        private const val SPEED_THRESHOLD = 2.40f
+        private const val ACCEL_THRESHOLD = 2.60f
 
-        private const val SWIPE_DISTANCE = 0.16f
-        private const val SWIPE_ASPECT = 1.7f
-        private const val SWIPE_MIN_SPEED = 0.45f
-        private const val SWIPE_OPEN_THRESHOLD = 0.45f
-        private const val SWIPE_COOLDOWN_MS = 800L
+        private const val THROW_LEVEL = 0.50f
+        private const val REARM_LEVEL = 0.22f
+        private const val THROW_COOLDOWN_MS = 900L
+        private const val THROW_FLASH_MS = 700L
+
+        // Deliberately sensitive: browsing should feel effortless.
+        private const val SWIPE_DISTANCE = 0.10f
+        private const val SWIPE_ASPECT = 1.15f
+        private const val SWIPE_MIN_SPEED = 0.30f
+        private const val SWIPE_SUPPRESS_PUSH = 0.35f
+        private const val SWIPE_COOLDOWN_MS = 550L
+
+        private const val MISSING_FRAMES_RESET = 8
     }
 }

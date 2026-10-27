@@ -71,6 +71,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     )
     val frames = _frames.asSharedFlow()
 
+    private val _stats = MutableStateFlow(TrackingStats())
+    val stats = _stats.asStateFlow()
+
+    private var lastStatsAtMs = 0L
+    private var lastLandmarkCount = 0
+
     private val _events = MutableSharedFlow<UiEvent>(
         extraBufferCapacity = 8,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -84,8 +90,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     private var initialLoadDone = false
     private var lastGestureState = GestureState.IDLE
     private var lastHandVisible = false
-
-    val skeletonEnabled: Boolean get() = prefs.skeletonOverlay
 
     // ------------------------------------------------------------- lifecycle
 
@@ -112,12 +116,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         if (!sessionActive) return
         sessionActive = false
         thrustSensor.stop()
-    }
-
-    fun toggleSkeleton(): Boolean {
-        val next = !prefs.skeletonOverlay
-        prefs.skeletonOverlay = next
-        return next
     }
 
     override fun onCleared() {
@@ -184,6 +182,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             )
         )
 
+        lastLandmarkCount = landmarks?.size ?: 0
+        publishStats(reading)
+
         if (reading.state != lastGestureState || reading.handVisible != lastHandVisible) {
             lastGestureState = reading.state
             lastHandVisible = reading.handVisible
@@ -223,7 +224,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         haptics.tick()
     }
 
+    private fun publishStats(reading: com.airgesture.transfer.vision.GestureInterpreter.Reading) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastStatsAtMs < STATS_INTERVAL_MS) return
+        lastStatsAtMs = now
+        _stats.value = TrackingStats(
+            fps = analyzer.fps,
+            inferenceMs = analyzer.inferenceMs,
+            frames = analyzer.frames,
+            handFrames = analyzer.handFrames,
+            conversionFailures = analyzer.conversionFailures,
+            conversionMode = analyzer.conversionMode,
+            handVisible = reading.handVisible,
+            landmarks = lastLandmarkCount,
+            closure = reading.fistStrength,
+            push = reading.thrustStrength,
+            modelReady = analyzer.modelReady,
+            modelError = analyzer.modelError
+        )
+    }
+
     // -------------------------------------------------------------- transfer
+
+    /** Fail-safe used by the long-press on a file card. */
+    fun sendItem(entry: MediaEntry) {
+        _uiState.update { it.copy(selectedUri = entry.key) }
+        if (nearby.isConnected) {
+            dispatch(entry)
+        } else {
+            pendingSend = entry
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.waiting_peer)))
+        }
+    }
 
     private fun sendSelected() {
         if (_uiState.value.transfer != null) return
@@ -292,5 +324,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         pendingSend = null
         _uiState.update { it.copy(transfer = null) }
         _events.tryEmit(UiEvent.Message(reason))
+    }
+
+    companion object {
+        private const val STATS_INTERVAL_MS = 500L
     }
 }
