@@ -6,15 +6,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Nearby Connections: BLE advertising, scanning and Wi-Fi Direct transport -->
+    <!-- NOTE: neverForLocation is intentionally NOT declared. Nearby Connections
+         discovers peers through BLE advertisements, and that flag makes Android
+         filter BLE beacons out of scan results, which silently breaks discovery. -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation"
         tools:targetApi="tiramisu" />
 
     <!-- Legacy BLE scanning (Android 10 / 11) -->
@@ -24,12 +25,11 @@
     <uses-permission
         android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
-    <uses-permission
-        android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
-    <uses-permission
-        android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="30" />
+    <!-- Required by Nearby Connections for BLE discovery on every Android
+         version: without it (or with the location system toggle off) scanning
+         returns nothing, with no error at all. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!-- Media access -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />

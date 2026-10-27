@@ -32,10 +32,13 @@ object Permissions {
             permissions += Manifest.permission.BLUETOOTH_SCAN
             permissions += Manifest.permission.BLUETOOTH_ADVERTISE
             permissions += Manifest.permission.BLUETOOTH_CONNECT
-        } else {
-            permissions += Manifest.permission.ACCESS_FINE_LOCATION
-            permissions += Manifest.permission.ACCESS_COARSE_LOCATION
         }
+
+        // Fine location is required on EVERY version by Nearby Connections:
+        // BLE discovery silently returns nothing without it (or with the system
+        // location toggle off). BLUETOOTH_SCAN neverForLocation is deliberately
+        // not used, see AndroidManifest.
+        permissions += Manifest.permission.ACCESS_FINE_LOCATION
 
         // Only ask for what the platform actually declares.
         return permissions.filter { name ->
@@ -65,6 +68,22 @@ object Permissions {
             return false
         }
         return true
+    }
+
+    /**
+     * The permission Nearby Connections needs to discover peers. Returns the
+     * first missing one, or null when everything is granted.
+     */
+    fun missingForDiscovery(context: Context): String? {
+        val candidates = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        return candidates.firstOrNull { !granted(context, it) }
     }
 
     fun mediaGranted(context: Context): Boolean {

@@ -112,6 +112,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         }
     }
 
+    /**
+     * Called when the camera screen goes away. Only the accelerometer is stopped:
+     * the Nearby session stays alive so an in-flight transfer can finish and so
+     * the peer link survives a trip to the Android settings (e.g. to switch
+     * location on). It is torn down in onCleared.
+     */
     fun stopSession() {
         if (!sessionActive) return
         sessionActive = false

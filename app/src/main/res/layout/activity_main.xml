@@ -242,6 +242,49 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
+        <!-- Blocking radio/permission problem, with a one-tap fix. -->
+        <LinearLayout
+            android:id="@+id/connectionBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/bg_banner"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="10dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/bannerText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:lineSpacingExtra="2dp"
+                android:textColor="@color/ink_soft"
+                android:textSize="11.5sp"
+                tools:text="Activa la ubicación del teléfono: Android la exige para buscar por Bluetooth." />
+
+            <TextView
+                android:id="@+id/bannerAction"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/bg_pill"
+                android:backgroundTint="@color/ink"
+                android:paddingStart="14dp"
+                android:paddingTop="7dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="7dp"
+                android:text="@string/banner_fix"
+                android:textColor="@color/white"
+                android:textSize="11sp" />
+        </LinearLayout>
+
         <!-- Transport log: always visible so a failed send is never silent. -->
         <TextView
             android:id="@+id/logText"

@@ -101,4 +101,14 @@ Dispositivo: %2$s</string>
     <string name="crash_copy">Copiar</string>
     <string name="crash_close">Cerrar</string>
     <string name="crash_copied">Informe copiado</string>
+
+    <!-- Connection preflight -->
+    <string name="banner_fix">Arreglar</string>
+    <string name="banner_bluetooth_off">El Bluetooth está apagado. Nearby lo necesita para encontrar el otro teléfono.</string>
+    <string name="banner_location_off">Activa la ubicación del teléfono: Android la exige para buscar por Bluetooth, aunque la app no use tu posición.</string>
+    <string name="banner_permission">Falta el permiso de dispositivos cercanos y ubicación para poder buscar el otro teléfono.</string>
+    <string name="banner_action_bluetooth">Activar</string>
+    <string name="banner_action_location">Abrir</string>
+    <string name="banner_action_permission">Permitir</string>
+    <string name="no_peer_yet">Aún no hay conexión: el otro teléfono debe tener la app abierta</string>
 </resources>

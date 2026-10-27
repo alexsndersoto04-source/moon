@@ -1,6 +1,7 @@
 package com.airgesture.transfer.ui
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -35,6 +36,7 @@ import com.airgesture.transfer.media.MediaEntry
 import com.airgesture.transfer.media.MediaKind
 import com.airgesture.transfer.transfer.NearbyState
 import com.airgesture.transfer.util.Haptics
+import com.airgesture.transfer.util.Radios
 import com.airgesture.transfer.util.Permissions
 import com.airgesture.transfer.vision.OverlayFrame
 import kotlinx.coroutines.launch
@@ -71,6 +73,8 @@ class MainActivity : AppCompatActivity() {
     private var transientMessage: String? = null
     private var transientUntilMs = 0L
 
+    private enum class Blocker { NONE, PERMISSION, BLUETOOTH, LOCATION }
+    private var blocker: Blocker = Blocker.NONE
     private var lastHandSeenAtMs = 0L
     private var handChipState: Boolean? = null
     private var currentState = MainUiState()
@@ -79,6 +83,12 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         applyPermissions()
+    }
+
+    private val enableBluetoothLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        refreshBlocker()
     }
 
     private val clearTransient = Runnable {
@@ -108,6 +118,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.permButton.setOnClickListener { requestPermissions() }
         binding.permSettings.setOnClickListener { openAppSettings() }
+
+        binding.bannerAction.setOnClickListener { fixBlocker() }
 
         binding.sendButton.setOnClickListener {
             haptics.tick()
@@ -179,6 +191,8 @@ class MainActivity : AppCompatActivity() {
         diagnosticsVisible = prefs.diagnosticsVisible
         binding.diagnostics.isVisible = diagnosticsVisible
         viewModel.applyPreferences()
+
+        refreshBlocker()
 
         if (prefs.keepScreenOn) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -271,6 +285,7 @@ class MainActivity : AppCompatActivity() {
         // The hint depends on how long ago the hand was last seen, so it is
         // refreshed from the stats tick even when the HUD is hidden.
         updateHint()
+        refreshBlocker()
         if (!diagnosticsVisible) return
         binding.diagnostics.text = buildString {
             append(String.format(Locale.US, "fps %d · %d ms\n", stats.fps, stats.inferenceMs))
@@ -355,6 +370,62 @@ class MainActivity : AppCompatActivity() {
             currentState.gestureState == GestureState.GRAB_FIST -> getString(R.string.hint_grab)
             noHandFor > NO_HAND_HINT_MS -> getString(R.string.hint_no_hand)
             else -> getString(R.string.hint_idle)
+        }
+    }
+
+    /**
+     * Detects the conditions that make Nearby discovery fail *silently* and
+     * surfaces them with a button that fixes them.
+     */
+    private fun refreshBlocker() {
+        val neededPermission = Permissions.missingForDiscovery(this)
+        val next = when {
+            neededPermission != null -> Blocker.PERMISSION
+            !Radios.bluetoothEnabled(this) -> Blocker.BLUETOOTH
+            !Radios.locationEnabled(this) -> Blocker.LOCATION
+            else -> Blocker.NONE
+        }
+        if (next == blocker) return
+        blocker = next
+
+        val visible = next != Blocker.NONE
+        binding.connectionBanner.isVisible = visible
+        if (!visible) return
+
+        binding.bannerText.setText(
+            when (next) {
+                Blocker.PERMISSION -> R.string.banner_permission
+                Blocker.BLUETOOTH -> R.string.banner_bluetooth_off
+                Blocker.LOCATION -> R.string.banner_location_off
+                Blocker.NONE -> R.string.status_searching_short
+            }
+        )
+        binding.bannerAction.setText(
+            when (next) {
+                Blocker.PERMISSION -> R.string.banner_action_permission
+                Blocker.BLUETOOTH -> R.string.banner_action_bluetooth
+                else -> R.string.banner_action_location
+            }
+        )
+    }
+
+    private fun fixBlocker() {
+        haptics.tick()
+        when (blocker) {
+            Blocker.PERMISSION -> requestPermissions()
+            Blocker.BLUETOOTH -> {
+                val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                runCatching { enableBluetoothLauncher.launch(intent) }
+                    .onFailure {
+                        runCatching {
+                            startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))
+                        }
+                    }
+            }
+            Blocker.LOCATION -> runCatching {
+                startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            }
+            Blocker.NONE -> Unit
         }
     }
 

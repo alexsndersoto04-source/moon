@@ -17,6 +17,7 @@ import com.google.android.gms.nearby.connection.ConnectionInfo
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
 import com.google.android.gms.nearby.connection.ConnectionResolution
 import com.google.android.gms.nearby.connection.ConnectionsClient
+import com.google.android.gms.nearby.connection.ConnectionsStatusCodes
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo
 import com.google.android.gms.nearby.connection.DiscoveryOptions
 import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback
@@ -77,7 +78,9 @@ class NearbyTransferManager(
         Thread(runnable, "airgesture-transfer").apply { priority = Thread.NORM_PRIORITY }
     }
     private val connections: ConnectionsClient = Nearby.getConnectionsClient(appContext)
-    private val serviceId: String = SERVICE_ID
+    // Advertise and discover on both service ids so a device running an older
+    // build can still pair with this one instead of silently never matching.
+    private val serviceIds: List<String> = listOf(SERVICE_ID_V2, SERVICE_ID_V1)
     private val myName: String = buildDeviceName()
 
     private var running = false
@@ -171,20 +174,32 @@ class NearbyTransferManager(
 
     private fun startAdvertising() {
         val options = AdvertisingOptions.Builder().setStrategy(STRATEGY).build()
-        connections.startAdvertising(myName, serviceId, lifecycleCallback, options)
-            .addOnFailureListener { error ->
-                Log.w(TAG, "startAdvertising failed", error)
-                log("Aviso: no se pudo anunciar (${error.message})")
-            }
+        serviceIds.forEach { id ->
+            connections.startAdvertising(myName, id, lifecycleCallback, options)
+                .addOnSuccessListener {
+                    log("Anunciando como $myName")
+                }
+                .addOnFailureListener { error ->
+                    Log.w(TAG, "startAdvertising($id) failed", error)
+                    val message = error.message ?: "error ${'$'}{error.javaClass.simpleName}"
+                    log("Anuncio: $message")
+                }
+        }
     }
 
     private fun startDiscovery() {
         val options = DiscoveryOptions.Builder().setStrategy(STRATEGY).build()
-        connections.startDiscovery(serviceId, discoveryCallback, options)
-            .addOnFailureListener { error ->
-                Log.w(TAG, "startDiscovery failed", error)
-                log("Aviso: no se pudo buscar (${error.message})")
-            }
+        serviceIds.forEach { id ->
+            connections.startDiscovery(id, discoveryCallback, options)
+                .addOnSuccessListener {
+                    log("Buscando dispositivos…")
+                }
+                .addOnFailureListener { error ->
+                    Log.w(TAG, "startDiscovery($id) failed", error)
+                    val message = error.message ?: "error"
+                    log("Búsqueda: $message")
+                }
+        }
     }
 
     private val discoveryCallback = object : EndpointDiscoveryCallback() {
@@ -242,7 +257,9 @@ class NearbyTransferManager(
         override fun onConnectionResult(endpointId: String, resolution: ConnectionResolution) {
             val status = resolution.status
             // ALREADY_CONNECTED is a success in disguise: the peer won the race.
-            if (status.isSuccess || status.statusCode == STATUS_ALREADY_CONNECTED) {
+            if (status.isSuccess ||
+                status.statusCode == ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT
+            ) {
                 connectedEndpointId = endpointId
                 connectingEndpointId = null
                 connectedName = announcedName?.takeIf { it.isNotBlank() }
@@ -256,7 +273,7 @@ class NearbyTransferManager(
                 log("Conectado a $connectedName")
             } else {
                 Log.w(TAG, "connection rejected: ${status.statusCode} ${status.statusMessage}")
-                log("Conexión rechazada (${status.statusCode})")
+                log("Conexión rechazada: ${statusText(status.statusCode)}")
                 if (connectingEndpointId == endpointId) connectingEndpointId = null
                 if (connectedEndpointId == null) {
                     emitState(NearbyState.SEARCHING)
@@ -664,6 +681,20 @@ class NearbyTransferManager(
         }
     }
 
+    /** Human readable reason for the most common Nearby failures. */
+    private fun statusText(code: Int): String = when (code) {
+        ConnectionsStatusCodes.STATUS_ALREADY_ADVERTISING -> "ya estaba anunciando"
+        ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT -> "ya conectado"
+        ConnectionsStatusCodes.STATUS_NOT_CONNECTED_TO_ENDPOINT -> "el otro teléfono no está conectado"
+        ConnectionsStatusCodes.STATUS_OUT_OF_ORDER_API_CALL -> "llamada fuera de orden"
+        ConnectionsStatusCodes.MISSING_PERMISSION_ACCESS_FINE_LOCATION -> "falta permiso de ubicación"
+        ConnectionsStatusCodes.MISSING_PERMISSION_BLUETOOTH_SCAN -> "falta permiso de escaneo"
+        ConnectionsStatusCodes.MISSING_PERMISSION_BLUETOOTH_ADVERTISE -> "falta permiso para anunciarse"
+        ConnectionsStatusCodes.MISSING_PERMISSION_BLUETOOTH_CONNECT -> "falta permiso de conexión"
+        ConnectionsStatusCodes.MISSING_PERMISSION_NEARBY_WIFI_DEVICES -> "falta permiso de dispositivos cercanos"
+        else -> "código $code"
+    }
+
     private fun buildDeviceName(): String {
         val model = Build.MODEL?.trim().orEmpty().ifBlank { "Android" }
         val short = if (model.length > 14) model.take(14) else model
@@ -694,7 +725,8 @@ class NearbyTransferManager(
 
     companion object {
         private const val TAG = "NearbyTransfer"
-        private const val SERVICE_ID = "com.airgesture.transfer.P2P.v2"
+        private const val SERVICE_ID_V2 = "com.airgesture.transfer.P2P.v2"
+        private const val SERVICE_ID_V1 = "com.airgesture.transfer.P2P"
         private const val KEY_NAME = "n"
         private const val KEY_MIME = "m"
         private const val KEY_SIZE = "s"
@@ -706,7 +738,6 @@ class NearbyTransferManager(
         private const val MAX_NAME_LENGTH = 120
         private const val WATCHDOG_MS = 6000L
         private const val FALLBACK_DIAL_MS = 2500L
-        private const val STATUS_ALREADY_CONNECTED = 8003
         private val STRATEGY: Strategy = Strategy.P2P_CLUSTER
     }
 }
