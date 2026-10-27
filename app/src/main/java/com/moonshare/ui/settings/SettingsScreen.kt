@@ -112,11 +112,6 @@ fun SettingsScreen(vm: MoonViewModel, onBack: () -> Unit, onHistory: () -> Unit)
                 "Evita que la pantalla se apague durante un archivo grande.",
                 control = { MoonSwitch(s.keepScreenOn) { vm.setKeepScreenOn(it) } },
             )
-            SettingRow(
-                "Preferir Wi-Fi de 5 GHz",
-                "Más velocidad cuando los dos teléfonos lo soportan.",
-                control = { MoonSwitch(s.prefer5GHz) { vm.setPrefer5GHz(it) } },
-            )
         }
 
         Spacer(Modifier.height(18.dp))

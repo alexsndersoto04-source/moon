@@ -70,8 +70,35 @@ class WifiDirectManager(private val context: Context) {
     /** Avisos de radio para la UI, sin acoplar este archivo al ViewModel. */
     val events: Flow<String> = _events.asSharedFlow()
 
+    @Volatile
+    var lastError: String? = null
+        private set
+
     val isSupported: Boolean
         get() = appContext.packageManager.hasSystemFeature("android.hardware.wifi.direct")
+
+    private fun reportError(message: String) {
+        lastError = message
+        _events.tryEmit(message)
+    }
+
+    /** Causa concreta por la que este teléfono no puede usar Wi-Fi Direct ahora. */
+    fun preflightError(): String? = when {
+        !isSupported -> "Este teléfono no trae Wi-Fi Direct."
+        !wifiEnabled() -> "El Wi-Fi está apagado. Encendelo y volvé a intentar."
+        !hasNearbyPermission() ->
+            if (Build.VERSION.SDK_INT >= 33) {
+                "Falta el permiso de Dispositivos cercanos para Wi-Fi Direct."
+            } else {
+                "Falta el permiso de Ubicación para Wi-Fi Direct. Android 10 a 12 lo exige aunque MoonShare no te ubique."
+            }
+        else -> null
+    }
+
+    private fun wifiEnabled(): Boolean = runCatching {
+        (appContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)
+            ?.isWifiEnabled == true
+    }.getOrDefault(false)
 
     // ---------------------------------------------------------------- lifecycle
     /** @return true si el canal quedó usable. */
@@ -80,13 +107,13 @@ class WifiDirectManager(private val context: Context) {
         if (!isSupported) {
             // No es un error del usuario: el hardware no lo trae. Se avisa y la app
             // sigue sirviendo para recibir por red local si el SO lo permite.
-            _events.tryEmit("Este teléfono no trae Wi-Fi Direct")
+            reportError("Este teléfono no trae Wi-Fi Direct")
             return false
         }
         val mgr = appContext.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         if (mgr == null) {
             MoonLog.w(tag, "WIFI_P2P_SERVICE no disponible en este equipo")
-            _events.tryEmit("El sistema no expone Wi-Fi Direct en este teléfono")
+            reportError("El sistema no expone Wi-Fi Direct en este teléfono")
             return false
         }
         // Precondición que en Android NADIE te avisa: sin el Wi-Fi encendido,
@@ -94,14 +121,13 @@ class WifiDirectManager(private val context: Context) {
         val wifi = appContext.applicationContext
             .getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
         if (wifi != null && !wifi.isWifiEnabled) {
-            _events.tryEmit("Encendé el Wi-Fi: sin la radio no hay Wi-Fi Direct posible")
+            reportError("El Wi-Fi está apagado. Encendelo y volvé a intentar.")
             return false
         }
         val ch = acquireChannel(mgr)
         if (ch == null) {
-            _events.tryEmit(
-                "El sistema no registró a MoonShare en Wi-Fi Direct. " +
-                    "Suele ser el permiso de ubicación sin conceder (Android 10 a 12 lo exige).",
+            reportError(
+                "Android no abrió el canal de Wi-Fi Direct. Revisá el permiso de Dispositivos cercanos o Ubicación.",
             )
             return false
         }
@@ -264,14 +290,14 @@ class WifiDirectManager(private val context: Context) {
         // que estar encendidos o discoverPeers() responde onSuccess con lista vacia.
         // Es la causa #1 de "no encuentra a nadie" en estos ROMs y el sistema no avisa.
         if (!locationServicesOn()) {
-            _events.tryEmit("Activá la ubicación (el interruptor del sistema): Android 10 a 12 lo exige para ver otros teléfonos")
+            reportError("Activá la Ubicación del sistema: Android 10 a 12 la exige para descubrir teléfonos por Wi-Fi Direct.")
             return
         }
         // Android 10..12 no devuelve pares si falta ACCESS_FINE_LOCATION, y lo hace en
         // silencio: discoverPeers() tiene onSuccess y la lista llega vacia. Se avisa
         // explicitamente porque si no, el usuario cree que no hay nadie cerca.
         if (!hasNearbyPermission()) {
-            _events.tryEmit("Falta el permiso de ubicación para ver otros teléfonos (Android 10 a 12 lo exige)")
+            reportError("Falta el permiso de Ubicación para ver otros teléfonos. Android 10 a 12 lo exige para Wi-Fi Direct.")
             return
         }
         _peers.value = emptyList()
@@ -316,48 +342,121 @@ class WifiDirectManager(private val context: Context) {
     }
 
     /** Levanta el grupo P2P (este teléfono pasa a ser el GO y escucha). */
-    fun startGroup(prefer5GHz: Boolean, onReady: (WifiP2pGroup?) -> Unit) {
+    fun startGroup(
+        @Suppress("UNUSED_PARAMETER") prefer5GHz: Boolean,
+        onReady: (WifiP2pGroup?, String?) -> Unit,
+    ) {
+        preflightError()?.let { error ->
+            reportError(error)
+            onReady(null, error)
+            return
+        }
         val pair = connectionListener()
         if (pair == null) {
-            onReady(null)
+            val error = "Android no abrió el canal de Wi-Fi Direct."
+            reportError(error)
+            onReady(null, error)
             return
         }
         val (m, c) = pair
         _group.value?.let { existing ->
-            onReady(existing)
+            onReady(existing, null)
             return
         }
-        val config = WifiP2pConfig().apply {
-            // Intent alto: este teléfono gana la elección de Group Owner.
-            groupOwnerIntent = 15
-            wps.setup = WpsInfo.PBC
-            if (prefer5GHz) applyBandPreference(this)
-        }
-        try {
-            m.createGroup(c, config, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    MoonLog.i(tag, "grupo creado (GO)")
-                    m.requestGroupInfo(c, object : WifiP2pManager.GroupInfoListener {
-                        override fun onGroupInfoAvailable(group: WifiP2pGroup?) {
-                            _group.value = group
-                            // No hace falta abrir una ventana WPS explícita: con un
-                            // grupo ya creado y el join del otro lado usando
-                            // WPS_PBC, la negociación arranca sola en el GO.
-                            onReady(group)
-                        }
-                    })
-                }
 
-                override fun onFailure(reason: Int) {
-                    MoonLog.w(tag, "createGroup fallo reason=$reason")
-                    _events.tryEmit(describeReason(reason))
-                    onReady(null)
+        val finished = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun finish(group: WifiP2pGroup?, error: String?) {
+            if (finished.compareAndSet(false, true)) onReady(group, error)
+        }
+
+        // Si Android dejó un grupo formado de un intento/proceso anterior, se reutiliza.
+        // Antes se llamaba createGroup() igual y muchos equipos responden BUSY/ERROR.
+        try {
+            m.requestGroupInfo(c, object : WifiP2pManager.GroupInfoListener {
+                override fun onGroupInfoAvailable(group: WifiP2pGroup?) {
+                    if (group != null) {
+                        _group.value = group
+                        MoonLog.i(tag, "se reutiliza el grupo Wi-Fi Direct ya formado")
+                        finish(group, null)
+                    } else {
+                        createGroupAttempt(m, c, retryWithoutConfig = true, finish = ::finish)
+                    }
                 }
             })
-        } catch (e: Exception) {
-            MoonLog.e(tag, "createGroup reventó", e)
-            _events.tryEmit("No se pudo crear el grupo: ${e.message}")
-            onReady(null)
+        } catch (e: Throwable) {
+            MoonLog.w(tag, "requestGroupInfo antes de crear: ${e.message}")
+            createGroupAttempt(m, c, retryWithoutConfig = true, finish = ::finish)
+        }
+    }
+
+    private fun createGroupAttempt(
+        m: WifiP2pManager,
+        c: WifiP2pManager.Channel,
+        retryWithoutConfig: Boolean,
+        finish: (WifiP2pGroup?, String?) -> Unit,
+    ) {
+        val listener = object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                MoonLog.i(tag, "grupo Wi-Fi Direct creado")
+                try {
+                    m.requestGroupInfo(c, object : WifiP2pManager.GroupInfoListener {
+                        override fun onGroupInfoAvailable(group: WifiP2pGroup?) {
+                            if (group != null) {
+                                _group.value = group
+                                finish(group, null)
+                            } else {
+                                finish(null, "Android creó el grupo, pero no devolvió sus datos. Apagá y encendé el Wi-Fi y reintentá.")
+                            }
+                        }
+                    })
+                } catch (e: Throwable) {
+                    finish(null, "Android creó el grupo, pero no se pudo confirmar: ${e.message ?: "error desconocido"}")
+                }
+            }
+
+            override fun onFailure(reason: Int) {
+                val detail = describeReason(reason)
+                MoonLog.w(tag, "createGroup falló reason=$reason ($detail), reintentoSinConfig=$retryWithoutConfig")
+                if (retryWithoutConfig) {
+                    // Segunda oportunidad sin WifiP2pConfig: elimina de la ecuación la
+                    // banda, el intent de propietario y cualquier campo que una ROM
+                    // concreta no acepte. Primero se limpia un posible grupo a medias.
+                    removeGroup(silent = true)
+                    createGroupAttempt(m, c, retryWithoutConfig = false, finish = finish)
+                } else {
+                    val error = "No se pudo activar Wi-Fi Direct: $detail"
+                    reportError(error)
+                    finish(null, error)
+                }
+            }
+        }
+
+        try {
+            if (retryWithoutConfig) {
+                // Configuración mínima. En particular NO se fuerza 5 GHz: un teléfono
+                // solo 2,4 GHz (muy común) puede rechazar un grupo creado a 5180 MHz.
+                val config = WifiP2pConfig().apply {
+                    groupOwnerIntent = 15
+                    wps.setup = WpsInfo.PBC
+                }
+                m.createGroup(c, config, listener)
+            } else {
+                @Suppress("DEPRECATION")
+                m.createGroup(c, listener)
+            }
+        } catch (e: Throwable) {
+            // NoSuchMethodError y SecurityException no son Exception en todos los casos.
+            MoonLog.e(tag, "createGroup lanzó ${e.javaClass.simpleName}", e as? Exception)
+            if (retryWithoutConfig) {
+                createGroupAttempt(m, c, retryWithoutConfig = false, finish = finish)
+            } else {
+                val error = when (e) {
+                    is SecurityException -> preflightError() ?: "Android negó el permiso para crear el grupo Wi-Fi Direct."
+                    else -> "No se pudo activar Wi-Fi Direct: ${e.message ?: e.javaClass.simpleName}"
+                }
+                reportError(error)
+                finish(null, error)
+            }
         }
     }
 
@@ -435,47 +534,18 @@ class WifiDirectManager(private val context: Context) {
         }
 
     // ------------------------------------------------------------------ utils
-    /**
-     * Intenta fijar 5 GHz. Los setters de banda cambiaron entre API 30 y 34 y parte
-     * están ocultos o deprecados según la versión, así que se resuelven por reflexión
-     * y se degradan a "que elija la radio" si no están. Nunca rompe el build ni el
-     * runtime, y se nota en logs.
-     */
-    private fun applyBandPreference(config: WifiP2pConfig) {
-        if (Build.VERSION.SDK_INT >= 33) {
-            val done = try {
-                // WifiP2pConfig.BAND_5_GHZ == 2 en API 33+
-                config.javaClass
-                    .getMethod("setGroupOperatingBand", Int::class.javaPrimitiveType)
-                    .invoke(config, 2)
-                true
-            } catch (e: Exception) {
-                false
-            }
-            if (done) return
-        }
-        try {
-            // Fallback clásico: frecuencia explícita (canal 36 = 5180 MHz)
-            config.javaClass.getField("groupOperatingFrequency").setInt(config, 5180)
-        } catch (e: Exception) {
-            MoonLog.d(tag, "banda 5GHz no fijable acá; la elige la radio")
-        }
-    }
-
     /** Códigos de fallo de WifiP2pManager. Se comparan por valor para no depender de
      *  constantes que no todas las versiones exponen igual. */
     private fun describeReason(reason: Int): String = when (reason) {
-        ERROR -> "Error interno de Wi-Fi Direct"
-        PENDING -> "La operación anterior sigue pendiente"
-        BUSY -> "El otro teléfono está ocupado"
-        NO_SERVICE -> "Servicio de Wi-Fi Direct no registrado"
-        else -> "Wi-Fi Direct rechazó la operación (reason=$reason)"
+        ERROR -> "Android devolvió un error interno (reason=0). Suele ser un grupo anterior atascado o una restricción de la ROM."
+        P2P_UNSUPPORTED -> "la ROM de este teléfono no admite Wi-Fi Direct (reason=1)."
+        BUSY -> "Wi-Fi Direct está ocupado (reason=2). Puede haber un grupo anterior sin cerrar."
+        else -> "Android rechazó la operación (reason=$reason)."
     }
 
     private companion object {
         const val ERROR = 0
-        const val PENDING = 1
+        const val P2P_UNSUPPORTED = 1
         const val BUSY = 2
-        const val NO_SERVICE = 3
     }
 }

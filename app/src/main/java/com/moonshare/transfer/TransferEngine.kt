@@ -189,25 +189,38 @@ class TransferEngine(
         hostJob?.cancel()
         hostJob = scope.launch {
             if (!wfd.open()) {
-                _state.update { it.copy(phase = EnginePhase.Failed, statusText = "") }
+                _state.update {
+                    it.copy(
+                        phase = EnginePhase.Failed,
+                        statusText = "",
+                        error = wfd.lastError ?: wfd.preflightError()
+                            ?: "Android no abrió Wi-Fi Direct en este teléfono.",
+                    )
+                }
                 return@launch
             }
-            val ready = withContext(Dispatchers.IO) {
+            val (ready, groupError) = withContext(Dispatchers.IO) {
                 var group: android.net.wifi.p2p.WifiP2pGroup? = null
+                var error: String? = null
                 val latch = java.util.concurrent.CountDownLatch(1)
-                wfd.startGroup(currentSettings.prefer5GHz) { g ->
+                wfd.startGroup(currentSettings.prefer5GHz) { g, e ->
                     group = g
+                    error = e
                     latch.countDown()
                 }
-                latch.await(12, java.util.concurrent.TimeUnit.SECONDS)
-                group
+                if (!latch.await(20, java.util.concurrent.TimeUnit.SECONDS)) {
+                    null to "Android no respondió al activar Wi-Fi Direct. Apagá y encendé el Wi-Fi y volvé a intentar."
+                } else {
+                    group to error
+                }
             }
             if (ready == null) {
                 _state.update {
                     it.copy(
                         phase = EnginePhase.Failed,
                         statusText = "",
-                        error = "No se pudo crear la red Wi-Fi Direct. Revisá que el Wi-Fi esté encendido.",
+                        error = groupError ?: wfd.lastError ?: wfd.preflightError()
+                            ?: "Android no pudo activar Wi-Fi Direct en este teléfono.",
                     )
                 }
                 return@launch
@@ -516,7 +529,18 @@ class TransferEngine(
         _state.update { it.copy(error = message) }
     }
 
-    fun clearError() = _state.update { it.copy(error = null) }
+    fun clearError() = _state.update {
+        it.copy(
+            error = null,
+            phase = when {
+                it.phase != EnginePhase.Failed -> it.phase
+                it.isHosting -> EnginePhase.Hosting
+                else -> EnginePhase.Idle
+            },
+            mode = if (it.phase == EnginePhase.Failed) EngineMode.Idle else it.mode,
+            statusText = if (it.phase == EnginePhase.Failed && it.isHosting) "Disponible" else it.statusText,
+        )
+    }
 
     fun refreshPeers() {
         ensureRadioOpen()

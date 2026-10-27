@@ -1,5 +1,7 @@
 package com.moonshare.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,6 +34,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.moonshare.core.MoonLog
+import com.moonshare.core.perm.MoonPermissions
 import com.moonshare.transfer.EngineMode
 import com.moonshare.ui.common.MoonSwitch
 import com.moonshare.ui.common.PrimaryButton
@@ -75,6 +81,30 @@ fun HomeScreen(
         (context.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)
             ?.isWifiEnabled != false
     }.getOrDefault(true)
+
+    var permissionMessage by remember { mutableStateOf<String?>(null) }
+    val nearbyPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { _ ->
+        if (MoonPermissions.hasAll(context, MoonPermissions.nearby())) {
+            permissionMessage = null
+            vm.clearError()
+            vm.startReceiving()
+        } else {
+            permissionMessage =
+                "MoonShare necesita el permiso de Dispositivos cercanos o Ubicación para activar Wi-Fi Direct. Sin ese permiso Android bloquea la Disponibilidad."
+        }
+    }
+    fun startAvailability() {
+        val missing = MoonPermissions.missing(context, MoonPermissions.nearby())
+        if (missing.isEmpty()) {
+            permissionMessage = null
+            vm.clearError()
+            vm.startReceiving()
+        } else {
+            nearbyPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
 
     Column(
         Modifier
@@ -181,7 +211,7 @@ fun HomeScreen(
                 MoonSwitch(
                     checked = hosting,
                     onChange = { enabled ->
-                        if (enabled) vm.startReceiving() else vm.stopReceiving()
+                        if (enabled) startAvailability() else vm.stopReceiving()
                     },
                 )
             }
@@ -197,6 +227,11 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+
+        permissionMessage?.let { message ->
+            Spacer(Modifier.height(12.dp))
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = Danger)
         }
 
         if (!wifiOn) {
@@ -306,8 +341,7 @@ fun HomeScreen(
                         style = MaterialTheme.typography.labelLarge,
                         color = Aqua,
                         modifier = Modifier.clickable {
-                            vm.clearError()
-                            if (!hosting) vm.startReceiving()
+                            if (!hosting) startAvailability() else vm.clearError()
                         },
                     )
                 }

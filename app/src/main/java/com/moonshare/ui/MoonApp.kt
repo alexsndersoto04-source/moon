@@ -226,7 +226,16 @@ private fun TransferPresenceOverlay(vm: MoonViewModel, hidden: Boolean, onOpen: 
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (engine.mode != EngineMode.Idle && engine.phase != EnginePhase.Done) {
+                    if (engine.phase == EnginePhase.Failed) {
+                        Text(
+                            "Cerrar",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Aqua,
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                                .clickable { vm.clearError() }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
+                    } else if (engine.mode != EngineMode.Idle && engine.phase != EnginePhase.Done) {
                         Text(
                             "Cancelar",
                             style = MaterialTheme.typography.labelLarge,
