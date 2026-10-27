@@ -83,6 +83,17 @@ jobs:
           if-no-files-found: ignore
 
 
+      # TEMPORARY diagnostic (removed before hand-off).
+      - name: Publish build log on failure
+        if: failure() && github.event_name == 'push'
+        run: |
+          mkdir -p ci && head -c 400000 build.log > ci/last-build.log || true
+          git config user.email "ci@airgesture.local"
+          git config user.name "AirGesture CI"
+          git add -f ci/last-build.log
+          git commit -m "ci: build log for ${{ github.sha }} [skip ci]" || true
+          git push
+
       - name: Collect APKs
         run: |
           mkdir -p artifacts
