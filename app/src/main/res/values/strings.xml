@@ -65,4 +65,32 @@
     <string name="hint_no_hand">Acerca la mano a la cámara: buena luz y un fondo liso ayudan mucho.</string>
     <string name="hint_push">Empuja la mano hacia el teléfono para enviar</string>
     <string name="sent_short">Enviado</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_subtitle">Todo se aplica al instante y se guarda en el teléfono.</string>
+    <string name="settings_camera_section">Cámara</string>
+    <string name="settings_camera_front">Frontal</string>
+    <string name="settings_camera_back">Trasera</string>
+    <string name="settings_camera_help">La frontal es la recomendada: te ves la mano mientras haces el gesto.</string>
+    <string name="settings_sensitivity">Sensibilidad del gesto</string>
+    <string name="settings_sensitivity_value">%1$d%% · %2$s</string>
+    <string name="settings_sensitivity_low">estricta</string>
+    <string name="settings_sensitivity_medium">equilibrada</string>
+    <string name="settings_sensitivity_high">muy fácil</string>
+    <string name="settings_sensitivity_help">Sube la sensibilidad si el gesto no se dispara; bájala si se dispara solo.</string>
+    <string name="settings_behaviour">Comportamiento</string>
+    <string name="settings_skeleton">Dibujar el esqueleto de la mano</string>
+    <string name="settings_haptics">Vibración al detectar gestos</string>
+    <string name="settings_awake">Mantener la pantalla encendida</string>
+    <string name="settings_diagnostics">Mostrar diagnóstico técnico</string>
+    <string name="settings_connection">Conexión</string>
+    <string name="settings_reset">Restaurar valores por defecto</string>
+    <string name="settings_version">AirGesture Transfer %1$s · Nearby Connections %2$s</string>
+    <string name="settings_open">Ajustes</string>
+    <string name="connection_detail">%1$s
+Dispositivo: %2$s</string>
+    <string name="connection_none">Buscando dispositivos cercanos…</string>
+    <string name="connection_peer">Conectado con %1$s</string>
+    <string name="settings_reset_done">Ajustes restaurados</string>
 </resources>

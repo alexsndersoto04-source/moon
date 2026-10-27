@@ -45,6 +45,45 @@
         <item name="android:textColor">@color/tab_text</item>
     </style>
 
+    <style name="Widget.AirGesture.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="strokeColor">@color/hairline_strong</item>
+        <item name="android:textColor">@color/ink_soft</item>
+    </style>
+
+    <style name="Widget.AirGesture.Toggle" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="cornerRadius">22dp</item>
+        <item name="android:minHeight">44dp</item>
+        <item name="strokeColor">@color/hairline_strong</item>
+        <item name="android:textColor">@color/ink_soft</item>
+        <item name="backgroundTint">@color/white</item>
+        <item name="rippleColor">#11000000</item>
+    </style>
+
+    <style name="SettingsSection" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">26dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.14</item>
+        <item name="android:textColor">@color/ink_faint</item>
+        <item name="android:textSize">9.5sp</item>
+    </style>
+
+    <style name="Widget.AirGesture.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
     <style name="TabChip" parent="TextAppearance.AirGesture.Tab">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>

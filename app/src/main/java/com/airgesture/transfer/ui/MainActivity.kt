@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Size
+import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -27,6 +28,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.airgesture.transfer.R
+import com.airgesture.transfer.core.AirGestureApp
 import com.airgesture.transfer.core.GestureState
 import com.airgesture.transfer.databinding.ActivityMainBinding
 import com.airgesture.transfer.media.MediaEntry
@@ -49,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var adapter: FileAdapter
     private lateinit var haptics: Haptics
+    private val prefs get() = (application as AirGestureApp).prefs
 
     private val cameraExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "airgesture-camera").apply { priority = Thread.NORM_PRIORITY }
@@ -60,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var cameraStarted = false
     private var permissionRequested = false
     private var diagnosticsVisible = false
+    private var boundFrontCamera: Boolean? = null
 
     private var lastItems: List<MediaEntry>? = null
     private var lastSelectedUri: String? = null
@@ -104,6 +108,11 @@ class MainActivity : AppCompatActivity() {
         binding.permButton.setOnClickListener { requestPermissions() }
         binding.permSettings.setOnClickListener { openAppSettings() }
 
+        binding.settingsButton.setOnClickListener {
+            haptics.tick()
+            startActivity(SettingsActivity.intent(this))
+        }
+
         // Long-press the title: diagnostics HUD (fps, inference time, source format,
         // closure and push values). Essential to verify the pipeline on real hardware.
         binding.brandTitle.setOnLongClickListener {
@@ -113,9 +122,37 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        binding.handOverlay.setSkeletonVisible(true)
         collectFlows()
         applyPermissions()
+    }
+
+    /**
+     * Settings are re-read on every resume: toggles apply immediately and the
+     * camera is re-bound only when the front/back choice actually changed.
+     */
+    override fun onResume() {
+        super.onResume()
+        applyPreferencesToUi()
+    }
+
+    private fun applyPreferencesToUi() {
+        binding.handOverlay.setSkeletonVisible(prefs.skeletonVisible)
+        diagnosticsVisible = prefs.diagnosticsVisible
+        binding.diagnostics.isVisible = diagnosticsVisible
+        viewModel.applyPreferences()
+
+        if (prefs.keepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        if (boundFrontCamera != null && boundFrontCamera != prefs.useFrontCamera) {
+            // Camera source changed: drop the binding and let onStart re-create it.
+            runCatching { providerRef?.unbindAll() }
+            cameraStarted = false
+            startCameraIfNeeded()
+        }
     }
 
     override fun onStart() {
@@ -365,18 +402,34 @@ class MainActivity : AppCompatActivity() {
             provider.unbindAll()
             provider.bindToLifecycle(this, selector, preview, analysis)
             cameraStarted = true
-            binding.handOverlay.mirrorHorizontally = selector == CameraSelector.DEFAULT_FRONT_CAMERA
+            binding.handOverlay.mirrorHorizontally = boundFrontCamera == true
         }.onFailure { error ->
             cameraStarted = false
             showTransient(error.message ?: getString(R.string.camera_unavailable))
         }
     }
 
+    /**
+     * Honours the user's front/back preference, falling back to whichever lens
+     * the device actually exposes.
+     */
     private fun pickSelector(provider: ProcessCameraProvider): CameraSelector? {
-        val back = runCatching { provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) }.getOrDefault(false)
-        if (back) return CameraSelector.DEFAULT_BACK_CAMERA
-        val front = runCatching { provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) }.getOrDefault(false)
-        return if (front) CameraSelector.DEFAULT_FRONT_CAMERA else null
+        val preferFront = prefs.useFrontCamera
+        val hasFront = runCatching { provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) }
+            .getOrDefault(false)
+        val hasBack = runCatching { provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) }
+            .getOrDefault(false)
+
+        val useFront = when {
+            preferFront && hasFront -> true
+            !preferFront && hasBack -> false
+            hasFront -> true
+            hasBack -> false
+            else -> return null
+        }
+
+        boundFrontCamera = useFront
+        return if (useFront) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
     }
 
     companion object {

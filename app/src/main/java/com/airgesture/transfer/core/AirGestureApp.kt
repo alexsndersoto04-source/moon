@@ -19,6 +19,12 @@ class AirGestureApp : Application() {
         instance = this
     }
 
+    /** Human readable device label used by the settings screen. */
+    fun deviceLabel(): String {
+        val model = android.os.Build.MODEL?.trim().orEmpty().ifBlank { "Android" }
+        return "$model · Android ${android.os.Build.VERSION.RELEASE}"
+    }
+
     companion object {
         lateinit var instance: AirGestureApp
             private set

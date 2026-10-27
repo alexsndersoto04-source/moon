@@ -85,6 +85,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_title"
+            android:parentActivityName=".ui.MainActivity"
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity" />
+
         <!-- Nearby Connections provider metadata is optional; disabling it keeps
              the manifest merger from requiring Google Play Services at install time. -->
         <meta-data

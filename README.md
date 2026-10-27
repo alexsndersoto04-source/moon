@@ -130,10 +130,24 @@ app/src/main/java/com/airgesture/transfer/
 - **UI mínima.** Sin animaciones costosas: un `RecyclerView` horizontal con DiffUtil y una
   vista custom que dibuja el esqueleto con `Paint` preasignados.
 
-**Transferencia:** `P2P_CLUSTER`, auto-aceptar sin diálogo. Se envían dos payloads: metadatos
-(JSON en BYTES) y luego el archivo (FILE desde un `ParcelFileDescriptor`, sin copiar el
-archivo a memoria). La recepción se guarda en `Descargas/AirGesture` vía `MediaStore`, con
-progreso en una barra fina.
+**Transferencia (protocolo propio sobre STREAM):** cada archivo viaja en **un solo payload
+`STREAM` autodescriptivo**:
+
+```
+int32 'AGFT' · uint8 versión · int32 largo del nombre + nombre
+int32 largo del MIME + MIME · int64 tamaño · bytes del archivo
+```
+
+Los metadatos van *dentro* del flujo, así que no hay carrera entre payloads. El receptor
+lee la cabecera y escribe directo en `Descargas/AirGesture` vía MediaStore, con copia por
+bloques de 64 KB (un video de 200 MB nunca pasa por el heap). El cierre del flujo es lo
+que marca la transferencia como completa, y si el tamaño declarado no coincide con el
+recibido se cancela y se borra el archivo parcial en vez de dejar basura. También se
+aceptan payloads `FILE` de versiones anteriores.
+
+**Ajustes reales** (icono de la esquina): cámara frontal/trasera, sensibilidad del gesto
+(aplicada al instante), esqueleto, vibración, mantener pantalla encendida y HUD de
+diagnóstico. Todo se guarda en `SharedPreferences` y se re-aplica al volver a la cámara.
 
 **Privacidad:** todo es local. No hay red, ni cuentas, ni telemetría. El único tráfico del
 proyecto es la descarga del modelo durante la compilación.

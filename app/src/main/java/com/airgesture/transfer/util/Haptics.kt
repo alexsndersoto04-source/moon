@@ -5,12 +5,15 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import com.airgesture.transfer.core.AirGestureApp
 
 /**
  * Two micro-patterns only: a soft tick for selection and a firmer double tick
- * for the throw. Kept in one place so intensity stays consistent everywhere.
+ * for the throw. Respects the user preference stored in [com.airgesture.transfer.core.Prefs].
  */
 class Haptics(context: Context) {
+
+    private val app = context.applicationContext as? AirGestureApp
 
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
@@ -22,6 +25,9 @@ class Haptics(context: Context) {
 
     private val supported: Boolean = vibrator?.hasVibrator() == true
 
+    private val enabled: Boolean
+        get() = app?.prefs?.hapticsEnabled ?: true
+
     fun tick() = vibrate(VibrationEffect.createOneShot(12L, 55))
 
     fun confirm() = vibrate(
@@ -29,7 +35,7 @@ class Haptics(context: Context) {
     )
 
     private fun vibrate(effect: VibrationEffect) {
-        if (!supported) return
+        if (!supported || !enabled) return
         runCatching { vibrator?.vibrate(effect) }
     }
 }

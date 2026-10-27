@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ivory"
+    android:fitsSystemWindows="true"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="18dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="32dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-light"
+            android:text="@string/settings_title"
+            android:textColor="@color/ink"
+            android:textSize="25sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:letterSpacing="0.02"
+            android:text="@string/settings_subtitle"
+            android:textColor="@color/ink_faint"
+            android:textSize="12sp" />
+
+        <!-- Cámara -->
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_camera_section" />
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/cameraGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:selectionRequired="true"
+            app:singleSelection="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/cameraFront"
+                style="@style/Widget.AirGesture.Toggle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_camera_front" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/cameraBack"
+                style="@style/Widget.AirGesture.Toggle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_camera_back" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_camera_help"
+            android:textColor="@color/ink_faint"
+            android:textSize="11sp" />
+
+        <!-- Sensibilidad -->
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_sensitivity" />
+
+        <TextView
+            android:id="@+id/sensitivityValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/ink_soft"
+            android:textSize="12sp" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/sensitivitySlider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:stepSize="0.05"
+            android:value="0.62"
+            android:valueFrom="0"
+            android:valueTo="1"
+            app:thumbColor="@color/ink"
+            app:trackColorActive="@color/ink"
+            app:trackColorInactive="@color/hairline_strong" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_sensitivity_help"
+            android:textColor="@color/ink_faint"
+            android:textSize="11sp" />
+
+        <!-- Preferencias -->
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_behaviour" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchSkeleton"
+            style="@style/Widget.AirGesture.Switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_skeleton" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchHaptics"
+            style="@style/Widget.AirGesture.Switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_haptics" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchAwake"
+            style="@style/Widget.AirGesture.Switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_awake" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchDiagnostics"
+            style="@style/Widget.AirGesture.Switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_diagnostics" />
+
+        <!-- Conexión -->
+        <TextView
+            style="@style/SettingsSection"
+            android:text="@string/settings_connection" />
+
+        <TextView
+            android:id="@+id/connectionStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/ink_soft"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/resetButton"
+            style="@style/Widget.AirGesture.Button.Outlined"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="@string/settings_reset" />
+
+        <TextView
+            android:id="@+id/versionLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:textColor="@color/ink_faint"
+            android:textSize="10sp" />
+    </LinearLayout>
+</ScrollView>

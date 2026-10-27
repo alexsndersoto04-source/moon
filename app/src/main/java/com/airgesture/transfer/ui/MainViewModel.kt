@@ -130,6 +130,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     // --------------------------------------------------------------- gallery
 
+    /**
+     * Re-reads user settings that affect running components. Called when the
+     * activity resumes, so returning from the settings screen applies instantly.
+     */
+    fun applyPreferences() {
+        interpreter.sensitivity = prefs.sensitivity
+    }
+
     fun selectKind(kind: MediaKind) {
         if (_uiState.value.kind == kind) return
         _uiState.update { it.copy(kind = kind, loading = true, selectedUri = null) }
