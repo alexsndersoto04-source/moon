@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Unico color que necesita el sistema (splash/window). Lo demas vive en
-         ui/theme/Color.kt, que es la fuente de verdad del design system. -->
-    <color name="moon_background">#FF06090D</color>
-    <color name="ic_launcher_background">#FF06090D</color>
-</resources>
