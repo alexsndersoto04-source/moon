@@ -116,23 +116,38 @@ Si algo falla, el texto dice exactamente dónde. Además hay un botón **Enviar*
 archivo seleccionado sin usar ningún gesto: sirve para separar «problema de gesto» de
 «problema de red» en un solo toque.
 
-### Requisitos para que dos teléfonos se encuentren (1.3.0)
+### Cómo encuentra al otro teléfono (1.4.0)
 
-Nearby Connections descubre por **BLE**, y el escaneo BLE falla **en silencio** si algo
-falta. La app ahora lo comprueba sola y muestra un aviso con botón cuando:
+Nearby necesita **uno anunciando y otro buscando** a la vez, pero ninguna app puede saber de
+antemano qué papel le toca. La versión anterior hacía las dos cosas simultáneamente y además
+reiniciaba ambas cada 6 s: reiniciar el escaneo constantemente hace que el stack BLE nunca
+entregue resultados, y por eso se quedaba en «Buscando… / Reintentando descubrimiento…» **para
+siempre**, sin error.
 
-1. **Falta el permiso** de ubicación / dispositivos cercanos → botón *Permitir*.
-2. **Bluetooth apagado** → botón *Activar*.
-3. **Ubicación del sistema apagada** → botón *Abrir* (Android la exige para escanear BLE,
-   aunque la app no use tu posición para nada).
+Ahora cada teléfono **alterna turnos**:
 
-Además se eliminó `neverForLocation` del manifiesto: Android documenta que ese flag
-**filtra beacons BLE de los resultados**, y Nearby los necesita para encontrar al otro
-teléfono. Era la causa de que se quedara en «Buscando…» para siempre sin ningún error.
+```
+Visible como Redmi9C-054   (6 s anunciándose)
+Buscando el otro teléfono…  (7 s buscando)
+Encontrado: Redmi9C-91B · conectando
+Conectado a Redmi9C-91B
+```
 
-Los dos teléfonos deben tener la app **abierta** (la sesión vive mientras el proceso exista)
-y la misma red de radios encendida. Se anuncia y se busca en dos `serviceId` para que una
-versión antigua en el otro teléfono también pueda emparejarse.
+El desfase inicial es distinto en cada equipo, así que uno siempre está escuchando mientras el
+otro busca. Estrategia `P2P_POINT_TO_POINT` (la documentada para un enlace 1:1). Si lanzas un
+envío sin conexión, el archivo queda **en cola y sale solo en cuanto conecta**.
+
+### Si aun así no conecta
+
+Ajustes → **Ver diagnóstico** → **Copiar informe**. El texto incluye:
+
+- modelo, versión de Android, versión de la app y de Play Services;
+- el estado de **cada permiso** concedido/denegado;
+- Bluetooth, ubicación del sistema, Wi-Fi Direct y BLE;
+- los últimos 40 eventos con hora (`Visible como…`, `Buscando…`, `Conexión rechazada: …`).
+
+Con ese informe se identifica en un minuto si el bloqueo es un permiso, un radio apagado, Play
+Services ausente o el propio emparejamiento.
 
 ### Qué se envía y cómo se confirma
 

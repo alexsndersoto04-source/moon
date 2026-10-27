@@ -365,8 +365,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val noHandFor = if (lastHandSeenAtMs == 0L) Long.MAX_VALUE else now - lastHandSeenAtMs
+        val linkReady = currentState.nearbyState == NearbyState.CONNECTED
         binding.hintText.text = when {
             currentState.gestureState == GestureState.THROW_VECTOR -> getString(R.string.hint_sending)
+            !linkReady && currentState.transfer == null -> getString(R.string.hint_no_link)
             currentState.gestureState == GestureState.GRAB_FIST -> getString(R.string.hint_grab)
             noHandFor > NO_HAND_HINT_MS -> getString(R.string.hint_no_hand)
             else -> getString(R.string.hint_idle)

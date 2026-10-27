@@ -115,4 +115,5 @@ Dispositivo: %2$s</string>
     <string name="diag_copy">Copiar informe</string>
     <string name="diag_copied">Informe copiado al portapapeles</string>
     <string name="queued_waiting">Se enviará en cuanto conecte con el otro teléfono</string>
+    <string name="hint_no_link">Abriendo enlace con el otro teléfono · mantén la app abierta en ambos y cerca</string>
 </resources>

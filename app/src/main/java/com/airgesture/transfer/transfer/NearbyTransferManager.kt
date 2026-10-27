@@ -784,6 +784,8 @@ class NearbyTransferManager(
         private const val DISCOVER_MS = 7000L
         private const val RETRY_MS = 1200L
         private const val PHASE_LOG_MS = 11000L
-        private val STRATEGY: Strategy = Strategy.P2P_CLUSTER
+        // Documented choice for a one-to-one link; the cluster topology adds
+        // multi-connect edge cases we do not need between two phones.
+        private val STRATEGY: Strategy = Strategy.P2P_POINT_TO_POINT
     }
 }
