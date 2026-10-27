@@ -11,8 +11,8 @@ android {
         applicationId "com.airgesture.transfer"
         minSdk 29
         targetSdk 34
-        versionCode 4
-        versionName "1.3.0"
+        versionCode 5
+        versionName "1.4.0"
 
         // Redmi 9C (Helio G35) is 64-bit; armeabi-v7a keeps 32-bit devices working.
         ndk {

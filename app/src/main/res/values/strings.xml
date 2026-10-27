@@ -111,4 +111,8 @@ Dispositivo: %2$s</string>
     <string name="banner_action_location">Abrir</string>
     <string name="banner_action_permission">Permitir</string>
     <string name="no_peer_yet">Aún no hay conexión: el otro teléfono debe tener la app abierta</string>
+    <string name="diag_show">Ver diagnóstico</string>
+    <string name="diag_copy">Copiar informe</string>
+    <string name="diag_copied">Informe copiado al portapapeles</string>
+    <string name="queued_waiting">Se enviará en cuanto conecte con el otro teléfono</string>
 </resources>

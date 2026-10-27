@@ -283,7 +283,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             dispatch(entry)
         } else {
             pendingSend = entry
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.waiting_peer)))
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
         }
     }
 
@@ -298,7 +298,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             dispatch(entry)
         } else {
             pendingSend = entry
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.waiting_peer)))
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
         }
     }
 

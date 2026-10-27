@@ -105,38 +105,65 @@ class NearbyTransferManager(
     private var incomingPayload: Payload? = null
     @Volatile private var incomingName: String? = null
 
-    /**
-     * Safety net for the deterministic tie-break: if this device decided to wait
-     * (its name sorts second) but nobody dials within a couple of seconds — for
-     * example because two units report the same name — it dials instead.
-     */
-    private val fallbackDial = Runnable {
-        val endpointId = pendingWaitEndpointId
-        if (running && endpointId != null && connectedEndpointId == null && connectingEndpointId == null) {
-            connectingEndpointId = endpointId
-            log("Sin respuesta, conectando nosotros")
-            connections.requestConnection(myName, endpointId, lifecycleCallback)
-                .addOnFailureListener { error ->
-                    log("Fallo al conectar (${error.message})")
-                    if (connectingEndpointId == endpointId) connectingEndpointId = null
-                }
-        }
-    }
-    @Volatile private var pendingWaitEndpointId: String? = null
+    // ------------------------------------------------------- role cycling
+    //
+    // Nearby needs one device advertising while the other discovers, but neither
+    // phone can know in advance which role it is. Advertising *and* discovering
+    // at the same time (what this class used to do) makes the BLE stack drop
+    // scan results, and restarting both every few seconds resets every scan
+    // cycle before it can report anything — the endless "Buscando…" loop.
+    //
+    // So each device alternates: advertise for 6 s, then discover for 7 s, with
+    // a per-device offset so the two phones are almost never in the same phase.
+    // At least one of them is always a listener, which is exactly what the
+    // handshake needs.
 
-    // Watchdog
-    private val watchdog = object : Runnable {
+    private enum class Role { IDLE, ADVERTISING, DISCOVERING, CONNECTING, CONNECTED }
+
+    @Volatile private var role = Role.IDLE
+    private var lastPhaseLogMs = 0L
+
+    private val cycleTick = object : Runnable {
         override fun run() {
             if (!running) return
-            if (connectedEndpointId == null) {
-                log("Reintentando descubrimiento…")
-                runCatching { connections.stopAdvertising() }
-                runCatching { connections.stopDiscovery() }
-                startAdvertising()
-                startDiscovery()
-                mainHandler.postDelayed(this, WATCHDOG_MS)
+            when (role) {
+                Role.CONNECTING -> mainHandler.postDelayed(this, 1000L)
+                Role.CONNECTED -> Unit
+                Role.ADVERTISING -> beginDiscoveryPhase()
+                else -> beginAdvertisingPhase()
             }
         }
+    }
+
+    private fun beginAdvertisingPhase() {
+        role = Role.ADVERTISING
+        runCatching { connections.stopDiscovery() }
+        startAdvertising()
+        logPhase("Visible como $myName")
+        mainHandler.removeCallbacks(cycleTick)
+        mainHandler.postDelayed(cycleTick, ADVERTISE_MS)
+    }
+
+    private fun beginDiscoveryPhase() {
+        role = Role.DISCOVERING
+        runCatching { connections.stopAdvertising() }
+        startDiscovery()
+        logPhase("Buscando el otro teléfono…")
+        mainHandler.removeCallbacks(cycleTick)
+        mainHandler.postDelayed(cycleTick, DISCOVER_MS)
+    }
+
+    private fun resumeCycling(delayMs: Long = 0L) {
+        if (!running) return
+        role = Role.IDLE
+        mainHandler.removeCallbacks(cycleTick)
+        mainHandler.postDelayed(cycleTick, delayMs)
+    }
+
+    private fun stopRadios() {
+        mainHandler.removeCallbacks(cycleTick)
+        runCatching { connections.stopAdvertising() }
+        runCatching { connections.stopDiscovery() }
     }
 
     // ------------------------------------------------------------ lifecycle
@@ -144,16 +171,15 @@ class NearbyTransferManager(
     fun start() {
         if (running) return
         running = true
-        startAdvertising()
-        startDiscovery()
         emitState(NearbyState.SEARCHING)
-        log("Buscando dispositivos · soy $myName")
-        mainHandler.postDelayed(watchdog, WATCHDOG_MS)
+        log("Soy $myName · encendiendo radios")
+        resumeCycling(phaseOffsetMs())
     }
 
     fun stop() {
         running = false
-        mainHandler.removeCallbacks(watchdog)
+        mainHandler.removeCallbacks(cycleTick)
+        role = Role.IDLE
         connectedEndpointId = null
         connectingEndpointId = null
         connectedName = null
@@ -170,6 +196,16 @@ class NearbyTransferManager(
     val peerName: String? get() = connectedName ?: lastPeerName
     val isBusy: Boolean get() = sending.get()
 
+    private fun phaseOffsetMs(): Long =
+        ((androidIdHash() % 2500).toLong() + 250L)
+
+    private fun androidIdHash(): Int {
+        val id = runCatching {
+            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
+        }.getOrNull().orEmpty()
+        return id.hashCode() and 0x7FFFFFFF
+    }
+
     // ----------------------------------------------------------- advertising
 
     private fun startAdvertising() {
@@ -177,12 +213,16 @@ class NearbyTransferManager(
         serviceIds.forEach { id ->
             connections.startAdvertising(myName, id, lifecycleCallback, options)
                 .addOnSuccessListener {
-                    log("Anunciando como $myName")
+                    Log.d(TAG, "advertising on $id")
                 }
                 .addOnFailureListener { error ->
                     Log.w(TAG, "startAdvertising($id) failed", error)
-                    val message = error.message ?: "error ${'$'}{error.javaClass.simpleName}"
-                    log("Anuncio: $message")
+                    val code = (error as? com.google.android.gms.common.api.ApiException)?.statusCode
+                    if (code != null &&
+                        code != ConnectionsStatusCodes.STATUS_ALREADY_ADVERTISING
+                    ) {
+                        log("Anuncio: ${statusText(code)}")
+                    }
                 }
         }
     }
@@ -192,12 +232,12 @@ class NearbyTransferManager(
         serviceIds.forEach { id ->
             connections.startDiscovery(id, discoveryCallback, options)
                 .addOnSuccessListener {
-                    log("Buscando dispositivos…")
+                    Log.d(TAG, "discovering on $id")
                 }
                 .addOnFailureListener { error ->
                     Log.w(TAG, "startDiscovery($id) failed", error)
-                    val message = error.message ?: "error"
-                    log("Búsqueda: $message")
+                    val code = (error as? com.google.android.gms.common.api.ApiException)?.statusCode
+                    if (code != null) log("Búsqueda: ${statusText(code)}")
                 }
         }
     }
@@ -206,38 +246,34 @@ class NearbyTransferManager(
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             if (!running) return
             if (connectedEndpointId != null || connectingEndpointId != null) return
+            if (role != Role.DISCOVERING && role != Role.IDLE) return
 
             val peer = info.endpointName.orEmpty()
             if (peer.isBlank()) return
 
-            // Deterministic initiator: whichever name sorts first dials, the other
-            // waits. This removes the simultaneous-handshake race completely.
-            if (myName.compareTo(peer) >= 0) {
-                lastPeerName = peer
-                emitState(NearbyState.PEER_FOUND, peer)
-                log("Dispositivo cerca: $peer")
-                pendingWaitEndpointId = endpointId
-                mainHandler.removeCallbacks(fallbackDial)
-                mainHandler.postDelayed(fallbackDial, FALLBACK_DIAL_MS)
-                return
-            }
-
+            // Only the discovering device dials; the other one is listening and
+            // will answer through onConnectionInitiated.
             connectingEndpointId = endpointId
+            role = Role.CONNECTING
             lastPeerName = peer
             emitState(NearbyState.PEER_FOUND, peer)
-            log("Conectando con $peer…")
+            log("Encontrado: $peer · conectando")
+            mainHandler.removeCallbacks(cycleTick)
+            runCatching { connections.stopDiscovery() }
+
             connections.requestConnection(myName, endpointId, lifecycleCallback)
                 .addOnFailureListener { error ->
-                    log("Fallo al conectar (${error.message})")
+                    val code = (error as? com.google.android.gms.common.api.ApiException)?.statusCode
+                    log("No se pudo conectar: ${code?.let { statusText(it) } ?: error.message}")
                     if (connectingEndpointId == endpointId) connectingEndpointId = null
-                    if (connectedEndpointId == null) startDiscovery()
+                    if (connectedEndpointId == null) resumeCycling(RETRY_MS)
                 }
         }
 
         override fun onEndpointLost(endpointId: String) {
             if (connectingEndpointId == endpointId && connectedEndpointId == null) {
                 connectingEndpointId = null
-                if (running) emitState(NearbyState.SEARCHING)
+                if (running && role == Role.CONNECTING) resumeCycling(RETRY_MS)
             }
         }
     }
@@ -246,29 +282,30 @@ class NearbyTransferManager(
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
             announcedName = info.endpointName
             if (connectingEndpointId == null) connectingEndpointId = endpointId
+            if (role != Role.CONNECTED) role = Role.CONNECTING
             emitState(NearbyState.CONNECTING, info.endpointName)
             connections.acceptConnection(endpointId, payloadCallback)
                 .addOnFailureListener { error ->
                     Log.w(TAG, "acceptConnection failed", error)
-                    log("No se pudo aceptar la conexión (${error.message})")
+                    log("No se pudo aceptar: ${error.message}")
+                    if (connectedEndpointId == null) resumeCycling(RETRY_MS)
                 }
         }
 
         override fun onConnectionResult(endpointId: String, resolution: ConnectionResolution) {
             val status = resolution.status
-            // ALREADY_CONNECTED is a success in disguise: the peer won the race.
+            // ALREADY_CONNECTED is a success in disguise: the peer dialled first.
             if (status.isSuccess ||
                 status.statusCode == ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT
             ) {
                 connectedEndpointId = endpointId
                 connectingEndpointId = null
+                role = Role.CONNECTED
                 connectedName = announcedName?.takeIf { it.isNotBlank() }
                     ?: lastPeerName
                     ?: endpointId.takeLast(4).uppercase()
                 lastPeerName = connectedName
-                mainHandler.removeCallbacks(watchdog)
-                runCatching { connections.stopAdvertising() }
-                runCatching { connections.stopDiscovery() }
+                stopRadios()
                 emitState(NearbyState.CONNECTED, connectedName)
                 log("Conectado a $connectedName")
             } else {
@@ -277,7 +314,7 @@ class NearbyTransferManager(
                 if (connectingEndpointId == endpointId) connectingEndpointId = null
                 if (connectedEndpointId == null) {
                     emitState(NearbyState.SEARCHING)
-                    if (running) startDiscovery()
+                    resumeCycling(RETRY_MS)
                 }
             }
         }
@@ -291,11 +328,7 @@ class NearbyTransferManager(
                 sending.set(false)
                 emitState(NearbyState.SEARCHING)
                 log("Se perdió la conexión; reintentando")
-                if (running) {
-                    startAdvertising()
-                    startDiscovery()
-                    mainHandler.postDelayed(watchdog, WATCHDOG_MS)
-                }
+                resumeCycling(RETRY_MS)
             }
         }
     }
@@ -711,7 +744,16 @@ class NearbyTransferManager(
 
     private fun log(line: String) {
         Log.d(TAG, line)
+        com.airgesture.transfer.core.Diag.add(line)
         mainHandler.post { listener.onLog(line) }
+    }
+
+    /** Phase transitions are periodic; log them at most every 11 s. */
+    private fun logPhase(line: String) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastPhaseLogMs < PHASE_LOG_MS) return
+        lastPhaseLogMs = now
+        log(line)
     }
 
     private fun postProgress(progress: TransferProgress) {
@@ -736,8 +778,12 @@ class NearbyTransferManager(
         private const val BUFFER = 64 * 1024
         private const val MAX_STRING_BYTES = 4096
         private const val MAX_NAME_LENGTH = 120
-        private const val WATCHDOG_MS = 6000L
-        private const val FALLBACK_DIAL_MS = 2500L
+        // Role cycling: advertise, then discover. Offsets keep the two phones
+        // out of phase so one is always listening.
+        private const val ADVERTISE_MS = 6000L
+        private const val DISCOVER_MS = 7000L
+        private const val RETRY_MS = 1200L
+        private const val PHASE_LOG_MS = 11000L
         private val STRATEGY: Strategy = Strategy.P2P_CLUSTER
     }
 }

@@ -129,6 +129,43 @@
             android:textColor="@color/ink_soft"
             android:textSize="12sp" />
 
+        <TextView
+            android:id="@+id/diagText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_banner"
+            android:fontFamily="monospace"
+            android:lineSpacingExtra="2dp"
+            android:padding="12dp"
+            android:textColor="@color/ink_soft"
+            android:textSize="9sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/diagShowButton"
+                style="@style/Widget.AirGesture.Button.Outlined"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:text="@string/diag_show" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/diagCopyButton"
+                style="@style/Widget.AirGesture.Button.Outlined"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/diag_copy" />
+        </LinearLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/resetButton"
             style="@style/Widget.AirGesture.Button.Outlined"

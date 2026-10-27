@@ -18,6 +18,7 @@ class AirGestureApp : Application() {
         super.onCreate()
         instance = this
         CrashLogger.install(this)
+        Diag.add("App iniciada · ${android.os.Build.MODEL} · Android ${android.os.Build.VERSION.RELEASE}")
     }
 
     /** Human readable device label used by the settings screen. */

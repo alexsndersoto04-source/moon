@@ -5,7 +5,9 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import com.airgesture.transfer.BuildConfig
 import com.airgesture.transfer.R
+import android.view.View
 import com.airgesture.transfer.core.AirGestureApp
+import com.airgesture.transfer.core.Diag
 import com.airgesture.transfer.databinding.ActivitySettingsBinding
 import com.airgesture.transfer.util.Haptics
 import kotlin.math.roundToInt
@@ -57,6 +59,22 @@ class SettingsActivity : AppCompatActivity() {
         }
         binding.switchDiagnostics.setOnCheckedChangeListener { _, checked ->
             prefs.diagnosticsVisible = checked
+        }
+
+        binding.diagShowButton.setOnClickListener {
+            val visible = binding.diagText.visibility != View.VISIBLE
+            binding.diagText.visibility = if (visible) View.VISIBLE else View.GONE
+            if (visible) binding.diagText.text = Diag.report(this)
+        }
+
+        binding.diagCopyButton.setOnClickListener {
+            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+            clipboard.setPrimaryClip(
+                android.content.ClipData.newPlainText("airgesture-diag", Diag.report(this))
+            )
+            android.widget.Toast.makeText(this, R.string.diag_copied, android.widget.Toast.LENGTH_SHORT)
+                .show()
         }
 
         binding.resetButton.setOnClickListener {
