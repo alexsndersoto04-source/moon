@@ -22,14 +22,15 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
-import java.io.BufferedOutputStream
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.io.OutputStream
+import java.io.SequenceInputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -90,7 +91,6 @@ class NearbyTransferManager(
     @Volatile private var outgoingPayloadId: Long = -1L
     @Volatile private var outgoingName: String? = null
     @Volatile private var outgoingTotal: Long = 0L
-    private var outgoingStream: OutputStream? = null
 
     // Incoming
     @Volatile private var incomingPayloadId: Long = -1L
@@ -225,61 +225,49 @@ class NearbyTransferManager(
         outgoingName = entry.name
 
         ioExecutor.execute {
-            var input: InputStream? = null
             try {
-                input = appContext.contentResolver.openInputStream(entry.uri)
+                val input = appContext.contentResolver.openInputStream(entry.uri)
                     ?: throw IOException("No se pudo abrir el archivo")
 
-                val size = entry.sizeBytes.takeIf { it > 0 } ?: 0L
-                val payload = Payload.fromStream()
-                outgoingPayloadId = payload.id
-                outgoingTotal = size
+                val fileSize = entry.sizeBytes.takeIf { it > 0 } ?: 0L
+                val header = buildHeader(entry.name, entry.mimeType, fileSize)
 
-                emitProgress(entry.name, 0L, size, outgoing = true)
+                // One continuous stream: framing header followed by the file bytes.
+                // Nearby reads it to EOF on its own thread and closes it, which is
+                // what triggers the SUCCESS update.
+                val source = SequenceInputStream(ByteArrayInputStream(header), input)
+                val payload = Payload.fromStream(source)
+
+                outgoingPayloadId = payload.id
+                outgoingTotal = fileSize + header.size
+                emitProgress(entry.name, 0L, outgoingTotal, outgoing = true)
 
                 connections.sendPayload(endpointId, payload)
                     .addOnFailureListener { error ->
-                        Log.w(TAG, "sendPayload(stream) failed", error)
+                        Log.w(TAG, "sendPayload failed", error)
+                        runCatching { source.close() }
                         fail(entry.name, error.message ?: "Envío rechazado")
                     }
-
-                val rawStream = payload.asStream()?.asOutputStream()
-                    ?: throw IOException("El canal de envío no está disponible")
-                outgoingStream = rawStream
-
-                BufferedOutputStream(rawStream, BUFFER).use { buffered ->
-                    DataOutputStream(buffered).use { data ->
-                        data.writeInt(MAGIC)
-                        data.writeByte(VERSION)
-                        writeString(data, entry.name)
-                        writeString(data, entry.mimeType)
-                        data.writeLong(size)
-                        data.flush()
-
-                        val copy = ByteArray(BUFFER)
-                        var sent = 0L
-                        while (true) {
-                            val read = input.read(copy)
-                            if (read <= 0) break
-                            data.write(copy, 0, read)
-                            sent += read
-                        }
-                        data.flush()
-                        if (size > 0L && sent != size) {
-                            Log.w(TAG, "declared $size bytes but streamed $sent")
-                        }
-                    }
-                }
-                // Closing the stream is what tells Nearby the payload is complete.
             } catch (error: Exception) {
                 Log.e(TAG, "send failed", error)
                 fail(entry.name, friendly(error))
-            } finally {
-                runCatching { input?.close() }
-                outgoingStream = null
             }
         }
         return true
+    }
+
+    /** Builds `magic · version · name · mime · size` as a byte array. */
+    private fun buildHeader(name: String, mime: String, size: Long): ByteArray {
+        val buffer = java.io.ByteArrayOutputStream(HEADER_RESERVE)
+        DataOutputStream(buffer).use { out ->
+            out.writeInt(MAGIC)
+            out.writeByte(VERSION)
+            writeString(out, name)
+            writeString(out, if (mime.isBlank()) "application/octet-stream" else mime)
+            out.writeLong(size)
+            out.flush()
+        }
+        return buffer.toByteArray()
     }
 
     // ------------------------------------------------------------- receiving
@@ -441,7 +429,7 @@ class NearbyTransferManager(
             val resolver = appContext.contentResolver
             var inserted: Uri? = null
             try {
-                val source: InputStream? = when {
+                val source: InputStream = when {
                     uri != null -> runCatching { resolver.openInputStream(uri) }.getOrNull()
                     javaFile != null -> runCatching { javaFile.inputStream() }.getOrNull()
                     else -> null
@@ -519,9 +507,7 @@ class NearbyTransferManager(
     }
 
     private fun closeStreams() {
-        runCatching { outgoingStream?.close() }
         runCatching { incomingStream?.close() }
-        outgoingStream = null
         incomingStream = null
     }
 
@@ -574,6 +560,7 @@ class NearbyTransferManager(
         private const val BUFFER = 64 * 1024
         private const val MAX_STRING_BYTES = 4096
         private const val MAX_NAME_LENGTH = 120
+        private const val HEADER_RESERVE = 256
         private val STRATEGY: Strategy = Strategy.P2P_CLUSTER
     }
 }
