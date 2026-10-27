@@ -90,7 +90,7 @@ jobs:
           head -c 400000 build.log > ci/last-build.log || true
           git config user.email "ci@airgesture.local"
           git config user.name "AirGesture CI"
-          git add ci/last-build.log
+          git add -f ci/last-build.log
           git commit -m "ci: build log for ${{ github.sha }} [skip ci]" || true
           git push
 
