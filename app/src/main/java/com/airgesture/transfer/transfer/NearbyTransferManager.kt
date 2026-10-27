@@ -102,6 +102,25 @@ class NearbyTransferManager(
     private var incomingPayload: Payload? = null
     @Volatile private var incomingName: String? = null
 
+    /**
+     * Safety net for the deterministic tie-break: if this device decided to wait
+     * (its name sorts second) but nobody dials within a couple of seconds — for
+     * example because two units report the same name — it dials instead.
+     */
+    private val fallbackDial = Runnable {
+        val endpointId = pendingWaitEndpointId
+        if (running && endpointId != null && connectedEndpointId == null && connectingEndpointId == null) {
+            connectingEndpointId = endpointId
+            log("Sin respuesta, conectando nosotros")
+            connections.requestConnection(myName, endpointId, lifecycleCallback)
+                .addOnFailureListener { error ->
+                    log("Fallo al conectar (${error.message})")
+                    if (connectingEndpointId == endpointId) connectingEndpointId = null
+                }
+        }
+    }
+    @Volatile private var pendingWaitEndpointId: String? = null
+
     // Watchdog
     private val watchdog = object : Runnable {
         override fun run() {
@@ -181,7 +200,10 @@ class NearbyTransferManager(
             if (myName.compareTo(peer) >= 0) {
                 lastPeerName = peer
                 emitState(NearbyState.PEER_FOUND, peer)
-                log("Dispositivo cerca: $peer (esperando su conexión)")
+                log("Dispositivo cerca: $peer")
+                pendingWaitEndpointId = endpointId
+                mainHandler.removeCallbacks(fallbackDial)
+                mainHandler.postDelayed(fallbackDial, FALLBACK_DIAL_MS)
                 return
             }
 
@@ -683,6 +705,7 @@ class NearbyTransferManager(
         private const val MAX_STRING_BYTES = 4096
         private const val MAX_NAME_LENGTH = 120
         private const val WATCHDOG_MS = 6000L
+        private const val FALLBACK_DIAL_MS = 2500L
         private const val STATUS_ALREADY_CONNECTED = 8003
         private val STRATEGY: Strategy = Strategy.P2P_CLUSTER
     }

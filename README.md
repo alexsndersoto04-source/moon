@@ -98,6 +98,41 @@ Cómo leerlo:
   mano, mejora la luz, usa un fondo liso y que la mano entre completa en el encuadre.
 - `dedos 21` y `mano > 0` → el tracking funciona; si no envía, mira el medidor de empuje.
 
+## 3. Estado de la conexión y del envío (visible en pantalla)
+
+Debajo del medidor de empuje hay una **línea de registro** con lo que está pasando de
+verdad, actualizada en cada paso:
+
+```
+Buscando dispositivos · soy Redmi9C-A3F
+Dispositivo cerca: Redmi9C-91B
+Conectado a Redmi9C-91B
+Preparando Screenshot_2026-10-27.jpg
+Enviando Screenshot_2026-10-27.jpg…
+El otro teléfono confirmó la recepción
+```
+
+Si algo falla, el texto dice exactamente dónde. Además hay un botón **Enviar** que manda el
+archivo seleccionado sin usar ningún gesto: sirve para separar «problema de gesto» de
+«problema de red» en un solo toque.
+
+### Por qué antes no llegaba nada (corregido en 1.2.0)
+
+Ambos teléfonos anuncian y buscan a la vez (es lo que permite no configurar nada), así que
+**los dos abrían la conexión al mismo tiempo**. Una parte se quedaba en una sesión a medias y
+los payloads se descartaban en silencio. Ahora:
+
+- Solo inicia la conexión el dispositivo cuyo nombre ordena primero; el otro espera y acepta.
+- Si el que esperaba no recibe la llamada en 2,5 s, la hace él (red de seguridad).
+- `ALREADY_CONNECTED` se trata como éxito en vez de desmontar la sesión.
+- Un watchdog reintenta el descubrimiento cada 6 s mientras no haya conexión.
+
+El envío usa el flujo documentado por Google: metadatos en un payload `BYTES`, y **solo
+cuando ese payload confirma SUCCESS** se envía el archivo como `FILE` desde un
+`ParcelFileDescriptor` (cero copias en memoria). El receptor copia con `asUri()` a
+`Descargas/AirGesture` y responde un **ACK**, que es lo que hace aparecer «El otro teléfono
+confirmó la recepción»: verificación real, no una suposición.
+
 ## 3. Arquitectura
 
 ```
