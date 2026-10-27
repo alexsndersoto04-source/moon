@@ -191,6 +191,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onStats(stats: TrackingStats) {
+        // The hint depends on how long ago the hand was last seen, so it is
+        // refreshed from the stats tick even when the HUD is hidden.
+        updateHint()
         if (!diagnosticsVisible) return
         binding.diagnostics.text = buildString {
             append(String.format(Locale.US, "fps %d · %d ms\n", stats.fps, stats.inferenceMs))
@@ -199,7 +202,6 @@ class MainActivity : AppCompatActivity() {
             append("cuadros ${stats.frames} · fallos ${stats.conversionFailures}\n")
             append(if (stats.modelReady) "modelo ok · dedos ${stats.landmarks}" else "modelo: ${stats.modelError}")
         }
-        updateHint()
     }
 
     // -------------------------------------------------------------- rendering

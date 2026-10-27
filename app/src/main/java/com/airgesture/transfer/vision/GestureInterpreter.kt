@@ -67,6 +67,8 @@ class GestureInterpreter {
     private var pushArmed = true
     private var missingFrames = 0
     private var closed = false
+    private var firstSeenMs = 0L
+    private var lastBurst = false
 
     private var smoothedClosure = 0f
     private var smoothedPush = 0f
@@ -83,6 +85,8 @@ class GestureInterpreter {
 
     fun reset() {
         history.clear()
+        firstSeenMs = 0L
+        lastBurst = false
         state = GestureState.IDLE
         throwFlashUntilMs = 0L
         pushArmed = true
@@ -106,6 +110,7 @@ class GestureInterpreter {
             return onHandMissing(nowMs)
         }
         missingFrames = 0
+        if (firstSeenMs == 0L) firstSeenMs = nowMs
 
         val palm = palmCentre(landmarks)
         val size = max(distance(landmarks[WRIST], landmarks[MIDDLE_MCP]), MIN_HAND_SIZE)
@@ -135,10 +140,15 @@ class GestureInterpreter {
         }
 
         // ---- Throw: any pose, four fused cues -------------------------------
+        // Warm-up: the hand must have been visible for a moment before a push
+        // counts, otherwise simply raising the hand would read as a throw.
+        val warm = nowMs - firstSeenMs >= WARMUP_MS
         val threshold = THROW_LEVEL * strictness
         if (!pushArmed && rawPush < REARM_LEVEL) pushArmed = true
 
         if (pushArmed &&
+            warm &&
+            lastBurst &&
             nowMs - lastThrowMs > THROW_COOLDOWN_MS &&
             smoothedPush >= threshold
         ) {
@@ -244,11 +254,18 @@ class GestureInterpreter {
     }
 
     /**
-     * Forward confidence in 0..1. Uses peak rates inside the window instead of
-     * endpoint deltas, which makes short natural flicks count and long slow
-     * drifts not count.
+     * Forward confidence in 0..1.
+     *
+     * Fusion shape: the strongest "intentional" cue (apparent growth or device
+     * acceleration) carries most of the weight, with palm speed and depth as
+     * support. Uniform weights made a natural push fall just under threshold,
+     * which is why this is deliberately top-heavy.
+     *
+     * `lastBurst` requires the motion to be *fast* (speed or acceleration) so a
+     * slow lean toward the phone does not fire a transfer.
      */
     private fun pushConfidence(nowMs: Long, forwardAccel: Float): Float {
+        lastBurst = false
         if (history.size < 3) return 0f
 
         var peakGrowth = 0f
@@ -275,7 +292,6 @@ class GestureInterpreter {
         }
 
         val windowSeconds = (nowMs - history.first().timeMs) / 1000f
-        // Ignore windows that are too short to be meaningful at the very start.
         val windowFactor = clamp(windowSeconds / MIN_WINDOW_SECONDS)
 
         val cGrowth = clamp(peakGrowth / GROWTH_THRESHOLD)
@@ -283,17 +299,13 @@ class GestureInterpreter {
         val cSpeed = clamp(peakSpeed / SPEED_THRESHOLD)
         val cAccel = clamp(forwardAccel / ACCEL_THRESHOLD)
 
-        val fusion = 0.30f * cGrowth + 0.20f * cDepth + 0.18f * cSpeed + 0.32f * cAccel
+        val primary = max(cGrowth, cAccel)
+        val support = (cSpeed + cDepth) * 0.5f
+        val fusion = 0.65f * primary + 0.35f * support
 
-        // A single cue on its own (only the phone moving, only the hand moving
-        // sideways) is downgraded instead of firing.
-        val cues = (if (cGrowth > 0.30f) 1 else 0) +
-            (if (cDepth > 0.30f) 1 else 0) +
-            (if (cSpeed > 0.30f) 1 else 0) +
-            (if (cAccel > 0.35f) 1 else 0)
-        val shaped = if (cues >= 2) fusion else fusion * 0.55f
+        lastBurst = cSpeed > BURST_SPEED_LEVEL || cAccel > BURST_ACCEL_LEVEL
 
-        return (shaped * windowFactor).coerceIn(0f, 1f)
+        return (fusion * windowFactor).coerceIn(0f, 1f)
     }
 
     /** Small lateral movement of the palm cycles through the shelf. */
@@ -355,14 +367,18 @@ class GestureInterpreter {
         private const val MIN_SWIPE_SECONDS = 0.12f
 
         // Peak-rate thresholds for the four fusion cues.
-        private const val GROWTH_THRESHOLD = 0.80f
-        private const val DEPTH_THRESHOLD = 2.20f
-        private const val SPEED_THRESHOLD = 2.40f
-        private const val ACCEL_THRESHOLD = 2.60f
+        private const val GROWTH_THRESHOLD = 0.55f
+        private const val DEPTH_THRESHOLD = 1.60f
+        private const val SPEED_THRESHOLD = 1.80f
+        private const val ACCEL_THRESHOLD = 2.20f
 
-        private const val THROW_LEVEL = 0.50f
-        private const val REARM_LEVEL = 0.22f
-        private const val THROW_COOLDOWN_MS = 900L
+        private const val BURST_SPEED_LEVEL = 0.20f
+        private const val BURST_ACCEL_LEVEL = 0.25f
+        private const val WARMUP_MS = 450L
+
+        private const val THROW_LEVEL = 0.45f
+        private const val REARM_LEVEL = 0.20f
+        private const val THROW_COOLDOWN_MS = 800L
         private const val THROW_FLASH_MS = 700L
 
         // Deliberately sensitive: browsing should feel effortless.
