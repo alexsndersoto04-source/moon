@@ -162,6 +162,78 @@
                     android:visibility="gone"
                     tools:text="fps 12 · 78 ms\nmano 1 · dedos 21\ncierre 0.42 · empuje 0.31\ncuadros 1204 · fallos 0" />
 
+                <!-- Guided calibration overlay (same card, so the hand stays visible) -->
+                <LinearLayout
+                    android:id="@+id/calibrationPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#F2FDFCFA"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingStart="26dp"
+                    android:paddingEnd="26dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/calibrationTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-light"
+                        android:text="@string/cal_title"
+                        android:textColor="@color/ink"
+                        android:textSize="21sp" />
+
+                    <TextView
+                        android:id="@+id/calibrationHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:lineSpacingExtra="3dp"
+                        android:textColor="@color/ink_soft"
+                        android:textSize="12.5sp"
+                        tools:text="Empuja la mano hacia el teléfono y vuelve a la posición" />
+
+                    <TextView
+                        android:id="@+id/calibrationCounter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:textColor="@color/ink_faint"
+                        android:textSize="11sp"
+                        tools:text="Intento 1 de 3" />
+
+                    <com.google.android.material.progressindicator.LinearProgressIndicator
+                        android:id="@+id/calibrationProgress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        app:indicatorColor="@color/ink"
+                        app:trackColor="@color/hairline"
+                        app:trackCornerRadius="2dp"
+                        app:trackThickness="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/calibrationDone"
+                        style="@style/Widget.AirGesture.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="@string/cal_done_button"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/calibrationCancel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:padding="10dp"
+                        android:text="@string/cal_cancel"
+                        android:textColor="@color/ink_faint"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
                 <!-- Floating shelf selector -->
                 <HorizontalScrollView
                     android:id="@+id/tabScroll"

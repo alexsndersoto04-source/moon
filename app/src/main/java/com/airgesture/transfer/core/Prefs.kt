@@ -46,6 +46,62 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_KEEP_AWAKE, true)
         set(value) = sp.edit { putBoolean(KEY_KEEP_AWAKE, value) }
 
+    /** Thresholds measured by the guided calibration (0 = not calibrated). */
+    var profileGrowth: Float
+        get() = sp.getFloat(KEY_P_GROWTH, 0f)
+        set(value) = sp.edit { putFloat(KEY_P_GROWTH, value) }
+
+    var profileDepth: Float
+        get() = sp.getFloat(KEY_P_DEPTH, 0f)
+        set(value) = sp.edit { putFloat(KEY_P_DEPTH, value) }
+
+    var profileSpeed: Float
+        get() = sp.getFloat(KEY_P_SPEED, 0f)
+        set(value) = sp.edit { putFloat(KEY_P_SPEED, value) }
+
+    var profileAccel: Float
+        get() = sp.getFloat(KEY_P_ACCEL, 0f)
+        set(value) = sp.edit { putFloat(KEY_P_ACCEL, value) }
+
+    var profileHandSize: Float
+        get() = sp.getFloat(KEY_P_SIZE, 0f)
+        set(value) = sp.edit { putFloat(KEY_P_SIZE, value) }
+
+    /** True once the first-run calibration sheet has been offered. */
+    var calibrationAsked: Boolean
+        get() = sp.getBoolean(KEY_CAL_ASKED, false)
+        set(value) = sp.edit { putBoolean(KEY_CAL_ASKED, value) }
+
+    var calibrated: Boolean
+        get() = sp.getBoolean(KEY_CALIBRATED, false)
+        set(value) = sp.edit { putBoolean(KEY_CALIBRATED, value) }
+
+    fun saveProfile(profile: com.airgesture.transfer.vision.GestureProfile) {
+        sp.edit {
+            putFloat(KEY_P_GROWTH, profile.growth)
+            putFloat(KEY_P_DEPTH, profile.depth)
+            putFloat(KEY_P_SPEED, profile.speed)
+            putFloat(KEY_P_ACCEL, profile.accel)
+            putFloat(KEY_P_SIZE, profile.handSize)
+            putBoolean(KEY_CALIBRATED, profile.calibrated)
+        }
+    }
+
+    fun loadProfile(): com.airgesture.transfer.vision.GestureProfile {
+        return if (calibrated) {
+            com.airgesture.transfer.vision.GestureProfile(
+                growth = profileGrowth.coerceAtLeast(0.1f),
+                depth = profileDepth.coerceAtLeast(0.3f),
+                speed = profileSpeed.coerceAtLeast(0.4f),
+                accel = profileAccel.coerceAtLeast(0.5f),
+                handSize = profileHandSize,
+                calibrated = true
+            )
+        } else {
+            com.airgesture.transfer.vision.GestureProfile()
+        }
+    }
+
     fun resetToDefaults() {
         sp.edit {
             putFloat(KEY_SENSITIVITY, DEFAULT_SENSITIVITY)
@@ -54,6 +110,8 @@ class Prefs(context: Context) {
             putBoolean(KEY_SKELETON, true)
             putBoolean(KEY_DIAGNOSTICS, false)
             putBoolean(KEY_KEEP_AWAKE, true)
+            putBoolean(KEY_CALIBRATED, false)
+            putBoolean(KEY_CAL_ASKED, false)
         }
     }
 
@@ -65,6 +123,13 @@ class Prefs(context: Context) {
         private const val KEY_SKELETON = "skeleton"
         private const val KEY_DIAGNOSTICS = "diagnostics"
         private const val KEY_KEEP_AWAKE = "keep_awake"
+        private const val KEY_P_GROWTH = "p_growth"
+        private const val KEY_P_DEPTH = "p_depth"
+        private const val KEY_P_SPEED = "p_speed"
+        private const val KEY_P_ACCEL = "p_accel"
+        private const val KEY_P_SIZE = "p_size"
+        private const val KEY_CALIBRATED = "calibrated"
+        private const val KEY_CAL_ASKED = "cal_asked"
         const val DEFAULT_SENSITIVITY = 0.62f
     }
 }

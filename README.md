@@ -116,6 +116,32 @@ Si algo falla, el texto dice exactamente dónde. Además hay un botón **Enviar*
 archivo seleccionado sin usar ningún gesto: sirve para separar «problema de gesto» de
 «problema de red» en un solo toque.
 
+### Cómo se siente el gesto (1.4.1)
+
+El gesto ya no depende de una postura: se lee el **movimiento** de la mano, no su forma.
+Cada cuadro se filtra con un **filtro One Euro** por canal (posición, tamaño y profundidad)
+que suaviza cuando la mano está quieta y deja de suavizar cuando se mueve rápido. Es la
+diferencia entre «tiembla» y «pegado a la mano».
+
+Encima de eso hay tres cosas que antes no existían:
+
+1. **Calibración guiada (20 s).** La app te pide empujar la mano hacia el teléfono tres
+   veces y mide *tus* picos reales de crecimiento, profundidad, velocidad y aceleración.
+   Después el disparo ocurre al 55 % de tu propia medida: el mismo gesto que hiciste al
+   calibrar es el que envía. Ruta: Ajustes → **Calibrar gesto**, o el aviso del primer
+   arranque.
+2. **Arbitraje.** Un movimiento lateral es un *swipe* (cambiar de archivo) y **amortigua**
+   el empuje, así que hojear nunca envía nada por accidente. Solo el avance real —la mano
+   crece en la imagen, la profundidad baja o el teléfono acusa aceleración— cuenta como
+   empuje.
+3. **Háptico progresivo.** El medidor vibra en tres tramos antes de confirmar: se siente
+   cómo se «carga» el gesto en vez de disparar de golpe. La confirmación sigue siendo un
+   doble pulso.
+
+Los valores sin calibrar son conservadores y funcionan igual; la calibración solo los ajusta
+a tu mano. Si algo va demasiado sensible, Ajustes → **Sensibilidad** escala los umbrales
+(0 = estricto, 1 = ansioso).
+
 ### Cómo encuentra al otro teléfono (1.4.0)
 
 Nearby necesita **uno anunciando y otro buscando** a la vez, pero ninguna app puede saber de
@@ -163,7 +189,8 @@ app/src/main/java/com/airgesture/transfer/
 ├── core/        AirGestureApp · Prefs · GestureState
 ├── media/       MediaKind · MediaEntry · MediaRepository      (MediaStore vía ContentResolver)
 ├── camera/      FrameConverter · CameraAnalyzer               (480p, RGBA, cero allocs)
-├── vision/      HandTracker · GestureInterpreter · ThrustSensor
+├── vision/      HandTracker · GestureInterpreter · OneEuroFilter · GestureProfile
+│                GestureCalibration · ThrustSensor
 ├── transfer/    NearbyTransferManager · NearbyState           (Nearby Connections P2P_CLUSTER)
 ├── ui/          MainActivity · MainViewModel · FileAdapter · HandOverlayView · ThumbnailLoader
 └── util/        Permissions · Formatters · Haptics

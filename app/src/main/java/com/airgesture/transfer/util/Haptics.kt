@@ -30,6 +30,21 @@ class Haptics(context: Context) {
 
     fun tick() = vibrate(VibrationEffect.createOneShot(12L, 55))
 
+    /** Progressive feedback while the push meter fills (zones 1..3). */
+    fun charge(zone: Int) {
+        val duration = when (zone) {
+            1 -> 10L
+            2 -> 18L
+            else -> 30L
+        }
+        val amplitude = when (zone) {
+            1 -> 45
+            2 -> 80
+            else -> 130
+        }
+        vibrate(VibrationEffect.createOneShot(duration, amplitude))
+    }
+
     fun confirm() = vibrate(
         VibrationEffect.createWaveform(longArrayOf(0L, 18L, 42L, 26L), intArrayOf(0, 90, 0, 120), -1)
     )

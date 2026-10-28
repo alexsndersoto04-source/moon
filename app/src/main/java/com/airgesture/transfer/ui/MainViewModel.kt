@@ -18,6 +18,7 @@ import com.airgesture.transfer.transfer.NearbyTransferManager
 import com.airgesture.transfer.transfer.TransferProgress
 import com.airgesture.transfer.util.Haptics
 import com.airgesture.transfer.util.Permissions
+import com.airgesture.transfer.vision.GestureCalibration
 import com.airgesture.transfer.vision.GestureInterpreter
 import com.airgesture.transfer.vision.HandTracker
 import com.airgesture.transfer.vision.OverlayFrame
@@ -56,7 +57,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         handTracker ?: HandTracker(getApplication()).also { handTracker = it }
 
     private val converter = FrameConverter()
-    private val interpreter = GestureInterpreter().apply { sensitivity = prefs.sensitivity }
+    private val interpreter = GestureInterpreter().apply {
+        sensitivity = prefs.sensitivity
+        profile = prefs.loadProfile()
+    }
+    private val calibration = GestureCalibration()
     private val thrustSensor = ThrustSensor(application)
     private val nearby = NearbyTransferManager(application, this)
 
@@ -142,6 +147,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
      */
     fun applyPreferences() {
         interpreter.sensitivity = prefs.sensitivity
+        interpreter.profile = prefs.loadProfile()
+    }
+
+    val isCalibrated: Boolean get() = prefs.calibrated
+    val shouldOfferCalibration: Boolean get() = !prefs.calibrationAsked
+
+    fun markCalibrationOffered() {
+        prefs.calibrationAsked = true
+    }
+
+    /** Starts the guided calibration; the engine stops emitting transfer events. */
+    fun startCalibration() {
+        calibration.start()
+        interpreter.calibration = calibration
+        publishCalibration(calibration.current)
+    }
+
+    fun cancelCalibration() {
+        calibration.cancel()
+        interpreter.calibration = null
+        _uiState.update { it.copy(calibration = null) }
+    }
+
+    /** The overlay's "listo" button: persist the measured profile. */
+    fun finishCalibration() {
+        val profile = calibration.current.profile
+        if (profile != null && profile.calibrated) {
+            prefs.saveProfile(profile)
+            interpreter.profile = profile
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.calibrated_ok)))
+        }
+        calibration.cancel()
+        interpreter.calibration = null
+        _uiState.update { it.copy(calibration = null) }
+    }
+
+    private fun publishCalibration(state: GestureCalibration.State) {
+        val hint = when (state.phase) {
+            GestureCalibration.Phase.WAITING -> app.getString(R.string.cal_hint_ready)
+            GestureCalibration.Phase.PUSHING -> app.getString(R.string.cal_hint_push)
+            GestureCalibration.Phase.SETTLING -> app.getString(R.string.cal_hint_settle)
+            GestureCalibration.Phase.DONE -> app.getString(R.string.cal_hint_done)
+            GestureCalibration.Phase.IDLE -> app.getString(R.string.cal_hint_ready)
+        }
+        _uiState.update {
+            it.copy(
+                calibration = CalibrationUi(
+                    attempt = state.attempt,
+                    total = state.total,
+                    progress = state.progress,
+                    livePush = state.livePush,
+                    finished = state.phase == GestureCalibration.Phase.DONE,
+                    hint = hint
+                )
+            )
+        }
     }
 
     fun selectKind(kind: MediaKind) {
@@ -192,12 +253,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
                 landmarks = landmarks,
                 state = reading.state,
                 thrust = reading.thrustStrength,
-                fist = reading.fistStrength
+                fist = reading.fistStrength,
+                pushZone = reading.pushZone
             )
         )
 
         lastLandmarkCount = landmarks?.size ?: 0
         publishStats(reading)
+
+        val calibrationSession = interpreter.calibration
+        if (calibrationSession != null) {
+            val snapshot = calibrationSession.current
+            if (snapshot.phase != GestureCalibration.Phase.IDLE) publishCalibration(snapshot)
+        }
 
         if (reading.state != lastGestureState || reading.handVisible != lastHandVisible) {
             lastGestureState = reading.state
@@ -288,6 +356,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     private fun sendSelected() {
+        if (_uiState.value.calibration != null) return
         if (_uiState.value.transfer != null) return
         val state = _uiState.value
         val entry = state.items.firstOrNull { it.key == state.selectedUri }

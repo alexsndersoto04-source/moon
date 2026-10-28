@@ -18,7 +18,19 @@ data class MainUiState(
     val peerName: String? = null,
     val transfer: TransferProgress? = null,
     /** Last few transport log lines, oldest first. Shown in the UI on purpose. */
-    val logLines: List<String> = emptyList()
+    val logLines: List<String> = emptyList(),
+    /** Non-null while the guided calibration overlay is visible. */
+    val calibration: CalibrationUi? = null
+)
+
+/** Minimal projection of the calibration state for the overlay. */
+data class CalibrationUi(
+    val attempt: Int,
+    val total: Int,
+    val progress: Float,
+    val livePush: Float,
+    val finished: Boolean,
+    val hint: String
 )
 
 /**

@@ -114,6 +114,21 @@ Dispositivo: %2$s</string>
     <string name="diag_show">Ver diagnóstico</string>
     <string name="diag_copy">Copiar informe</string>
     <string name="diag_copied">Informe copiado al portapapeles</string>
+
+    <!-- Guided calibration -->
+    <string name="cal_title">Vamos a ajustarlo a tu mano</string>
+    <string name="cal_hint_ready">Coloca la mano frente a la cámara y empújala hacia el teléfono, como si enviaras algo.</string>
+    <string name="cal_hint_push">Así, sigue empujando…</string>
+    <string name="cal_hint_settle">Bien. Vuelve a la posición y repite.</string>
+    <string name="cal_hint_done">Listo: el gesto ya usa tus medidas.</string>
+    <string name="cal_counter">Intento %1$d de %2$d</string>
+    <string name="cal_done_button">Usar mis medidas</string>
+    <string name="cal_cancel">Cancelar</string>
+    <string name="calibrate_action">Calibrar gesto</string>
+    <string name="calibrated_ok">Gesto calibrado con tus medidas</string>
+    <string name="calibrate_prompt">Toca para calibrar el gesto a tu mano</string>
+    <string name="cal_intro">Dura 20 segundos: empujarás la mano hacia el teléfono tres veces y la app medirá tu velocidad y tu distancia reales. Después el gesto responde a cómo lo haces tú, no a un umbral genérico.</string>
+    <string name="cal_later">Ahora no</string>
     <string name="queued_waiting">Se enviará en cuanto conecte con el otro teléfono</string>
     <string name="hint_no_link">Abriendo enlace con el otro teléfono · mantén la app abierta en ambos y cerca</string>
 </resources>

@@ -77,6 +77,12 @@ class SettingsActivity : AppCompatActivity() {
                 .show()
         }
 
+        binding.calibrateButton.setOnClickListener {
+            // Hand control goes back to the camera screen, which owns the overlay.
+            setResult(RESULT_CALIBRATE)
+            finish()
+        }
+
         binding.resetButton.setOnClickListener {
             prefs.resetToDefaults()
             haptics.confirm()
@@ -142,6 +148,7 @@ class SettingsActivity : AppCompatActivity() {
 
     companion object {
         private const val NEARBY_VERSION = "19.3.0"
+        const val RESULT_CALIBRATE = 42
 
         fun intent(from: android.content.Context): Intent =
             Intent(from, SettingsActivity::class.java)

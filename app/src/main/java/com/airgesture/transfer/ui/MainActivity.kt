@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
 
     private enum class Blocker { NONE, PERMISSION, BLUETOOTH, LOCATION }
     private var blocker: Blocker = Blocker.NONE
+    private var lastPushZone = 0
     private var lastHandSeenAtMs = 0L
     private var handChipState: Boolean? = null
     private var currentState = MainUiState()
@@ -83,6 +84,12 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         applyPermissions()
+    }
+
+    private val settingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == SettingsActivity.RESULT_CALIBRATE) viewModel.startCalibration()
     }
 
     private val enableBluetoothLauncher = registerForActivityResult(
@@ -120,6 +127,11 @@ class MainActivity : AppCompatActivity() {
         binding.permSettings.setOnClickListener { openAppSettings() }
 
         binding.bannerAction.setOnClickListener { fixBlocker() }
+        binding.calibrationCancel.setOnClickListener { viewModel.cancelCalibration() }
+        binding.calibrationDone.setOnClickListener {
+            haptics.confirm()
+            viewModel.finishCalibration()
+        }
 
         binding.sendButton.setOnClickListener {
             haptics.tick()
@@ -128,7 +140,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.settingsButton.setOnClickListener {
             haptics.tick()
-            startActivity(SettingsActivity.intent(this))
+            settingsLauncher.launch(SettingsActivity.intent(this))
         }
 
         // Long-press the title: diagnostics HUD (fps, inference time, source format,
@@ -143,6 +155,7 @@ class MainActivity : AppCompatActivity() {
         collectFlows()
         applyPermissions()
         showCrashReportIfAny()
+        promptCalibrationIfNeeded()
     }
 
     /**
@@ -268,6 +281,13 @@ class MainActivity : AppCompatActivity() {
         binding.handOverlay.submit(frame)
         binding.pushMeter.setProgressCompat((frame.thrust * 100f).toInt().coerceIn(0, 100), false)
 
+        // Progressive haptic: the meter "charges" under the finger so the gesture
+        // feels intentional instead of random.
+        if (lastPushZone != frame.pushZone) {
+            if (frame.pushZone > lastPushZone) haptics.charge(frame.pushZone)
+            lastPushZone = frame.pushZone
+        }
+
         val handVisible = frame.landmarks != null
         if (handVisible) lastHandSeenAtMs = SystemClock.uptimeMillis()
 
@@ -319,6 +339,18 @@ class MainActivity : AppCompatActivity() {
             val index = state.items.indexOfFirst { it.key == state.selectedUri }
             if (index >= 0) binding.filesList.smoothScrollToPosition(index)
             lastSelectedUri = state.selectedUri
+        }
+
+        val calibration = state.calibration
+        binding.calibrationPanel.isVisible = calibration != null
+        if (calibration != null) {
+            binding.calibrationHint.text = calibration.hint
+            binding.calibrationCounter.text =
+                getString(R.string.cal_counter, (calibration.attempt + 1).coerceAtMost(calibration.total), calibration.total)
+            binding.calibrationProgress.setProgressCompat(
+                (calibration.progress * 100f).toInt().coerceIn(0, 100), true
+            )
+            binding.calibrationDone.isVisible = calibration.finished
         }
 
         binding.statusPill.text = statusText(state)
@@ -429,6 +461,21 @@ class MainActivity : AppCompatActivity() {
             }
             Blocker.NONE -> Unit
         }
+    }
+
+    /**
+     * First run only: offer the 20-second calibration instead of letting the user
+     * discover the tuning by trial and error.
+     */
+    private fun promptCalibrationIfNeeded() {
+        if (viewModel.isCalibrated || !viewModel.shouldOfferCalibration) return
+        viewModel.markCalibrationOffered()
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.cal_title)
+            .setMessage(R.string.cal_intro)
+            .setPositiveButton(R.string.calibrate_action) { _, _ -> viewModel.startCalibration() }
+            .setNegativeButton(R.string.cal_later, null)
+            .show()
     }
 
     private fun showTransient(text: String) {
