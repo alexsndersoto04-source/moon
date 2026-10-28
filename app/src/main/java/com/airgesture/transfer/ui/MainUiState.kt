@@ -19,6 +19,8 @@ data class MainUiState(
     val transfer: TransferProgress? = null,
     /** Last few transport log lines, oldest first. Shown in the UI on purpose. */
     val logLines: List<String> = emptyList(),
+    /** Files waiting for the link. */
+    val queuedCount: Int = 0,
     /** Non-null while the guided calibration overlay is visible. */
     val calibration: CalibrationUi? = null
 )
@@ -58,4 +60,6 @@ sealed interface UiEvent {
     data class Sent(val name: String) : UiEvent
     data class Received(val name: String) : UiEvent
     data class Message(val text: String) : UiEvent
+    /** A file is leaving the phone: the moment the hand-off effect belongs to. */
+    data class Handoff(val name: String) : UiEvent
 }

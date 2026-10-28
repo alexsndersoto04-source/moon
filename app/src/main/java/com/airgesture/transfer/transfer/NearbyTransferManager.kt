@@ -99,71 +99,78 @@ class NearbyTransferManager(
     @Volatile private var outgoingTotal: Long = 0L
     private var outgoingDescriptor: ParcelFileDescriptor? = null
 
+    // Watchdog: a payload that never reports SUCCESS must fail loudly instead
+    // of leaving the UI stuck at 3 % forever.
+    private var lastProgressMs = 0L
+    private val stallWatchdog = object : Runnable {
+        override fun run() {
+            if (!sending.get()) return
+            val silentFor = android.os.SystemClock.elapsedRealtime() - lastProgressMs
+            if (silentFor > STALL_MS) {
+                val name = outgoingName
+                log("El envío se quedó sin respuesta (${silentFor / 1000} s)")
+                cancelCurrent()
+                notifyFailure(name, "El otro teléfono dejó de responder")
+                return
+            }
+            mainHandler.postDelayed(this, STALL_CHECK_MS)
+        }
+    }
+
     // Incoming
     @Volatile private var incomingPayloadId: Long = -1L
     @Volatile private var incomingTotal: Long = 0L
     private var incomingPayload: Payload? = null
     @Volatile private var incomingName: String? = null
 
-    // ------------------------------------------------------- role cycling
+    // ------------------------------------------------------------- discovery
     //
-    // Nearby needs one device advertising while the other discovers, but neither
-    // phone can know in advance which role it is. Advertising *and* discovering
-    // at the same time (what this class used to do) makes the BLE stack drop
-    // scan results, and restarting both every few seconds resets every scan
-    // cycle before it can report anything — the endless "Buscando…" loop.
+    // Both phones advertise **and** discover at the same time, permanently, and
+    // neither radio is ever restarted on a timer. Advertising is a broadcast and
+    // discovery is a scan; running both means each phone is visible while it
+    // looks, so the first result arrives in a second or two instead of after a
+    // full role rotation. (Restarting the scan every few seconds is what used to
+    // swallow every result — that watchdog is gone for good.)
     //
-    // So each device alternates: advertise for 6 s, then discover for 7 s, with
-    // a per-device offset so the two phones are almost never in the same phase.
-    // At least one of them is always a listener, which is exactly what the
-    // handshake needs.
+    // The handshake itself is disambiguated by name, never by luck: the device
+    // whose name sorts first calls requestConnection, the other one only
+    // accepts. Exactly one dial per pair, every time. If the loser has not been
+    // dialled after a short grace period, it dials anyway — so a missed
+    // discovery event can delay a connection but never prevent it.
+    // -------------------------------------------------------------------------
 
-    private enum class Role { IDLE, ADVERTISING, DISCOVERING, CONNECTING, CONNECTED }
-
-    @Volatile private var role = Role.IDLE
+    @Volatile private var dialToken: String? = null
     private var lastPhaseLogMs = 0L
+    private var pendingPeerId: String? = null
+    private var pendingPeerName: String? = null
+    private var graceRunnable: Runnable? = null
 
-    private val cycleTick = object : Runnable {
-        override fun run() {
-            if (!running) return
-            when (role) {
-                Role.CONNECTING -> mainHandler.postDelayed(this, 1000L)
-                Role.CONNECTED -> Unit
-                Role.ADVERTISING -> beginDiscoveryPhase()
-                else -> beginAdvertisingPhase()
-            }
-        }
-    }
-
-    private fun beginAdvertisingPhase() {
-        role = Role.ADVERTISING
-        runCatching { connections.stopDiscovery() }
-        startAdvertising()
-        logPhase("Visible como $myName")
-        mainHandler.removeCallbacks(cycleTick)
-        mainHandler.postDelayed(cycleTick, ADVERTISE_MS)
-    }
-
-    private fun beginDiscoveryPhase() {
-        role = Role.DISCOVERING
-        runCatching { connections.stopAdvertising() }
-        startDiscovery()
-        logPhase("Buscando el otro teléfono…")
-        mainHandler.removeCallbacks(cycleTick)
-        mainHandler.postDelayed(cycleTick, DISCOVER_MS)
-    }
-
-    private fun resumeCycling(delayMs: Long = 0L) {
+    private fun startRadios() {
         if (!running) return
-        role = Role.IDLE
-        mainHandler.removeCallbacks(cycleTick)
-        mainHandler.postDelayed(cycleTick, delayMs)
+        if (connectedEndpointId != null || connectingEndpointId != null) return
+        startAdvertising()
+        startDiscovery()
+        logOnce("Buscando el otro teléfono…", SEARCH_LOG_MS)
     }
 
     private fun stopRadios() {
-        mainHandler.removeCallbacks(cycleTick)
+        cancelGrace()
         runCatching { connections.stopAdvertising() }
         runCatching { connections.stopDiscovery() }
+    }
+
+    private fun cancelGrace() {
+        graceRunnable?.let { mainHandler.removeCallbacks(it) }
+        graceRunnable = null
+        pendingPeerId = null
+        pendingPeerName = null
+    }
+
+    /** Restarts advertising/discovery after a failed attempt, from scratch. */
+    private fun restartRadios(delayMs: Long) {
+        if (!running) return
+        stopRadios()
+        mainHandler.postDelayed({ startRadios() }, delayMs)
     }
 
     // ------------------------------------------------------------ lifecycle
@@ -173,21 +180,18 @@ class NearbyTransferManager(
         running = true
         emitState(NearbyState.SEARCHING)
         log("Soy $myName · encendiendo radios")
-        resumeCycling(phaseOffsetMs())
+        startRadios()
     }
 
     fun stop() {
         running = false
-        mainHandler.removeCallbacks(cycleTick)
-        role = Role.IDLE
+        stopRadios()
         connectedEndpointId = null
         connectingEndpointId = null
         connectedName = null
         queuedEntry = null
         closeOutgoingDescriptor()
         sending.set(false)
-        runCatching { connections.stopAdvertising() }
-        runCatching { connections.stopDiscovery() }
         runCatching { connections.stopAllEndpoints() }
         emitState(NearbyState.IDLE)
     }
@@ -195,16 +199,6 @@ class NearbyTransferManager(
     val isConnected: Boolean get() = connectedEndpointId != null
     val peerName: String? get() = connectedName ?: lastPeerName
     val isBusy: Boolean get() = sending.get()
-
-    private fun phaseOffsetMs(): Long =
-        ((androidIdHash() % 2500).toLong() + 250L)
-
-    private fun androidIdHash(): Int {
-        val id = runCatching {
-            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
-        }.getOrNull().orEmpty()
-        return id.hashCode() and 0x7FFFFFFF
-    }
 
     // ----------------------------------------------------------- advertising
 
@@ -237,7 +231,9 @@ class NearbyTransferManager(
                 .addOnFailureListener { error ->
                     Log.w(TAG, "startDiscovery($id) failed", error)
                     val code = (error as? com.google.android.gms.common.api.ApiException)?.statusCode
-                    if (code != null) log("Búsqueda: ${statusText(code)}")
+                    if (code != null && code != ConnectionsStatusCodes.STATUS_ALREADY_DISCOVERING) {
+                        log("Búsqueda: ${statusText(code)}")
+                    }
                 }
         }
     }
@@ -246,49 +242,80 @@ class NearbyTransferManager(
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             if (!running) return
             if (connectedEndpointId != null || connectingEndpointId != null) return
-            if (role != Role.DISCOVERING && role != Role.IDLE) return
+            if (endpointId == connectedEndpointId || endpointId == connectingEndpointId) return
 
-            val peer = info.endpointName.orEmpty()
-            if (peer.isBlank()) return
+            val peer = info.endpointName.orEmpty().trim()
+            if (peer.isBlank() || peer == myName) return
 
-            // Only the discovering device dials; the other one is listening and
-            // will answer through onConnectionInitiated.
-            connectingEndpointId = endpointId
-            role = Role.CONNECTING
             lastPeerName = peer
             emitState(NearbyState.PEER_FOUND, peer)
-            log("Encontrado: $peer · conectando")
-            mainHandler.removeCallbacks(cycleTick)
-            runCatching { connections.stopDiscovery() }
+            log("Encontrado: $peer")
 
-            connections.requestConnection(myName, endpointId, lifecycleCallback)
-                .addOnFailureListener { error ->
-                    val code = (error as? com.google.android.gms.common.api.ApiException)?.statusCode
-                    log("No se pudo conectar: ${code?.let { statusText(it) } ?: error.message}")
-                    if (connectingEndpointId == endpointId) connectingEndpointId = null
-                    if (connectedEndpointId == null) resumeCycling(RETRY_MS)
+            val iDial = myName < peer
+            if (iDial) {
+                dial(endpointId, peer)
+            } else {
+                // The other phone sorts first, so it will dial. Give it a
+                // moment; if nothing arrives, dial anyway instead of waiting.
+                cancelGrace()
+                pendingPeerId = endpointId
+                pendingPeerName = peer
+                val runnable = Runnable {
+                    if (connectedEndpointId == null && connectingEndpointId == null) {
+                        val id = pendingPeerId
+                        val name = pendingPeerName
+                        if (id != null) {
+                            log("Sin respuesta de $name · tomando la iniciativa")
+                            dial(id, name ?: peer)
+                        }
+                    }
                 }
+                graceRunnable = runnable
+                mainHandler.postDelayed(runnable, DIAL_GRACE_MS)
+            }
         }
 
         override fun onEndpointLost(endpointId: String) {
             if (connectingEndpointId == endpointId && connectedEndpointId == null) {
                 connectingEndpointId = null
-                if (running && role == Role.CONNECTING) resumeCycling(RETRY_MS)
+                restartRadios(RETRY_MS)
             }
         }
+    }
+
+    private fun dial(endpointId: String, peerName: String) {
+        if (connectingEndpointId != null || connectedEndpointId != null) return
+        if (endpointId == dialToken) return
+        cancelGrace()
+        dialToken = endpointId
+        connectingEndpointId = endpointId
+        lastPeerName = peerName
+        emitState(NearbyState.CONNECTING, peerName)
+        log("Conectando con $peerName…")
+
+        connections.requestConnection(myName, endpointId, lifecycleCallback)
+            .addOnFailureListener { error ->
+                val code = (error as? com.google.android.gms.common.api.ApiException)?.statusCode
+                if (code != ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT) {
+                    log("No se pudo conectar: ${code?.let { statusText(it) } ?: error.message}")
+                }
+                if (connectingEndpointId == endpointId) connectingEndpointId = null
+                dialToken = null
+                if (connectedEndpointId == null) restartRadios(RETRY_MS)
+            }
     }
 
     private val lifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
             announcedName = info.endpointName
+            cancelGrace()
             if (connectingEndpointId == null) connectingEndpointId = endpointId
-            if (role != Role.CONNECTED) role = Role.CONNECTING
             emitState(NearbyState.CONNECTING, info.endpointName)
             connections.acceptConnection(endpointId, payloadCallback)
                 .addOnFailureListener { error ->
                     Log.w(TAG, "acceptConnection failed", error)
                     log("No se pudo aceptar: ${error.message}")
-                    if (connectedEndpointId == null) resumeCycling(RETRY_MS)
+                    if (connectedEndpointId == null) restartRadios(RETRY_MS)
                 }
         }
 
@@ -300,7 +327,7 @@ class NearbyTransferManager(
             ) {
                 connectedEndpointId = endpointId
                 connectingEndpointId = null
-                role = Role.CONNECTED
+                dialToken = null
                 connectedName = announcedName?.takeIf { it.isNotBlank() }
                     ?: lastPeerName
                     ?: endpointId.takeLast(4).uppercase()
@@ -314,7 +341,7 @@ class NearbyTransferManager(
                 if (connectingEndpointId == endpointId) connectingEndpointId = null
                 if (connectedEndpointId == null) {
                     emitState(NearbyState.SEARCHING)
-                    resumeCycling(RETRY_MS)
+                    restartRadios(RETRY_MS)
                 }
             }
         }
@@ -328,7 +355,7 @@ class NearbyTransferManager(
                 sending.set(false)
                 emitState(NearbyState.SEARCHING)
                 log("Se perdió la conexión; reintentando")
-                resumeCycling(RETRY_MS)
+                restartRadios(0L)
             }
         }
     }
@@ -346,6 +373,9 @@ class NearbyTransferManager(
         queuedEntry = entry
         outgoingName = entry.name
         outgoingTotal = entry.sizeBytes
+        lastProgressMs = android.os.SystemClock.elapsedRealtime()
+        mainHandler.removeCallbacks(stallWatchdog)
+        mainHandler.postDelayed(stallWatchdog, STALL_CHECK_MS)
 
         val meta = org.json.JSONObject()
             .put(KEY_NAME, entry.name)
@@ -364,6 +394,34 @@ class NearbyTransferManager(
                 notifyFailure(entry.name, error.message ?: "Envío rechazado")
             }
         return true
+    }
+
+    /**
+     * Cancels the payload that is currently in flight. The peer sees a CANCELED
+     * update and cleans up its half-written file, so a cancelled send never
+     * leaves a truncated file behind.
+     */
+    fun cancelCurrent(): Boolean {
+        val endpointId = connectedEndpointId
+        var cancelled = false
+        val fileId = outgoingPayloadId
+        if (fileId != -1L) {
+            cancelled = runCatching { connections.cancelPayload(fileId) }.isSuccess
+        }
+        val metaId = metaPayloadId
+        if (metaId != -1L) {
+            cancelled = runCatching { connections.cancelPayload(metaId) }.isSuccess || cancelled
+        }
+        if (endpointId != null && cancelled) {
+            log("Envío cancelado")
+        }
+        outgoingPayloadId = -1L
+        metaPayloadId = -1L
+        mainHandler.removeCallbacks(stallWatchdog)
+        closeOutgoingDescriptor()
+        sending.set(false)
+        queuedEntry = null
+        return cancelled
     }
 
     /** Second step: the FILE payload, once the metadata is confirmed. */
@@ -452,6 +510,7 @@ class NearbyTransferManager(
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
             when (update.status) {
                 PayloadTransferUpdate.Status.IN_PROGRESS -> {
+                    lastProgressMs = android.os.SystemClock.elapsedRealtime()
                     if (update.payloadId == outgoingPayloadId) {
                         postProgress(
                             TransferProgress(
@@ -481,6 +540,7 @@ class NearbyTransferManager(
                         }
 
                         outgoingPayloadId -> {
+                            mainHandler.removeCallbacks(stallWatchdog)
                             val name = outgoingName ?: "Archivo"
                             val total = maxOf(update.totalBytes, outgoingTotal)
                             outgoingPayloadId = -1L
@@ -718,6 +778,7 @@ class NearbyTransferManager(
     private fun statusText(code: Int): String = when (code) {
         ConnectionsStatusCodes.STATUS_ALREADY_ADVERTISING -> "ya estaba anunciando"
         ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT -> "ya conectado"
+        ConnectionsStatusCodes.STATUS_ALREADY_DISCOVERING -> "ya estaba buscando"
         ConnectionsStatusCodes.STATUS_NOT_CONNECTED_TO_ENDPOINT -> "el otro teléfono no está conectado"
         ConnectionsStatusCodes.STATUS_OUT_OF_ORDER_API_CALL -> "llamada fuera de orden"
         ConnectionsStatusCodes.MISSING_PERMISSION_ACCESS_FINE_LOCATION -> "falta permiso de ubicación"
@@ -748,10 +809,10 @@ class NearbyTransferManager(
         mainHandler.post { listener.onLog(line) }
     }
 
-    /** Phase transitions are periodic; log them at most every 11 s. */
-    private fun logPhase(line: String) {
+    /** Some lines are periodic by nature; never repeat them more than once per window. */
+    private fun logOnce(line: String, windowMs: Long) {
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastPhaseLogMs < PHASE_LOG_MS) return
+        if (now - lastPhaseLogMs < windowMs) return
         lastPhaseLogMs = now
         log(line)
     }
@@ -778,12 +839,15 @@ class NearbyTransferManager(
         private const val BUFFER = 64 * 1024
         private const val MAX_STRING_BYTES = 4096
         private const val MAX_NAME_LENGTH = 120
-        // Role cycling: advertise, then discover. Offsets keep the two phones
-        // out of phase so one is always listening.
-        private const val ADVERTISE_MS = 6000L
-        private const val DISCOVER_MS = 7000L
-        private const val RETRY_MS = 1200L
-        private const val PHASE_LOG_MS = 11000L
+        // Both radios stay on permanently; these timers only govern retries and
+        // how often the same informational line may be logged.
+        private const val RETRY_MS = 900L
+        private const val SEARCH_LOG_MS = 9000L
+        /** How long the "loser" of the name comparison waits before dialling. */
+        private const val DIAL_GRACE_MS = 1500L
+        /** A payload with no update for this long is considered dead. */
+        private const val STALL_MS = 25_000L
+        private const val STALL_CHECK_MS = 5_000L
         // Documented choice for a one-to-one link; the cluster topology adds
         // multi-connect edge cases we do not need between two phones.
         private val STRATEGY: Strategy = Strategy.P2P_POINT_TO_POINT

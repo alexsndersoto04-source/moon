@@ -93,7 +93,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     val events = _events.asSharedFlow()
 
     private var loadJob: Job? = null
-    private var pendingSend: MediaEntry? = null
+    /** Files waiting for the link, oldest first. Nothing is ever dropped. */
+    private val queue = ArrayDeque<MediaEntry>()
     private var sessionActive = false
     private var nearbyStarted = false
     private var initialLoadDone = false
@@ -363,10 +364,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     /** Explicit "send now" button: no gesture involved at all. */
     fun sendSelectedNow() {
-        if (_uiState.value.transfer != null) {
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_in_progress)))
-            return
-        }
         val state = _uiState.value
         val entry = state.items.firstOrNull { it.key == state.selectedUri }
             ?: state.items.firstOrNull()
@@ -377,43 +374,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         sendItem(entry)
     }
 
-    /** Fail-safe used by the long-press on a file card. */
+    /**
+     * Fail-safe used by the long-press on a file card. Sends now when the link
+     * is up; otherwise the file waits in the queue and leaves by itself.
+     */
     fun sendItem(entry: MediaEntry) {
         _uiState.update { it.copy(selectedUri = entry.key) }
-        if (nearby.isConnected) {
-            dispatch(entry)
-        } else {
-            pendingSend = entry
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
+        enqueue(entry)
+    }
+
+    /** Adds to the queue and starts sending when the channel is free. */
+    private fun enqueue(entry: MediaEntry) {
+        if (queue.any { it.key == entry.key } || _uiState.value.transfer?.fileName == entry.name) {
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.already_queued)))
+            return
         }
+        queue.addLast(entry)
+        publishQueue()
+        if (!nearby.isConnected) {
+            _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
+            return
+        }
+        pump()
+    }
+
+    /** Sends the next queued file when nothing is in flight. */
+    private fun pump() {
+        if (_uiState.value.transfer != null) return
+        if (!nearby.isConnected) return
+        val next = queue.removeFirstOrNull() ?: return
+        publishQueue()
+        dispatch(next)
+    }
+
+    private fun publishQueue() {
+        _uiState.update { it.copy(queuedCount = queue.size) }
+    }
+
+    /** The user pressed Cancelar: stop the payload, drop what was waiting. */
+    fun cancelTransfer() {
+        val cancelled = nearby.cancelCurrent()
+        queue.clear()
+        publishQueue()
+        _uiState.update { it.copy(transfer = null) }
+        haptics.tick()
+        _events.tryEmit(
+            UiEvent.Message(app.getString(if (cancelled) R.string.transfer_cancelled else R.string.nothing_to_cancel))
+        )
     }
 
     private fun sendSelected() {
         if (_uiState.value.calibration != null) return
-        if (_uiState.value.transfer != null) return
         val state = _uiState.value
         val entry = state.items.firstOrNull { it.key == state.selectedUri }
             ?: state.items.firstOrNull()
             ?: return
+        enqueue(entry)
+    }
 
-        if (nearby.isConnected) {
-            dispatch(entry)
-        } else {
-            pendingSend = entry
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
-        }
+    /** The card the effect should show: whatever is leaving the phone. */
+    fun selectedEntry(): MediaEntry? {
+        val state = _uiState.value
+        return state.items.firstOrNull { it.key == state.selectedUri }
+            ?: state.items.firstOrNull()
     }
 
     private fun dispatch(entry: MediaEntry) {
         if (nearby.isBusy) {
+            // Put it back at the head: the current send is about to finish.
+            queue.addFirst(entry)
+            publishQueue()
             _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_in_progress)))
             return
         }
         if (!nearby.send(entry)) {
+            // Never drop the user's file: it goes back to the head of the queue.
+            queue.addFirst(entry)
+            publishQueue()
             _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_not_started)))
             return
         }
         haptics.confirm()
+        _events.tryEmit(UiEvent.Handoff(entry.name))
         _uiState.update {
             it.copy(
                 transfer = TransferProgress(
@@ -433,13 +475,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
                 peerName = nearby.peerName ?: detail?.takeIf { state == NearbyState.CONNECTED }
             )
         }
-        if (state == NearbyState.CONNECTED) {
-            val queued = pendingSend
-            if (queued != null) {
-                pendingSend = null
-                dispatch(queued)
-            }
-        }
+        // Connected: anything the user queued leaves now, in order.
+        if (state == NearbyState.CONNECTED) pump()
     }
 
     override fun onTransferProgress(progress: TransferProgress) {
@@ -447,10 +484,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     override fun onFileSent(fileName: String) {
-        pendingSend = null
         _uiState.update { it.copy(transfer = null) }
         haptics.confirm()
         _events.tryEmit(UiEvent.Sent(fileName))
+        pump()
     }
 
     override fun onFileReceived(fileName: String, uri: Uri) {
@@ -467,7 +504,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     override fun onTransferFailed(fileName: String?, reason: String) {
-        pendingSend = null
         _uiState.update { it.copy(transfer = null) }
         _events.tryEmit(UiEvent.Message(reason))
     }

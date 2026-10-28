@@ -76,12 +76,22 @@ class GestureInterpreter {
 
     private var smoothedClosure = 0f
     private var smoothedPush = 0f
-    private var smoothedCalibration = 0f
+    private var smoothedApproach = 0f
     private var lastZone = 0
 
     private var palmX = 0f
     private var palmY = 0f
     private var palmSize = 0f
+
+    /**
+     * Reference palm size for "the hand is at a comfortable distance".
+     *
+     * It follows the signal very slowly (2 % per frame ≈ 1.6 s at 30 fps), so a
+     * 300 ms push shows up as a 20-60 % growth over the baseline, while simply
+     * holding the hand still keeps the ratio at 1. This is the direct, physical
+     * "the hand is coming closer" measurement — no thresholds, no pose.
+     */
+    private var baselineSize = 0f
 
     /** 0 = strict, 1 = eager. Scales the calibrated thresholds. */
     var sensitivity: Float = DEFAULT_SENSITIVITY
@@ -93,6 +103,7 @@ class GestureInterpreter {
     var profile: GestureProfile = GestureProfile()
 
     /** Set while the guided calibration is running; events are suppressed. */
+    @Volatile
     var calibration: GestureCalibration? = null
 
     fun reset() {
@@ -135,12 +146,27 @@ class GestureInterpreter {
         palmSize = filterSize.filter(rawSize, nowMs)
         val depth = filterDepth.filter(rawDepth, nowMs)
 
+        // Baseline tracking. A re-acquired hand (or a lens change) starts a new
+        // baseline instead of comparing against a stale one.
+        if (baselineSize <= 0f) {
+            baselineSize = palmSize
+        } else {
+            val ratio = palmSize / baselineSize
+            if (ratio > 2.4f || ratio < 0.42f) {
+                baselineSize = palmSize
+            } else {
+                baselineSize += BASELINE_ALPHA * (palmSize - baselineSize)
+            }
+        }
+
         val closure = closure(landmarks, rawPalm)
         smoothedClosure += CLOSURE_SMOOTHING * (closure - smoothedClosure)
 
         pushSample(nowMs, palmX, palmY, palmSize, depth)
 
-        val motion = measure(nowMs, forwardAccel)
+        val instantApproach = approachLevel()
+        smoothedApproach += APPROACH_SMOOTHING * (instantApproach - smoothedApproach)
+        val motion = measure(nowMs, forwardAccel).withApproach(smoothedApproach)
         val effective = profile.withSensitivity(sensitivity)
         val push = fuse(motion, effective)
 
@@ -149,12 +175,10 @@ class GestureInterpreter {
         // ---- Guided calibration takes over the engine ----------------------
         calibration?.let { calibration ->
             if (calibration.isActive) {
-                // Calibration must never depend on the profile it is about to
-                // replace: it measures against neutral thresholds, so any real
-                // push registers on the very first attempt.
-                val neutral = fuse(motion, CALIBRATION_PROFILE)
-                smoothedCalibration += CALIBRATION_SMOOTHING * (neutral - smoothedCalibration)
-                calibration.onFrame(motion.copy(push = smoothedCalibration), nowMs)
+                // The calibrator reads [Motion.approach] — the raw geometric
+                // measurement — so it never depends on the very thresholds it
+                // is about to replace. Any real push registers on attempt one.
+                calibration.onFrame(motion, nowMs)
             }
             // While the overlay exists nothing else may fire: neither a throw nor
             // a swipe. Events come back as soon as the panel is dismissed.
@@ -186,12 +210,17 @@ class GestureInterpreter {
         val verdict = arbitrate(motion, smoothedPush)
 
         if (verdict == Verdict.FORWARD) {
-            if (aboveSinceMs == 0L) aboveSinceMs = nowMs
-            val heldLongEnough = nowMs - aboveSinceMs >= HOLD_MS
+            // The trigger is the *push confidence*, on an absolute 0..1 scale,
+            // never a speed value borrowed from another cue. Sensitivity moves
+            // this single number, which is why the slider now behaves linearly.
+            val ready = smoothedPush >= triggerLevel()
+            if (ready && aboveSinceMs == 0L) aboveSinceMs = nowMs
+            if (!ready) aboveSinceMs = 0L
+            val heldLongEnough = aboveSinceMs != 0L && nowMs - aboveSinceMs >= HOLD_MS
             val warm = nowMs - firstSeenMs >= WARMUP_MS
             if (!pushArmed && smoothedPush < REARM_LEVEL) pushArmed = true
 
-            if (pushArmed && warm && heldLongEnough &&
+            if (pushArmed && warm && heldLongEnough && ready &&
                 nowMs - lastThrowMs > THROW_COOLDOWN_MS
             ) {
                 pushArmed = false
@@ -244,11 +273,32 @@ class GestureInterpreter {
     }
 
     private fun onHandMissing(nowMs: Long): Reading {
+        // The calibration must see the gap too, otherwise an attempt that ends
+        // because the hand left the frame would stay "in progress" forever.
+        calibration?.let { session ->
+            if (session.isActive) {
+                session.onFrame(
+                    Motion(
+                        handVisible = false,
+                        push = 0f,
+                        peakGrowth = 0f,
+                        peakSpeed = 0f,
+                        peakDepth = 0f,
+                        accel = 0f,
+                        size = 0f,
+                        lateralSpeed = 0f,
+                        approach = 0f
+                    ),
+                    nowMs
+                )
+            }
+        }
         missingFrames++
         history.clear()
         filterX.reset(); filterY.reset(); filterSize.reset(); filterDepth.reset()
         smoothedPush = 0f
-        smoothedCalibration = 0f
+        smoothedApproach = 0f
+        baselineSize = 0f
         smoothedClosure = 0f
         closed = false
         pushArmed = true
@@ -284,18 +334,32 @@ class GestureInterpreter {
      */
     private fun arbitrate(motion: Motion, push: Float): Verdict {
         if (motion.lateralSpeed < LATERAL_MIN_SPEED) {
-            return if (push >= effectiveLevel() * 0.5f) Verdict.FORWARD else Verdict.NONE
+            return if (push >= triggerLevel() * 0.55f) Verdict.FORWARD else Verdict.NONE
         }
-        val approaching = motion.peakGrowth > 0.05f || motion.peakDepth > 0.15f
+        val approaching = motion.approach > 0.2f ||
+            motion.peakGrowth > 0.05f ||
+            motion.peakDepth > 0.15f
         val lateralDominant = !approaching || motion.lateralSpeed > motion.peakSpeed * 0.9f
         return when {
             lateralDominant && abs(motion.lateralSpeed) > LATERAL_MIN_SPEED -> Verdict.LATERAL
-            push >= effectiveLevel() * 0.5f -> Verdict.FORWARD
+            push >= triggerLevel() * 0.55f -> Verdict.FORWARD
             else -> Verdict.NONE
         }
     }
 
-    private fun effectiveLevel(): Float = profile.withSensitivity(sensitivity).speed
+    /**
+     * Push confidence needed to send: 0.62 at the strict end, 0.38 at the eager
+     * end of the slider. One number, applied to every cue through [fuse].
+     */
+    private fun triggerLevel(): Float = 0.62f - 0.24f * sensitivity.coerceIn(0f, 1f)
+
+    /** 0 = hand at its resting distance, 1 = clearly closer to the lens. */
+    private fun approachLevel(): Float {
+        if (baselineSize <= 0f || palmSize <= 0f) return 0f
+        val growth = palmSize / baselineSize - 1f
+        if (growth <= 0f) return 0f
+        return clamp(growth / APPROACH_SPAN)
+    }
 
     private fun pushSample(timeMs: Long, x: Float, y: Float, size: Float, depth: Float) {
         history.addLast(Sample(timeMs, x, y, size, depth))
@@ -308,7 +372,7 @@ class GestureInterpreter {
     /** Peak rates of every cue inside the current window. */
     private fun measure(nowMs: Long, forwardAccel: Float): Motion {
         if (history.size < 3) {
-            return Motion(false, 0f, 0f, 0f, 0f, forwardAccel, palmSize, 0f)
+            return Motion(false, 0f, 0f, 0f, 0f, forwardAccel, palmSize, 0f, 0f)
         }
 
         var peakGrowth = 0f
@@ -348,7 +412,8 @@ class GestureInterpreter {
             peakDepth = peakDepth * windowFactor,
             accel = forwardAccel,
             size = palmSize,
-            lateralSpeed = lateral * windowFactor
+            lateralSpeed = lateral * windowFactor,
+            approach = 0f
         )
     }
 
@@ -362,10 +427,14 @@ class GestureInterpreter {
         val cDepth = clamp(motion.peakDepth / thresholds.depth)
         val cSpeed = clamp(motion.peakSpeed / thresholds.speed)
         val cAccel = clamp(motion.accel / thresholds.accel)
+        val cApproach = clamp(motion.approach)
 
-        val primary = max(cGrowth, cAccel)
+        // The direct size-ratio measurement is what a human perceives as "the
+        // hand is getting closer". Growth rate and device acceleration confirm
+        // it; the approach alone is already allowed to trigger.
+        val primary = max(max(cApproach, cGrowth), cAccel)
         val support = (cSpeed + cDepth) * 0.5f
-        var fusion = 0.65f * primary + 0.35f * support
+        var fusion = max(0.75f * primary + 0.25f * support, cApproach * 0.9f)
 
         if (motion.lateralSpeed > LATERAL_MIN_SPEED &&
             motion.peakGrowth < thresholds.growth * 0.5f
@@ -381,7 +450,10 @@ class GestureInterpreter {
 
     /** Hand speed alone (no approach, no device thrust) is not a push. */
     private fun flingOnly(motion: Motion): Boolean =
-        motion.peakGrowth < 0.04f && motion.peakDepth < 0.10f && abs(motion.accel) < 0.35f
+        motion.approach < 0.15f &&
+            motion.peakGrowth < 0.04f &&
+            motion.peakDepth < 0.10f &&
+            abs(motion.accel) < 0.35f
 
     private fun detectSwipe(nowMs: Long): GestureEvent {
         if (history.size < 3) return GestureEvent.NONE
@@ -439,15 +511,10 @@ class GestureInterpreter {
     companion object {
         const val LANDMARK_COUNT = 21
 
-        /** Neutral thresholds used only while calibrating. */
-        private val CALIBRATION_PROFILE = GestureProfile(
-            growth = 0.30f,
-            depth = 1.10f,
-            speed = 1.60f,
-            accel = 1.40f
-        )
-
-        private const val CALIBRATION_SMOOTHING = 0.6f
+        /** 18 % apparent growth over the resting baseline = a full push. */
+        private const val APPROACH_SPAN = 0.18f
+        private const val APPROACH_SMOOTHING = 0.5f
+        private const val BASELINE_ALPHA = 0.02f
         const val DEFAULT_SENSITIVITY = 0.62f
 
         private const val WRIST = 0

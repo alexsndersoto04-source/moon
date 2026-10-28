@@ -68,6 +68,17 @@ class FileAdapter(
 
         fun applySelection(selected: Boolean) {
             val context = binding.root.context
+            // A tiny lift tells the user which file is about to fly, without a
+            // heavy shadow or a coloured frame.
+            val target = if (selected) 1.035f else 1f
+            if (binding.fileCard.scaleX != target) {
+                binding.fileCard.animate()
+                    .scaleX(target)
+                    .scaleY(target)
+                    .setDuration(180L)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
+                    .start()
+            }
             binding.selectionDot.visibility = if (selected) android.view.View.VISIBLE else android.view.View.GONE
             binding.fileCard.strokeWidth = if (selected) dp(context, 1.6f) else dp(context, 1f)
             binding.fileCard.strokeColor = ContextCompat.getColor(

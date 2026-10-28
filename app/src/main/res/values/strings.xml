@@ -13,6 +13,14 @@
     <string name="hint_grab">Listo: empuja la mano hacia la cámara para enviar.</string>
     <string name="hint_sending">Enviando…</string>
     <string name="hint_receiving">Recibiendo…</string>
+    <string name="handoff_sending">Sale %1$s</string>
+    <string name="cancel_transfer">Cancelar</string>
+    <string name="transfer_cancelled">Envío cancelado</string>
+    <string name="nothing_to_cancel">No hay ningún envío en curso</string>
+    <string name="already_queued">Ese archivo ya está en la cola</string>
+    <string name="queued_more">+%1$d en cola</string>
+    <string name="percent_value">%1$d %%</string>
+    <string name="hint_queued">%1$d en cola · sale en cuanto conecte</string>
 
     <string name="status_searching">Buscando dispositivos cercanos</string>
     <string name="status_nearby">Dispositivo detectado</string>

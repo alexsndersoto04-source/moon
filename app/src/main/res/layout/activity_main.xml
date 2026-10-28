@@ -162,76 +162,102 @@
                     android:visibility="gone"
                     tools:text="fps 12 · 78 ms\nmano 1 · dedos 21\ncierre 0.42 · empuje 0.31\ncuadros 1204 · fallos 0" />
 
-                <!-- Guided calibration overlay (same card, so the hand stays visible) -->
+                <!-- Guided calibration overlay: transparent on top so the hand
+                     stays visible, a light sheet at the bottom for the text. -->
                 <LinearLayout
                     android:id="@+id/calibrationPanel"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="#F2FDFCFA"
-                    android:gravity="center"
+                    android:gravity="bottom"
                     android:orientation="vertical"
-                    android:paddingStart="26dp"
-                    android:paddingEnd="26dp"
                     android:visibility="gone">
 
-                    <TextView
-                        android:id="@+id/calibrationTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-light"
-                        android:text="@string/cal_title"
-                        android:textColor="@color/ink"
-                        android:textSize="21sp" />
-
-                    <TextView
-                        android:id="@+id/calibrationHint"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:gravity="center"
-                        android:lineSpacingExtra="3dp"
-                        android:textColor="@color/ink_soft"
-                        android:textSize="12.5sp"
-                        tools:text="Empuja la mano hacia el teléfono y vuelve a la posición" />
+                        android:background="@drawable/bg_calibration_sheet"
+                        android:orientation="vertical"
+                        android:paddingStart="22dp"
+                        android:paddingTop="18dp"
+                        android:paddingEnd="22dp"
+                        android:paddingBottom="14dp">
 
-                    <TextView
-                        android:id="@+id/calibrationCounter"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:textColor="@color/ink_faint"
-                        android:textSize="11sp"
-                        tools:text="Intento 1 de 3" />
+                        <TextView
+                            android:id="@+id/calibrationTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-light"
+                            android:letterSpacing="0.01"
+                            android:text="@string/cal_title"
+                            android:textColor="@color/ink"
+                            android:textSize="18sp" />
 
-                    <com.google.android.material.progressindicator.LinearProgressIndicator
-                        android:id="@+id/calibrationProgress"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        app:indicatorColor="@color/ink"
-                        app:trackColor="@color/hairline"
-                        app:trackCornerRadius="2dp"
-                        app:trackThickness="4dp" />
+                        <TextView
+                            android:id="@+id/calibrationHint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:lineSpacingExtra="3dp"
+                            android:textColor="@color/ink_soft"
+                            android:textSize="12sp"
+                            tools:text="Empuja la mano hacia el teléfono y vuelve a la posición" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/calibrationDone"
-                        style="@style/Widget.AirGesture.Button.Outlined"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="20dp"
-                        android:text="@string/cal_done_button"
-                        android:visibility="gone" />
+                        <TextView
+                            android:id="@+id/calibrationCounter"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:letterSpacing="0.06"
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink_faint"
+                            android:textSize="10sp"
+                            tools:text="INTENTO 1 DE 3" />
 
-                    <TextView
-                        android:id="@+id/calibrationCancel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:padding="10dp"
-                        android:text="@string/cal_cancel"
-                        android:textColor="@color/ink_faint"
-                        android:textSize="11sp" />
+                        <com.google.android.material.progressindicator.LinearProgressIndicator
+                            android:id="@+id/calibrationProgress"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            app:indicatorColor="@color/ink"
+                            app:trackColor="@color/hairline"
+                            app:trackCornerRadius="2dp"
+                            app:trackThickness="5dp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/calibrationCancel"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:background="?attr/selectableItemBackground"
+                                android:paddingTop="10dp"
+                                android:paddingBottom="10dp"
+                                android:text="@string/cal_cancel"
+                                android:textColor="@color/ink_faint"
+                                android:textSize="12sp" />
+
+                            <TextView
+                                android:id="@+id/calibrationDone"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/bg_pill"
+                                android:backgroundTint="@color/ink"
+                                android:paddingStart="18dp"
+                                android:paddingTop="10dp"
+                                android:paddingEnd="18dp"
+                                android:paddingBottom="10dp"
+                                android:text="@string/cal_done_button"
+                                android:textColor="@color/white"
+                                android:textSize="12sp"
+                                android:visibility="gone" />
+                        </LinearLayout>
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- Floating shelf selector -->
@@ -404,18 +430,74 @@
         </FrameLayout>
 
         <!-- Transfer progress + guidance -->
-        <com.google.android.material.progressindicator.LinearProgressIndicator
-            android:id="@+id/progressBar"
+        <LinearLayout
+            android:id="@+id/transferCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="26dp"
-            android:layout_marginTop="2dp"
-            android:layout_marginEnd="26dp"
-            android:visibility="gone"
-            app:indicatorColor="@color/ink"
-            app:trackColor="@color/hairline"
-            app:trackCornerRadius="2dp"
-            app:trackThickness="3dp" />
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginEnd="20dp"
+            android:background="@drawable/bg_transfer_card"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="12dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/transferName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="middle"
+                    android:maxLines="1"
+                    android:textColor="@color/ink"
+                    android:textSize="12.5sp"
+                    tools:text="VID_20261027_181203.mp4" />
+
+                <TextView
+                    android:id="@+id/transferPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:fontFeatureSettings="tnum"
+                    android:textColor="@color/ink_soft"
+                    android:textSize="11sp"
+                    tools:text="42 %" />
+
+                <TextView
+                    android:id="@+id/transferCancel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:paddingStart="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingEnd="4dp"
+                    android:paddingBottom="4dp"
+                    android:text="@string/cancel_transfer"
+                    android:textColor="@color/ink_faint"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/progressBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:indicatorColor="@color/ink"
+                app:trackColor="@color/hairline"
+                app:trackCornerRadius="2dp"
+                app:trackThickness="3dp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/hintText"
@@ -450,6 +532,15 @@
             android:textSize="10.5sp"
             android:visibility="gone" />
     </LinearLayout>
+
+    <!-- ─── AirDrop-style hand-off effect, drawn above everything ─────────── -->
+    <com.airgesture.transfer.ui.TransferBeamView
+        android:id="@+id/beam"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone" />
 
     <!-- ─── Permission gate ──────────────────────────────────────────────── -->
     <LinearLayout

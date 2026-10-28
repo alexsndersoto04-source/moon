@@ -28,6 +28,8 @@ class GestureCalibration {
         val profile: GestureProfile? = null
     )
 
+    /** Written on the camera thread, read on the main thread once per tick. */
+    @Volatile
     var current: State = State()
         private set
 
@@ -49,12 +51,14 @@ class GestureCalibration {
     val isActive: Boolean
         get() = current.phase != Phase.IDLE && current.phase != Phase.DONE
 
+    @Synchronized
     fun start(): State {
         clear()
         current = State(phase = Phase.WAITING, attempt = 0, total = ATTEMPTS)
         return current
     }
 
+    @Synchronized
     fun cancel() {
         clear()
         current = State()
@@ -77,10 +81,11 @@ class GestureCalibration {
      * can leave the panel stuck at "Intento 1" forever, which is exactly what
      * made the gesture feel unresponsive.
      */
+    @Synchronized
     fun onFrame(motion: Motion, nowMs: Long): State {
         if (current.phase == Phase.IDLE || current.phase == Phase.DONE) return current
 
-        val push = motion.push.coerceIn(0f, 1f)
+        val push = motion.approach.coerceIn(0f, 1f)
 
         if (!motion.handVisible) {
             if (current.phase == Phase.PUSHING) resetAttempt()
@@ -194,15 +199,16 @@ class GestureCalibration {
     companion object {
         const val ATTEMPTS = 3
 
-        /** Any real forward motion starts an attempt. */
-        private const val START_LEVEL = 0.10f
+        /** Any measurable approach starts an attempt. */
+        private const val START_LEVEL = 0.08f
         /** Below this peak the attempt is not counted (it was noise). */
-        private const val MIN_ATTEMPT_PEAK = 0.14f
-        private const val RELEASE_RATIO = 0.45f
-        private const val MIN_PUSH_MS = 90L
-        private const val MAX_ATTEMPT_MS = 1600L
-        private const val SETTLE_MS = 550L
-        private const val ATTEMPT_COOLDOWN_MS = 450L
+        private const val MIN_ATTEMPT_PEAK = 0.12f
+        private const val RELEASE_RATIO = 0.55f
+        private const val MIN_PUSH_MS = 70L
+        /** Hard cap per attempt: the panel can never freeze on "Intento 1". */
+        private const val MAX_ATTEMPT_MS = 1300L
+        private const val SETTLE_MS = 420L
+        private const val ATTEMPT_COOLDOWN_MS = 320L
     }
 }
 
@@ -218,5 +224,9 @@ data class Motion(
     val peakDepth: Float,
     val accel: Float,
     val size: Float,
-    val lateralSpeed: Float
-)
+    val lateralSpeed: Float,
+    /** 0..1 direct "hand is closer than its resting distance" measurement. */
+    val approach: Float
+) {
+    fun withApproach(value: Float): Motion = copy(approach = value)
+}

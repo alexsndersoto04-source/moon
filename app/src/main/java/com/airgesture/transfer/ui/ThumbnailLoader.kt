@@ -71,6 +71,36 @@ object ThumbnailLoader {
         }
     }
 
+    /**
+     * Bitmap for the hand-off animation. Returns the cached copy when it is
+     * already decoded and otherwise decodes off the main thread, so the effect
+     * never waits on the disk.
+     */
+    fun bitmap(context: Context, entry: MediaEntry?, onReady: (Bitmap?) -> Unit) {
+        if (entry == null) {
+            onReady(null)
+            return
+        }
+        val token = entry.key
+        val cached = synchronized(cache) { cache.get(token) }
+        if (cached != null) {
+            onReady(cached)
+            return
+        }
+        val appContext = context.applicationContext
+        executor.execute {
+            val bitmap = runCatching {
+                appContext.contentResolver.loadThumbnail(
+                    entry.uri,
+                    Size(THUMB_WIDTH, THUMB_HEIGHT),
+                    null
+                )
+            }.getOrNull()
+            if (bitmap != null) synchronized(cache) { cache.put(token, bitmap) }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { onReady(bitmap) }
+        }
+    }
+
     fun clear(target: ImageView) {
         target.tag = null
         target.setImageDrawable(null)

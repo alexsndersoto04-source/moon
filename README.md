@@ -116,6 +116,27 @@ Si algo falla, el texto dice exactamente dónde. Además hay un botón **Enviar*
 archivo seleccionado sin usar ningún gesto: sirve para separar «problema de gesto» de
 «problema de red» en un solo toque.
 
+### Cómo se siente el gesto (1.5.0)
+
+**La señal ya no es un umbral: es una medida.** El motor compara el tamaño
+aparente de la palma con una línea base que sigue la mano muy despacio (~1,6 s).
+Acercar la mano crece esa relación entre un 20 % y un 60 %; tenerla quieta la deja
+en 1,00. `approach` es esa relación normalizada 0..1 y **no depende de ningún
+valor calibrado**, así que el primer empuje ya se registra.
+
+Encima de eso:
+
+- **One Euro por canal** (posición, tamaño, profundidad): suaviza quieto, no
+  suaviza rápido.
+- **Fusión**: `approach` y la aceleración del teléfono son la evidencia primaria;
+  velocidad y profundidad la confirman. La confianza final es un número 0..1 y el
+  disparo ocurre a `0.62 − 0.24·sensibilidad` (0,38 agresivo … 0,62 estricto).
+  Un único número gobierna el gesto, por eso el deslizador ahora se siente lineal.
+- **Arbitraje**: un deslizamiento lateral es *swipe* y amortigua el empuje al 45 %.
+- **Histéresis**: hay que mantenerse 70 ms por encima y volver a bajar para
+  rearmar, con 700 ms de enfriamiento entre envíos.
+- **Háptico progresivo** en tres tramos antes del doble pulso de confirmación.
+
 ### Cómo se siente el gesto (1.4.1)
 
 El gesto ya no depende de una postura: se lee el **movimiento** de la mano, no su forma.
@@ -152,6 +173,14 @@ relativos y neutros, de modo que un empuje normal cuenta en el primer intento.
 Los valores sin calibrar son conservadores y funcionan igual; la calibración solo los ajusta
 a tu mano. Si algo va demasiado sensible, Ajustes → **Sensibilidad** escala los umbrales
 (0 = estricto, 1 = ansioso).
+
+### Cómo encuentra al otro teléfono (1.5.0)
+
+Los dos teléfonos **anuncian y buscan a la vez, siempre**, sin turnos y sin
+reiniciar el escaneo: el primer resultado llega en uno o dos segundos. El
+handshake lo desempata el nombre, no la suerte: el equipo cuyo nombre ordena
+primero llama, el otro acepta. Si el que debía llamar no lo hace en 1,5 s, el otro
+toma la iniciativa. Un solo diálogo por pareja, siempre.
 
 ### Cómo encuentra al otro teléfono (1.4.0)
 
@@ -192,6 +221,23 @@ Metadatos en un payload `BYTES`, y **solo cuando ese payload confirma SUCCESS** 
 archivo como `FILE` desde un `ParcelFileDescriptor` (cero copias en memoria). El receptor
 copia con `asUri()` a `Descargas/AirGesture` y responde un **ACK**: eso es lo que hace
 aparecer «El otro teléfono confirmó la recepción». Verificación real, no una suposición.
+
+## Efecto de entrega
+
+Cuando un archivo sale por gesto —o por el botón— la tarjeta con su miniatura
+real asciende, se desvanece y deja dos anillos que se expanden, con la curva
+`PathInterpolator(0.16, 1, 0.3, 1)`: la misma desaceleración que usa iOS en sus
+transiciones. Todo se dibuja en un solo `Canvas` (una vista, un animador, 700 ms)
+y se desactiva si el sistema tiene las animaciones desactivadas.
+
+## Cola, cancelación y vigilante
+
+- Los archivos se apilan en una **cola real**: si no hay enlace esperan, y salen
+  en orden en cuanto conecta. Nada se pierde.
+- **Cancelar** en la tarjeta de progreso cancela el payload en curso (`cancelPayload`),
+  el otro teléfono descarta el archivo a medio escribir y la cola se vacía.
+- Si un payload pasa **25 s sin ningún avance**, se cancela y se avisa; la UI no
+  se queda clavada en un porcentaje.
 
 ## 3. Arquitectura
 

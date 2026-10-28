@@ -142,6 +142,10 @@ class MainActivity : AppCompatActivity() {
             viewModel.sendSelectedNow()
         }
 
+        binding.transferCancel.setOnClickListener {
+            viewModel.cancelTransfer()
+        }
+
         binding.settingsButton.setOnClickListener {
             haptics.tick()
             settingsLauncher.launch(SettingsActivity.intent(this))
@@ -272,6 +276,7 @@ class MainActivity : AppCompatActivity() {
                             is UiEvent.Sent -> showTransient(getString(R.string.sent_named, event.name))
                             is UiEvent.Received -> showTransient(getString(R.string.received_named, event.name))
                             is UiEvent.Message -> showTransient(event.text)
+                            is UiEvent.Handoff -> playHandoff(event.name)
                         }
                     }
                 }
@@ -362,20 +367,31 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.statusPill.text = statusText(state)
+        // The pill reflects the link at a glance: neutral while searching,
+        // warm ink when a peer is near, green once the pipe is real.
+        val pillColor = when (state.nearbyState) {
+            NearbyState.CONNECTED -> getColor(R.color.success)
+            NearbyState.CONNECTING, NearbyState.PEER_FOUND -> getColor(R.color.accent)
+            NearbyState.ERROR, NearbyState.PERMISSION_REQUIRED -> getColor(R.color.ink_soft)
+            else -> getColor(R.color.ink_soft)
+        }
+        binding.statusPill.setTextColor(pillColor)
         binding.logText.text = state.logLines.joinToString("\n")
         updateHint()
 
         val transfer = state.transfer
-        binding.progressBar.isVisible = transfer != null
+        binding.transferCard.isVisible = transfer != null
         if (transfer != null) {
+            binding.transferName.text = transfer.fileName
+            binding.transferCancel.isVisible = transfer.outgoing
             if (transfer.totalBytes <= 0L) {
                 if (!binding.progressBar.isIndeterminate) binding.progressBar.isIndeterminate = true
+                binding.transferPercent.text = ""
             } else {
                 if (binding.progressBar.isIndeterminate) binding.progressBar.isIndeterminate = false
-                binding.progressBar.setProgressCompat(
-                    (transfer.fraction * 100f).toInt().coerceIn(0, 100),
-                    true
-                )
+                val percent = (transfer.fraction * 100f).toInt().coerceIn(0, 100)
+                binding.progressBar.setProgressCompat(percent, true)
+                binding.transferPercent.text = getString(R.string.percent_value, percent)
             }
         }
     }
@@ -414,6 +430,8 @@ class MainActivity : AppCompatActivity() {
             currentState.gestureState == GestureState.THROW_VECTOR -> getString(R.string.hint_sending)
             currentState.gestureState == GestureState.GRAB_FIST -> getString(R.string.hint_grab)
             noHandFor > NO_HAND_HINT_MS -> getString(R.string.hint_no_hand)
+            currentState.queuedCount > 0 && !linkReady ->
+                getString(R.string.hint_queued, currentState.queuedCount)
             !linkReady && currentState.transfer == null -> getString(R.string.hint_no_link)
             else -> getString(R.string.hint_idle)
         }
@@ -488,6 +506,27 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.calibrate_action) { _, _ -> viewModel.startCalibration() }
             .setNegativeButton(R.string.cal_later, null)
             .show()
+    }
+
+    /**
+     * The real hand-off: the selected file leaves the phone with the same
+     * decelerating motion iOS uses, and the card carries its own thumbnail.
+     */
+    private fun playHandoff(name: String) {
+        val reduceMotion = runCatching {
+            android.provider.Settings.Global.getFloat(
+                contentResolver,
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f
+            ) == 0f
+        }.getOrDefault(false)
+        if (reduceMotion) return
+
+        val entry = viewModel.selectedEntry()
+        ThumbnailLoader.bitmap(this, entry) { bitmap ->
+            binding.beam.play(bitmap, reduceMotion = false)
+        }
+        showTransient(getString(R.string.handoff_sending, name))
     }
 
     private fun showTransient(text: String) {
