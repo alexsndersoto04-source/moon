@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+/app/build/
+/app/release/
+*.hprof
+
+# The MediaPipe model is ~7 MB: it is fetched automatically by the
+# `downloadHandModel` Gradle task at build time (see app/build.gradle).
+/app/src/main/assets/hand_landmarker.task
+
+# Local/CI scratch output
+/ci/
+/build.log

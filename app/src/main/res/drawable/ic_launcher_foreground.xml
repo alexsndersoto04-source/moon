@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Four fingers: quiet, rounded, hand-drawn rhythm -->
+    <path android:strokeColor="#17171A" android:strokeWidth="5.2"
+        android:strokeLineCap="round"
+        android:pathData="M40,50 L40,36" />
+    <path android:strokeColor="#17171A" android:strokeWidth="5.2"
+        android:strokeLineCap="round"
+        android:pathData="M51,50 L51,31" />
+    <path android:strokeColor="#17171A" android:strokeWidth="5.2"
+        android:strokeLineCap="round"
+        android:pathData="M62,50 L62,34" />
+    <path android:strokeColor="#17171A" android:strokeWidth="5.2"
+        android:strokeLineCap="round"
+        android:pathData="M73,52 L73,40" />
+    <!-- Palm -->
+    <path android:strokeColor="#17171A" android:strokeWidth="5.2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M34,52 L79,52 L79,62 C79,71 72,78 63,78 L50,78 C41,78 34,71 34,62 Z" />
+    <!-- Motion arc -->
+    <path android:strokeColor="#B4855C" android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:pathData="M86,34 C92,41 92,52 86,59" />
+</vector>

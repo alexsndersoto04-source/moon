@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ivory">#FDFCFA</color>
+    <color name="white">#FFFFFF</color>
+    <color name="ink">#17171A</color>
+    <color name="ink_soft">#5C5C63</color>
+    <color name="ink_faint">#9A9AA1</color>
+    <color name="hairline">#ECEAE6</color>
+    <color name="hairline_strong">#DEDBD5</color>
+    <color name="sand">#F4F1EC</color>
+    <color name="accent">#B4855C</color>
+    <color name="success">#4C7A5E</color>
+</resources>

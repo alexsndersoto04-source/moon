@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AirGesture</string>
+    <string name="brand">AirGesture</string>
+    <string name="brand_sub">Transferencia por gestos</string>
+
+    <string name="tab_images">Imágenes</string>
+    <string name="tab_videos">Videos</string>
+    <string name="tab_pdfs">PDFs</string>
+    <string name="tab_audio">Música</string>
+
+    <string name="hint_idle">Mueve la mano para elegir · cierra el puño y abre la mano para enviar</string>
+    <string name="hint_grab">Cargado · abre la mano para enviar</string>
+    <string name="hint_sending">Enviando…</string>
+    <string name="hint_receiving">Recibiendo…</string>
+    <string name="handoff_sending">Sale %1$s</string>
+    <string name="cancel_transfer">Cancelar</string>
+    <string name="transfer_cancelled">Envío cancelado</string>
+    <string name="nothing_to_cancel">No hay ningún envío en curso</string>
+    <string name="already_queued">Ese archivo ya está en la cola</string>
+    <string name="queued_more">+%1$d en cola</string>
+    <string name="percent_value">%1$d %%</string>
+    <string name="hint_queued">%1$d en cola · sale en cuanto conecte</string>
+
+    <string name="status_searching">Buscando dispositivos cercanos</string>
+    <string name="status_nearby">Dispositivo detectado</string>
+    <string name="status_connected">Conectado</string>
+    <string name="status_offline">Sin dispositivos por ahora</string>
+    <string name="status_no_hand">Muestra tu mano a la cámara</string>
+    <string name="status_hand">Mano detectada</string>
+    <string name="status_transfer_progress">%1$s enviado</string>
+    <string name="status_sent">Enviado</string>
+    <string name="status_received">Archivo recibido: %1$s</string>
+    <string name="status_error">%1$s</string>
+
+    <string name="empty_images">No hay imágenes en el dispositivo</string>
+    <string name="empty_videos">No hay videos en el dispositivo</string>
+    <string name="empty_pdfs">No hay PDFs en el dispositivo</string>
+    <string name="empty_audio">No hay música en el dispositivo</string>
+
+    <string name="perm_title">Todo listo en un gesto</string>
+    <string name="perm_body">AirGesture necesita cámara y acceso a tus archivos para detectar tu mano y transferir sin cables. Nada sale de tus dispositivos.</string>
+    <string name="perm_cta">Activar</string>
+    <string name="perm_settings">Abrir ajustes</string>
+    <string name="perm_denied">Faltan permisos esenciales para continuar.</string>
+
+    <string name="sending_file">Enviando %1$s</string>
+    <string name="select_file_first">Cierra el puño para elegir un archivo</string>
+    <string name="cd_camera_preview">Previsualización de la cámara</string>
+    <string name="status_sending_progress">Enviando %1$d%%</string>
+    <string name="status_receiving_progress">Recibiendo %1$d%%</string>
+    <string name="status_connected_to">Conectado a %1$s</string>
+    <string name="waiting_peer">Buscando un dispositivo para enviar</string>
+    <string name="sent_named">Enviado: %1$s</string>
+    <string name="received_named">Recibido: %1$s</string>
+    <string name="no_media_permission">Concede acceso a tus archivos para verlos aquí</string>
+    <string name="skeleton_toggled">Superposición de mano %1$s</string>
+    <string name="enabled">activada</string>
+    <string name="disabled">oculta</string>
+    <string name="loading">Cargando…</string>
+    <string name="camera_unavailable">No se encontró una cámara disponible</string>
+
+    <!-- Short statuses for the header pill -->
+    <string name="status_searching_short">Buscando…</string>
+    <string name="status_peer_short">Cerca</string>
+    <string name="status_offline_short">Sin conexión</string>
+    <string name="status_sending_short">Enviando %1$d%%</string>
+    <string name="status_receiving_short">Recibiendo %1$d%%</string>
+
+    <!-- Live hand feedback -->
+    <string name="hand_chip_none">Muestra tu mano</string>
+    <string name="hand_chip_detected">Mano detectada</string>
+    <string name="hint_model_missing">El modelo de mano no cargó (%1$s). Reinstala el APK: sin él no hay gestos.</string>
+    <string name="hint_no_frames">No puedo leer la imagen de la cámara. Cierra la app y vuelve a abrirla.</string>
+    <string name="hint_no_hand">Acerca la mano a la cámara: buena luz y un fondo liso ayudan mucho.</string>
+    <string name="hint_push">Empuja la mano hacia el teléfono para enviar</string>
+    <string name="sent_short">Enviado</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_subtitle">Todo se aplica al instante y se guarda en el teléfono.</string>
+    <string name="settings_camera_section">Cámara</string>
+    <string name="settings_camera_front">Frontal</string>
+    <string name="settings_camera_back">Trasera</string>
+    <string name="settings_camera_help">La frontal es la recomendada: te ves la mano mientras haces el gesto.</string>
+    <string name="settings_sensitivity">Sensibilidad del gesto</string>
+    <string name="settings_sensitivity_value">%1$d%% · %2$s</string>
+    <string name="settings_sensitivity_low">estricta</string>
+    <string name="settings_sensitivity_medium">equilibrada</string>
+    <string name="settings_sensitivity_high">muy fácil</string>
+    <string name="settings_sensitivity_help">Sube la sensibilidad si el gesto no se dispara; bájala si se dispara solo.</string>
+    <string name="settings_behaviour">Comportamiento</string>
+    <string name="settings_fist_send">Enviar cerrando el puño</string>
+    <string name="settings_fist_send_help">Cierra el puño para cargar el archivo y abre la mano para enviarlo. Desactívalo si prefieres que baste con empujar la mano.</string>
+    <string name="settings_effect_preview">Probar efecto de entrega</string>
+    <string name="settings_effect_help">Lo mismo que verás cuando sueltes el gesto, sin enviar nada.</string>
+    <string name="settings_skeleton">Dibujar el esqueleto de la mano</string>
+    <string name="settings_haptics">Vibración al detectar gestos</string>
+    <string name="settings_awake">Mantener la pantalla encendida</string>
+    <string name="settings_diagnostics">Mostrar diagnóstico técnico</string>
+    <string name="settings_connection">Conexión</string>
+    <string name="settings_reset">Restaurar valores por defecto</string>
+    <string name="settings_version">AirGesture Transfer %1$s · Nearby Connections %2$s</string>
+    <string name="settings_open">Ajustes</string>
+    <string name="connection_detail">%1$s
+Dispositivo: %2$s</string>
+    <string name="connection_none">Buscando dispositivos cercanos…</string>
+    <string name="connection_peer">Conectado con %1$s</string>
+    <string name="settings_reset_done">Ajustes restaurados</string>
+    <string name="transfer_in_progress">Espera: hay una transferencia en curso</string>
+    <string name="transfer_not_started">No se pudo iniciar el envío</string>
+    <string name="send_now">Enviar</string>
+    <string name="crash_title">La app se cerró la última vez</string>
+    <string name="crash_body">Copia este texto y envíalo para que se pueda corregir:</string>
+    <string name="crash_copy">Copiar</string>
+    <string name="crash_close">Cerrar</string>
+    <string name="crash_copied">Informe copiado</string>
+
+    <!-- Connection preflight -->
+    <string name="banner_fix">Arreglar</string>
+    <string name="banner_bluetooth_off">El Bluetooth está apagado. Nearby lo necesita para encontrar el otro teléfono.</string>
+    <string name="banner_location_off">Activa la ubicación del teléfono: Android la exige para buscar por Bluetooth, aunque la app no use tu posición.</string>
+    <string name="banner_permission">Falta el permiso de dispositivos cercanos y ubicación para poder buscar el otro teléfono.</string>
+    <string name="banner_action_bluetooth">Activar</string>
+    <string name="banner_action_location">Abrir</string>
+    <string name="banner_action_permission">Permitir</string>
+    <string name="no_peer_yet">Aún no hay conexión: el otro teléfono debe tener la app abierta</string>
+    <string name="diag_show">Ver diagnóstico</string>
+    <string name="diag_copy">Copiar informe</string>
+    <string name="diag_copied">Informe copiado al portapapeles</string>
+
+    <!-- Guided calibration -->
+    <string name="cal_title">Vamos a ajustarlo a tu mano</string>
+    <string name="cal_hint_ready">Coloca la mano frente a la cámara y empújala hacia el teléfono, como si enviaras algo.</string>
+    <string name="cal_hint_push">Así, sigue empujando…</string>
+    <string name="cal_hint_settle">Bien. Vuelve a la posición y repite.</string>
+    <string name="cal_hint_done">Listo: el gesto ya usa tus medidas.</string>
+    <string name="cal_hint_no_hand">No veo tu mano. Ponla frente a la cámara, con buena luz.</string>
+    <string name="cal_counter">Intento %1$d de %2$d</string>
+    <string name="cal_done_button">Listo</string>
+    <string name="cal_cancel">Cancelar</string>
+    <string name="calibrate_action">Calibrar gesto</string>
+    <string name="calibrated_ok">Gesto calibrado con tus medidas</string>
+    <string name="calibrate_prompt">Toca para calibrar el gesto a tu mano</string>
+    <string name="cal_intro">Dura 20 segundos: empujarás la mano hacia el teléfono tres veces y la app medirá tu velocidad y tu distancia reales. Después el gesto responde a cómo lo haces tú, no a un umbral genérico.</string>
+    <string name="cal_later">Ahora no</string>
+    <string name="queued_waiting">Se enviará en cuanto conecte con el otro teléfono</string>
+    <string name="hint_no_link">Gesto activo · abriendo enlace con el otro teléfono (mantén la app abierta en ambos)</string>
+    <string name="no_files_gesture">El gesto funciona: todavía no hay archivos en esta pestaña</string>
+</resources>

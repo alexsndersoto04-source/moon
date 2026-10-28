@@ -1,0 +1,644 @@
+package com.airgesture.transfer.vision
+
+import com.airgesture.transfer.core.GestureEvent
+import com.airgesture.transfer.core.GestureState
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
+import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.exp
+import kotlin.math.max
+
+/**
+ * Pose-agnostic gesture engine.
+ *
+ * Nothing here asks for a specific hand shape. The user moves the hand toward
+ * the phone however it feels natural and the engine reads the *motion*.
+ *
+ * Pipeline per frame:
+ *  1. Palm centre, palm size and depth are filtered with [OneEuroFilter]s, one
+ *     per channel: steady when the hand is still, lag-free when it moves fast.
+ *  2. Peaks of four independent cues are tracked over a short window
+ *     (apparent growth, depth rate, palm speed, device forward acceleration).
+ *  3. The cues are fused into a single `push` score against the **user's own
+ *     calibrated thresholds** ([GestureProfile]); with no calibration it falls
+ *     back to conservative defaults.
+ *  4. [arbitrate] decides whether the motion is a *forward push* or a *lateral
+ *     swipe* before any event is emitted, so the two can never fire at once.
+ *  5. Temporal hysteresis (must stay above the threshold for a few dozen ms)
+ *     removes single-frame noise without adding a pose requirement.
+ *
+ * Pure Kotlin, no Android imports, no per-frame allocations beyond one [Motion]
+ * and one [Reading]: safe to run on the camera thread.
+ */
+class GestureInterpreter {
+
+    data class Reading(
+        val state: GestureState,
+        val event: GestureEvent,
+        val handVisible: Boolean,
+        val fistStrength: Float,
+        val openStrength: Float,
+        val thrustStrength: Float,
+        val palmX: Float,
+        val palmY: Float,
+        val handSize: Float,
+        /** 0..3 band of the push meter, used for progressive haptics. */
+        val pushZone: Int = 0,
+        /** 0..1 geometric "hand is closer" measurement, shown in the HUD. */
+        val approach: Float = 0f,
+        /** Fist seen: the file is loaded, waiting for the open hand. */
+        val loaded: Boolean = false
+    )
+
+    private data class Sample(
+        val timeMs: Long,
+        val x: Float,
+        val y: Float,
+        val size: Float,
+        val depth: Float
+    )
+
+    // One Euro per channel: position needs more smoothing than size/depth.
+    private val filterX = OneEuroFilter(minCutoff = 1.6f, beta = 0.010f)
+    private val filterY = OneEuroFilter(minCutoff = 1.6f, beta = 0.010f)
+    private val filterSize = OneEuroFilter(minCutoff = 1.0f, beta = 0.020f)
+    private val filterDepth = OneEuroFilter(minCutoff = 1.0f, beta = 0.020f)
+
+    private val history = ArrayDeque<Sample>(HISTORY_CAPACITY)
+
+    private var state: GestureState = GestureState.IDLE
+    private var throwFlashUntilMs = 0L
+
+    private var lastThrowMs = 0L
+    private var lastSwipeMs = 0L
+    private var lastFistEventMs = 0L
+    private var aboveSinceMs = 0L
+
+    private var pushArmed = true
+    private var loaded = false
+    private var loadedAtMs = 0L
+    private var lastDisarmMs = 0L
+    private var missingFrames = 0
+    private var closed = false
+    private var firstSeenMs = 0L
+
+    private var smoothedClosure = 0f
+    private var smoothedPush = 0f
+    private var smoothedApproach = 0f
+    private var lastZone = 0
+
+    private var palmX = 0f
+    private var palmY = 0f
+    private var palmSize = 0f
+
+    /**
+     * Reference palm size for "the hand is at a comfortable distance".
+     *
+     * It follows the signal very slowly (2 % per frame ≈ 1.6 s at 30 fps), so a
+     * 300 ms push shows up as a 20-60 % growth over the baseline, while simply
+     * holding the hand still keeps the ratio at 1. This is the direct, physical
+     * "the hand is coming closer" measurement — no thresholds, no pose.
+     */
+    private var baselineSize = 0f
+    private var lastBaselineMs = 0L
+
+    /** 0 = strict, 1 = eager. Scales the calibrated thresholds. */
+    var sensitivity: Float = DEFAULT_SENSITIVITY
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+        }
+
+    /**
+     * `true` (default): the send gesture is **fist to load, open hand to send**.
+     * The push cue only charges the meter; it can never fire on its own.
+     * `false`: the older push-only behaviour, kept as an accessibility option.
+     */
+    @Volatile
+    var fistToSend: Boolean = true
+
+    /** Thresholds measured on this user, or the conservative defaults. */
+    var profile: GestureProfile = GestureProfile()
+
+    /** Set while the guided calibration is running; events are suppressed. */
+    @Volatile
+    var calibration: GestureCalibration? = null
+
+    fun reset() {
+        history.clear()
+        filterX.reset(); filterY.reset(); filterSize.reset(); filterDepth.reset()
+        firstSeenMs = 0L
+        state = GestureState.IDLE
+        throwFlashUntilMs = 0L
+        pushArmed = true
+        missingFrames = 0
+        closed = false
+        aboveSinceMs = 0L
+        smoothedClosure = 0f
+        smoothedPush = 0f
+        lastZone = 0
+    }
+
+    /**
+     * @param landmarks 21 MediaPipe landmarks, or null when no hand was found.
+     * @param forwardAccel metres/second² along the device's forward axis
+     *        (positive = phone pushed away from the user).
+     */
+    fun update(
+        landmarks: List<NormalizedLandmark>?,
+        forwardAccel: Float,
+        nowMs: Long
+    ): Reading {
+        if (landmarks == null || landmarks.size < LANDMARK_COUNT) {
+            return onHandMissing(nowMs)
+        }
+        missingFrames = 0
+        if (firstSeenMs == 0L) firstSeenMs = nowMs
+
+        val rawPalm = palmCentre(landmarks)
+        val rawSize = max(distance(landmarks[WRIST], landmarks[MIDDLE_MCP]), MIN_HAND_SIZE)
+        val rawDepth = landmarks[MIDDLE_MCP].z()
+
+        palmX = filterX.filter(rawPalm[0], nowMs)
+        palmY = filterY.filter(rawPalm[1], nowMs)
+        palmSize = filterSize.filter(rawSize, nowMs)
+        val depth = filterDepth.filter(rawDepth, nowMs)
+
+        // Baseline tracking. A re-acquired hand (or a lens change) starts a new
+        // baseline instead of comparing against a stale one.
+        val dtSeconds = if (lastBaselineMs == 0L) 0f
+            else ((nowMs - lastBaselineMs).coerceIn(0L, 400L)) / 1000f
+        lastBaselineMs = nowMs
+        if (baselineSize <= 0f) {
+            baselineSize = palmSize
+        } else {
+            val ratio = palmSize / baselineSize
+            if (ratio > 2.4f || ratio < 0.42f) {
+                baselineSize = palmSize
+            } else if (dtSeconds > 0f) {
+                // Time-based, not frame-based: at 2 fps a fixed per-frame alpha
+                // needed half a minute to adapt, so every push looked permanent.
+                val alpha = 1f - exp(-dtSeconds / BASELINE_TAU)
+                baselineSize += alpha * (palmSize - baselineSize)
+            }
+        }
+
+        val closure = closure(landmarks, rawPalm)
+        smoothedClosure = smooth(smoothedClosure, closure, dtSeconds, CLOSURE_TAU)
+
+        pushSample(nowMs, palmX, palmY, palmSize, depth)
+
+        val instantApproach = approachLevel()
+        smoothedApproach = smooth(smoothedApproach, instantApproach, dtSeconds, APPROACH_TAU)
+        val motion = measure(nowMs, forwardAccel).withApproach(smoothedApproach)
+        val effective = profile.withSensitivity(sensitivity)
+        val push = fuse(motion, effective)
+
+        smoothedPush = smooth(smoothedPush, push, dtSeconds, PUSH_TAU)
+
+        // ---- Guided calibration takes over the engine ----------------------
+        calibration?.let { calibration ->
+            if (calibration.isActive) {
+                // The calibrator reads [Motion.approach] — the raw geometric
+                // measurement — so it never depends on the very thresholds it
+                // is about to replace. Any real push registers on attempt one.
+                calibration.onFrame(motion, nowMs)
+            }
+            // While the overlay exists nothing else may fire: neither a throw nor
+            // a swipe. Events come back as soon as the panel is dismissed.
+            return Reading(
+                state = GestureState.IDLE,
+                event = GestureEvent.NONE,
+                handVisible = true,
+                fistStrength = smoothedClosure.coerceIn(0f, 1f),
+                openStrength = (1f - smoothedClosure).coerceIn(0f, 1f),
+                thrustStrength = smoothedPush.coerceIn(0f, 1f),
+                palmX = palmX, palmY = palmY, handSize = palmSize,
+                pushZone = 0
+            )
+        }
+
+        var event = GestureEvent.NONE
+
+        // ---- Soft grab: feedback only, never a requirement ------------------
+        if (!closed && smoothedClosure > GRAB_LEVEL && nowMs - lastFistEventMs > 400L) {
+            closed = true
+            lastFistEventMs = nowMs
+            event = GestureEvent.FIST_CLOSED
+        } else if (closed && smoothedClosure < RELEASE_LEVEL) {
+            closed = false
+            event = GestureEvent.HAND_OPENED
+        }
+
+        // ---- Send gesture --------------------------------------------------
+        //
+        // Two distinct things happen now, and they are not the same thing:
+        //   * the push cue CHARGES the meter (visual + progressive haptics);
+        //   * the fist LOADS the file and the open hand RELEASES it.
+        //
+        // The push alone can never send while [fistToSend] is on, which is what
+        // stopped the "it sends the moment I raise my hand" behaviour.
+        val verdict = arbitrate(motion, smoothedPush)
+        val warm = nowMs - firstSeenMs >= WARMUP_MS
+
+        if (fistToSend) {
+            if (!loaded && warm && event == GestureEvent.FIST_CLOSED &&
+                nowMs - lastDisarmMs > DISARM_COOLDOWN_MS
+            ) {
+                loaded = true
+                loadedAtMs = nowMs
+            }
+
+            if (loaded) {
+                val expired = nowMs - loadedAtMs > LOAD_WINDOW_MS
+                val released = smoothedClosure < RELEASE_LEVEL
+                if (released && nowMs - lastThrowMs > THROW_COOLDOWN_MS) {
+                    // The user opened the hand: this is the send, at this instant.
+                    loaded = false
+                    lastThrowMs = nowMs
+                    throwFlashUntilMs = nowMs + THROW_FLASH_MS
+                    event = GestureEvent.THROW
+                } else if (expired) {
+                    // Held too long: cancel silently instead of surprising anyone.
+                    loaded = false
+                    lastDisarmMs = nowMs
+                }
+            }
+            aboveSinceMs = 0L
+        } else if (verdict == Verdict.FORWARD) {
+            // The trigger is the *push confidence*, on an absolute 0..1 scale,
+            // never a speed value borrowed from another cue. Sensitivity moves
+            // this single number, which is why the slider now behaves linearly.
+            val ready = smoothedPush >= triggerLevel()
+            if (ready && aboveSinceMs == 0L) aboveSinceMs = nowMs
+            if (!ready) aboveSinceMs = 0L
+            val heldLongEnough = aboveSinceMs != 0L && nowMs - aboveSinceMs >= HOLD_MS
+            if (!pushArmed && smoothedPush < REARM_LEVEL) pushArmed = true
+
+            if (pushArmed && warm && heldLongEnough && ready &&
+                nowMs - lastThrowMs > THROW_COOLDOWN_MS
+            ) {
+                pushArmed = false
+                lastThrowMs = nowMs
+                throwFlashUntilMs = nowMs + THROW_FLASH_MS
+                aboveSinceMs = 0L
+                event = GestureEvent.THROW
+            }
+        } else {
+            aboveSinceMs = 0L
+        }
+
+        if (verdict == Verdict.LATERAL &&
+            event == GestureEvent.NONE &&
+            nowMs - lastSwipeMs > SWIPE_COOLDOWN_MS
+        ) {
+            val swipe = detectSwipe(nowMs)
+            if (swipe != GestureEvent.NONE) {
+                lastSwipeMs = nowMs
+                event = swipe
+            }
+        }
+
+        state = when {
+            nowMs < throwFlashUntilMs -> GestureState.THROW_VECTOR
+            loaded || smoothedClosure > GRAB_LEVEL -> GestureState.GRAB_FIST
+            else -> GestureState.IDLE
+        }
+
+        val effectiveLevel = if (loaded) 1f else smoothedPush
+        val zone = when {
+            effectiveLevel >= 0.85f -> 3
+            effectiveLevel >= 0.60f -> 2
+            effectiveLevel >= 0.35f -> 1
+            else -> 0
+        }
+        lastZone = zone
+
+        return Reading(
+            state = state,
+            event = event,
+            handVisible = true,
+            fistStrength = smoothedClosure.coerceIn(0f, 1f),
+            openStrength = (1f - smoothedClosure).coerceIn(0f, 1f),
+            thrustStrength = effectiveLevel.coerceIn(0f, 1f),
+            palmX = palmX,
+            palmY = palmY,
+            handSize = palmSize,
+            pushZone = zone,
+            approach = smoothedApproach.coerceIn(0f, 1f),
+            loaded = loaded
+        )
+    }
+
+    private fun onHandMissing(nowMs: Long): Reading {
+        // The calibration must see the gap too, otherwise an attempt that ends
+        // because the hand left the frame would stay "in progress" forever.
+        calibration?.let { session ->
+            if (session.isActive) {
+                session.onFrame(
+                    Motion(
+                        handVisible = false,
+                        push = 0f,
+                        peakGrowth = 0f,
+                        peakSpeed = 0f,
+                        peakDepth = 0f,
+                        accel = 0f,
+                        size = 0f,
+                        lateralSpeed = 0f,
+                        approach = 0f
+                    ),
+                    nowMs
+                )
+            }
+        }
+        missingFrames++
+        history.clear()
+        filterX.reset(); filterY.reset(); filterSize.reset(); filterDepth.reset()
+        smoothedPush = 0f
+        smoothedApproach = 0f
+        baselineSize = 0f
+        lastBaselineMs = 0L
+        smoothedClosure = 0f
+        closed = false
+        pushArmed = true
+        loaded = false
+        loadedAtMs = 0L
+        aboveSinceMs = 0L
+        lastZone = 0
+
+        if (missingFrames >= MISSING_FRAMES_RESET) {
+            state = GestureState.IDLE
+            firstSeenMs = 0L
+        }
+
+        return Reading(
+            state = if (nowMs < throwFlashUntilMs) GestureState.THROW_VECTOR else state,
+            event = GestureEvent.NONE,
+            handVisible = false,
+            fistStrength = 0f,
+            openStrength = 0f,
+            thrustStrength = 0f,
+            palmX = palmX, palmY = palmY, handSize = palmSize,
+            pushZone = 0
+        )
+    }
+
+    // ------------------------------------------------------------------ math
+
+    private enum class Verdict { NONE, FORWARD, LATERAL }
+
+    /**
+     * Decides which gesture the motion represents. Forward wins when there is
+     * real approaching evidence (growth or depth) *and* the hand is not sliding
+     * sideways; a pure horizontal slide is a swipe and damps the push score so
+     * browsing can never trigger a transfer.
+     */
+    private fun arbitrate(motion: Motion, push: Float): Verdict {
+        if (motion.lateralSpeed < LATERAL_MIN_SPEED) {
+            return if (push >= triggerLevel() * 0.55f) Verdict.FORWARD else Verdict.NONE
+        }
+        val approaching = motion.approach > 0.2f ||
+            motion.peakGrowth > 0.05f ||
+            motion.peakDepth > 0.15f
+        val lateralDominant = !approaching || motion.lateralSpeed > motion.peakSpeed * 0.9f
+        return when {
+            lateralDominant && abs(motion.lateralSpeed) > LATERAL_MIN_SPEED -> Verdict.LATERAL
+            push >= triggerLevel() * 0.55f -> Verdict.FORWARD
+            else -> Verdict.NONE
+        }
+    }
+
+    /**
+     * Push confidence needed to send: 0.62 at the strict end, 0.38 at the eager
+     * end of the slider. One number, applied to every cue through [fuse].
+     */
+    private fun triggerLevel(): Float = 0.62f - 0.24f * sensitivity.coerceIn(0f, 1f)
+
+    /** 0 = hand at its resting distance, 1 = clearly closer to the lens. */
+    private fun approachLevel(): Float {
+        if (baselineSize <= 0f || palmSize <= 0f) return 0f
+        val growth = palmSize / baselineSize - 1f
+        if (growth <= 0f) return 0f
+        return clamp(growth / APPROACH_SPAN)
+    }
+
+    private fun pushSample(timeMs: Long, x: Float, y: Float, size: Float, depth: Float) {
+        history.addLast(Sample(timeMs, x, y, size, depth))
+        while (history.isNotEmpty() && timeMs - history.first().timeMs > HISTORY_MS) {
+            history.removeFirst()
+        }
+        while (history.size > HISTORY_CAPACITY) history.removeFirst()
+    }
+
+    /** Peak rates of every cue inside the current window. */
+    private fun measure(nowMs: Long, forwardAccel: Float): Motion {
+        // Two samples are enough for one interval. Requiring three meant that at
+        // 5 fps — the real frame rate of a Redmi 9C — the window almost never
+        // held enough samples and every cue read as zero, so no gesture could
+        // ever be produced no matter what the hand did.
+        if (history.size < 2) {
+            return Motion(false, 0f, 0f, 0f, 0f, forwardAccel, palmSize, 0f, 0f)
+        }
+
+        var peakGrowth = 0f
+        var peakDepth = 0f
+        var peakSpeed = 0f
+        var lateral = 0f
+
+        var previous = history.first()
+        for (i in 1 until history.size) {
+            val current = history.elementAt(i)
+            val dt = (current.timeMs - previous.timeMs) / 1000f
+            if (dt < MIN_DT_SECONDS) {
+                previous = current
+                continue
+            }
+            val baseSize = max(previous.size, MIN_HAND_SIZE)
+            val growth = (current.size - previous.size) / baseSize / dt
+            val depthRate = (previous.depth - current.depth) / dt
+            val speed = hypot(current.x - previous.x, current.y - previous.y) / dt
+            val lateralSpeed = abs(current.x - previous.x) / dt
+
+            if (growth > peakGrowth) peakGrowth = growth
+            if (depthRate > peakDepth) peakDepth = depthRate
+            if (speed > peakSpeed) peakSpeed = speed
+            if (lateralSpeed > lateral) lateral = lateralSpeed
+            previous = current
+        }
+
+        val windowSeconds = (nowMs - history.first().timeMs) / 1000f
+        val windowFactor = clamp(windowSeconds / MIN_WINDOW_SECONDS)
+
+        return Motion(
+            handVisible = true,
+            push = 0f,
+            peakGrowth = peakGrowth * windowFactor,
+            peakSpeed = peakSpeed * windowFactor,
+            peakDepth = peakDepth * windowFactor,
+            accel = forwardAccel,
+            size = palmSize,
+            lateralSpeed = lateral * windowFactor,
+            approach = 0f
+        )
+    }
+
+    /**
+     * Fusion against the user's thresholds: the strongest "intentional" cue
+     * (apparent growth or device acceleration) dominates, palm speed and depth
+     * support it. A lateral slide damps the result so browsing stays browsing.
+     */
+    private fun fuse(motion: Motion, thresholds: GestureProfile): Float {
+        val cGrowth = clamp(motion.peakGrowth / thresholds.growth)
+        val cDepth = clamp(motion.peakDepth / thresholds.depth)
+        val cSpeed = clamp(motion.peakSpeed / thresholds.speed)
+        val cAccel = clamp(motion.accel / thresholds.accel)
+        val cApproach = clamp(motion.approach)
+
+        // The direct size-ratio measurement is what a human perceives as "the
+        // hand is getting closer". Growth rate and device acceleration confirm
+        // it; the approach alone is already allowed to trigger.
+        val primary = max(max(cApproach, cGrowth), cAccel)
+        val support = (cSpeed + cDepth) * 0.5f
+        var fusion = max(0.75f * primary + 0.25f * support, cApproach * 0.9f)
+
+        if (motion.lateralSpeed > LATERAL_MIN_SPEED &&
+            motion.peakGrowth < thresholds.growth * 0.5f
+        ) {
+            fusion *= LATERAL_DAMPING
+        }
+
+        val movingSideways = motion.lateralSpeed > thresholds.speed * 0.8f
+        if (flingOnly(motion) && !movingSideways) fusion *= 0.6f
+
+        return fusion.coerceIn(0f, 1f)
+    }
+
+    /** Hand speed alone (no approach, no device thrust) is not a push. */
+    private fun flingOnly(motion: Motion): Boolean =
+        motion.approach < 0.15f &&
+            motion.peakGrowth < 0.04f &&
+            motion.peakDepth < 0.10f &&
+            abs(motion.accel) < 0.35f
+
+    private fun detectSwipe(nowMs: Long): GestureEvent {
+        if (history.size < 3) return GestureEvent.NONE
+        val newest = history.last()
+        val oldest = history.first()
+        val dtSeconds = (newest.timeMs - oldest.timeMs) / 1000f
+        if (dtSeconds < MIN_SWIPE_SECONDS) return GestureEvent.NONE
+
+        val dx = newest.x - oldest.x
+        val dy = newest.y - oldest.y
+        if (abs(dx) < SWIPE_DISTANCE) return GestureEvent.NONE
+        if (abs(dx) < abs(dy) * SWIPE_ASPECT) return GestureEvent.NONE
+        if (abs(dx) / dtSeconds < SWIPE_MIN_SPEED) return GestureEvent.NONE
+
+        return if (dx > 0f) GestureEvent.SWIPE_NEXT else GestureEvent.SWIPE_PREV
+    }
+
+    private fun palmCentre(landmarks: List<NormalizedLandmark>): FloatArray {
+        var x = 0f
+        var y = 0f
+        for (index in PALM_INDICES) {
+            x += landmarks[index].x()
+            y += landmarks[index].y()
+        }
+        val count = PALM_INDICES.size.toFloat()
+        return floatArrayOf(x / count, y / count)
+    }
+
+    private fun closure(landmarks: List<NormalizedLandmark>, palm: FloatArray): Float {
+        var sum = 0f
+        var weight = 0f
+        for (i in FINGERS.indices) {
+            val finger = FINGERS[i]
+            val tipDistance = distance2D(landmarks[finger.tip], palm)
+            val pipDistance = distance2D(landmarks[finger.pip], palm)
+            if (pipDistance < MIN_HAND_SIZE) continue
+            val ratio = (tipDistance - pipDistance) / pipDistance
+            sum += clamp(-ratio / CURL_SCALE) * finger.weight
+            weight += finger.weight
+        }
+        return if (weight <= 0f) 0f else sum / weight
+    }
+
+    private fun distance(a: NormalizedLandmark, b: NormalizedLandmark): Float =
+        hypot(a.x() - b.x(), a.y() - b.y())
+
+    private fun distance2D(landmark: NormalizedLandmark, point: FloatArray): Float =
+        hypot(landmark.x() - point[0], landmark.y() - point[1])
+
+    /**
+     * Frame-rate independent exponential smoothing.
+     *
+     * `alpha` is derived from elapsed time and a time constant, so the feel is
+     * the same at 8 fps (this phone) and at 30 fps: the previous fixed
+     * per-frame alpha made every gesture four times slower on slow hardware.
+     */
+    private fun smooth(previous: Float, target: Float, dtSeconds: Float, tau: Float): Float {
+        if (dtSeconds <= 0f) return previous + 0.5f * (target - previous)
+        val alpha = 1f - exp(-dtSeconds / tau)
+        return previous + alpha * (target - previous)
+    }
+
+    private fun clamp(value: Float, min: Float = 0f, max: Float = 1f): Float =
+        if (value < min) min else if (value > max) max else value
+
+    private class Finger(val pip: Int, val tip: Int, val weight: Float)
+
+    companion object {
+        const val LANDMARK_COUNT = 21
+
+        /** 18 % apparent growth over the resting baseline = a full push. */
+        private const val APPROACH_SPAN = 0.18f
+
+        const val DEFAULT_SENSITIVITY = 0.62f
+
+        private const val WRIST = 0
+        private const val MIDDLE_MCP = 9
+        private val PALM_INDICES = intArrayOf(0, 5, 9, 13, 17)
+
+        private val FINGERS = arrayOf(
+            Finger(pip = 6, tip = 8, weight = 1.2f),
+            Finger(pip = 10, tip = 12, weight = 1.2f),
+            Finger(pip = 14, tip = 16, weight = 1.0f),
+            Finger(pip = 18, tip = 20, weight = 0.8f)
+        )
+
+        private const val MIN_HAND_SIZE = 0.02f
+        private const val CURL_SCALE = 0.26f
+        /** Time constants, in seconds, of the three smoothed channels. */
+        private const val CLOSURE_TAU = 0.09f
+        private const val PUSH_TAU = 0.09f
+        private const val APPROACH_TAU = 0.11f
+        private const val BASELINE_TAU = 1.6f
+
+        private const val GRAB_LEVEL = 0.55f
+        private const val RELEASE_LEVEL = 0.40f
+        /** How long the fist stays "loaded" before it cancels itself. */
+        private const val LOAD_WINDOW_MS = 4000L
+        private const val DISARM_COOLDOWN_MS = 350L
+
+        /** Wide enough to span several frames even at 5 fps. */
+        private const val HISTORY_MS = 420L
+        private const val HISTORY_CAPACITY = 32
+        private const val MIN_DT_SECONDS = 0.012f
+        private const val MIN_WINDOW_SECONDS = 0.09f
+        private const val MIN_SWIPE_SECONDS = 0.12f
+
+        private const val HOLD_MS = 70L
+        private const val REARM_LEVEL = 0.20f
+        private const val WARMUP_MS = 300L
+        private const val THROW_COOLDOWN_MS = 700L
+        private const val THROW_FLASH_MS = 450L
+
+        private const val LATERAL_MIN_SPEED = 0.55f
+        private const val LATERAL_DAMPING = 0.45f
+
+        private const val SWIPE_DISTANCE = 0.10f
+        private const val SWIPE_ASPECT = 1.15f
+        private const val SWIPE_MIN_SPEED = 0.30f
+        private const val SWIPE_COOLDOWN_MS = 550L
+
+        private const val MISSING_FRAMES_RESET = 8
+    }
+}
