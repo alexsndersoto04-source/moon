@@ -133,7 +133,7 @@ Dispositivo: %2$s</string>
     <string name="cal_hint_done">Listo: el gesto ya usa tus medidas.</string>
     <string name="cal_hint_no_hand">No veo tu mano. Ponla frente a la cámara, con buena luz.</string>
     <string name="cal_counter">Intento %1$d de %2$d</string>
-    <string name="cal_done_button">Usar mis medidas</string>
+    <string name="cal_done_button">Listo</string>
     <string name="cal_cancel">Cancelar</string>
     <string name="calibrate_action">Calibrar gesto</string>
     <string name="calibrated_ok">Gesto calibrado con tus medidas</string>

@@ -10,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import com.airgesture.transfer.core.Diag
 import com.airgesture.transfer.media.MediaEntry
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
@@ -78,9 +79,10 @@ class NearbyTransferManager(
         Thread(runnable, "airgesture-transfer").apply { priority = Thread.NORM_PRIORITY }
     }
     private val connections: ConnectionsClient = Nearby.getConnectionsClient(appContext)
-    // Advertise and discover on both service ids so a device running an older
-    // build can still pair with this one instead of silently never matching.
-    private val serviceIds: List<String> = listOf(SERVICE_ID_V2, SERVICE_ID_V1)
+    // One service id only. Advertising and discovering on two ids meant four
+    // radio operations per cycle on a phone whose BLE stack is already the
+    // bottleneck; the second id only ever served builds older than 1.5.0.
+    private val serviceIds: List<String> = listOf(SERVICE_ID)
     private val myName: String = buildDeviceName()
 
     private var running = false
@@ -140,6 +142,11 @@ class NearbyTransferManager(
     // -------------------------------------------------------------------------
 
     @Volatile private var dialToken: String? = null
+    private var connectStartedMs = 0L
+    private var radiosStartedMs = 0L
+    private var restartCount = 0
+    private var lastRestartMs = 0L
+    private var connectTimeout: Runnable? = null
     private var lastPhaseLogMs = 0L
     private var pendingPeerId: String? = null
     private var pendingPeerName: String? = null
@@ -148,6 +155,7 @@ class NearbyTransferManager(
     private fun startRadios() {
         if (!running) return
         if (connectedEndpointId != null || connectingEndpointId != null) return
+        radiosStartedMs = android.os.SystemClock.elapsedRealtime()
         startAdvertising()
         startDiscovery()
         logOnce("Buscando el otro teléfono…", SEARCH_LOG_MS)
@@ -155,6 +163,7 @@ class NearbyTransferManager(
 
     private fun stopRadios() {
         cancelGrace()
+        cancelConnectTimeout()
         runCatching { connections.stopAdvertising() }
         runCatching { connections.stopDiscovery() }
     }
@@ -166,11 +175,26 @@ class NearbyTransferManager(
         pendingPeerName = null
     }
 
-    /** Restarts advertising/discovery after a failed attempt, from scratch. */
+    /**
+     * Restarts advertising/discovery after a failed attempt.
+     *
+     * A failure that repeats must not turn into a restart storm: each restart
+     * costs a full BLE re-advertisement, and back-to-back restarts are what make
+     * discovery look stuck. Consecutive restarts back off up to [MAX_BACKOFF_MS];
+     * a successful connection or a finding resets the counter.
+     */
     private fun restartRadios(delayMs: Long) {
         if (!running) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        restartCount = if (now - lastRestartMs < STORM_WINDOW_MS) restartCount + 1 else 1
+        lastRestartMs = now
+        val backoff = when {
+            restartCount <= 1 -> 0L
+            restartCount == 2 -> RETRY_MS
+            else -> minOf(MAX_BACKOFF_MS, RETRY_MS * (restartCount - 1))
+        }
         stopRadios()
-        mainHandler.postDelayed({ startRadios() }, delayMs)
+        mainHandler.postDelayed({ startRadios() }, delayMs + backoff)
     }
 
     // ------------------------------------------------------------ lifecycle
@@ -185,6 +209,7 @@ class NearbyTransferManager(
 
     fun stop() {
         running = false
+        cancelConnectTimeout()
         stopRadios()
         connectedEndpointId = null
         connectingEndpointId = null
@@ -247,8 +272,10 @@ class NearbyTransferManager(
             val peer = info.endpointName.orEmpty().trim()
             if (peer.isBlank() || peer == myName) return
 
+            restartCount = 0
             lastPeerName = peer
             emitState(NearbyState.PEER_FOUND, peer)
+            Diag.add("Encontrado: $peer (${android.os.SystemClock.elapsedRealtime() - radiosStartedMs} ms desde el arranque)")
             log("Encontrado: $peer")
 
             val iDial = myName < peer
@@ -290,8 +317,10 @@ class NearbyTransferManager(
         dialToken = endpointId
         connectingEndpointId = endpointId
         lastPeerName = peerName
+        connectStartedMs = android.os.SystemClock.elapsedRealtime()
         emitState(NearbyState.CONNECTING, peerName)
         log("Conectando con $peerName…")
+        armConnectTimeout(endpointId)
 
         connections.requestConnection(myName, endpointId, lifecycleCallback)
             .addOnFailureListener { error ->
@@ -303,6 +332,30 @@ class NearbyTransferManager(
                 dialToken = null
                 if (connectedEndpointId == null) restartRadios(RETRY_MS)
             }
+    }
+
+    /**
+     * Nearby can leave a request pending forever (peer gone, radio busy). Without
+     * this the device just sat in "Conectando…" and never searched again.
+     */
+    private fun armConnectTimeout(endpointId: String) {
+        cancelConnectTimeout()
+        val runnable = Runnable {
+            if (connectingEndpointId == endpointId && connectedEndpointId == null) {
+                log("La conexión no respondió; reintentando")
+                connectingEndpointId = null
+                dialToken = null
+                emitState(NearbyState.SEARCHING)
+                restartRadios(0L)
+            }
+        }
+        connectTimeout = runnable
+        mainHandler.postDelayed(runnable, CONNECT_TIMEOUT_MS)
+    }
+
+    private fun cancelConnectTimeout() {
+        connectTimeout?.let { mainHandler.removeCallbacks(it) }
+        connectTimeout = null
     }
 
     private val lifecycleCallback = object : ConnectionLifecycleCallback() {
@@ -325,6 +378,10 @@ class NearbyTransferManager(
             if (status.isSuccess ||
                 status.statusCode == ConnectionsStatusCodes.STATUS_ALREADY_CONNECTED_TO_ENDPOINT
             ) {
+                cancelConnectTimeout()
+                restartCount = 0
+                val elapsed = android.os.SystemClock.elapsedRealtime() - connectStartedMs
+                Diag.add("Enlace listo en ${elapsed} ms")
                 connectedEndpointId = endpointId
                 connectingEndpointId = null
                 dialToken = null
@@ -338,10 +395,11 @@ class NearbyTransferManager(
             } else {
                 Log.w(TAG, "connection rejected: ${status.statusCode} ${status.statusMessage}")
                 log("Conexión rechazada: ${statusText(status.statusCode)}")
+                cancelConnectTimeout()
                 if (connectingEndpointId == endpointId) connectingEndpointId = null
                 if (connectedEndpointId == null) {
                     emitState(NearbyState.SEARCHING)
-                    restartRadios(RETRY_MS)
+                    restartRadios(0L)
                 }
             }
         }
@@ -805,7 +863,7 @@ class NearbyTransferManager(
 
     private fun log(line: String) {
         Log.d(TAG, line)
-        com.airgesture.transfer.core.Diag.add(line)
+        Diag.add(line)
         mainHandler.post { listener.onLog(line) }
     }
 
@@ -828,8 +886,7 @@ class NearbyTransferManager(
 
     companion object {
         private const val TAG = "NearbyTransfer"
-        private const val SERVICE_ID_V2 = "com.airgesture.transfer.P2P.v2"
-        private const val SERVICE_ID_V1 = "com.airgesture.transfer.P2P"
+        private const val SERVICE_ID = "com.airgesture.transfer.P2P.v2"
         private const val KEY_NAME = "n"
         private const val KEY_MIME = "m"
         private const val KEY_SIZE = "s"
@@ -843,8 +900,16 @@ class NearbyTransferManager(
         // how often the same informational line may be logged.
         private const val RETRY_MS = 900L
         private const val SEARCH_LOG_MS = 9000L
-        /** How long the "loser" of the name comparison waits before dialling. */
-        private const val DIAL_GRACE_MS = 1500L
+        /**
+         * How long the "loser" of the name comparison waits before dialling.
+         * Short on purpose: if the other phone's request is coming, it arrives in
+         * well under this; if it is not, waiting longer is pure latency.
+         */
+        private const val DIAL_GRACE_MS = 450L
+        /** A dial that never resolves must not block the session forever. */
+        private const val CONNECT_TIMEOUT_MS = 6000L
+        private const val STORM_WINDOW_MS = 8000L
+        private const val MAX_BACKOFF_MS = 4000L
         /** A payload with no update for this long is considered dead. */
         private const val STALL_MS = 25_000L
         private const val STALL_CHECK_MS = 5_000L

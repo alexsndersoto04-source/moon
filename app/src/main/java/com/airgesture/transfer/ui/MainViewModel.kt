@@ -66,6 +66,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     private val calibration = GestureCalibration()
     private var calibrationJob: Job? = null
     private var lastCapturedAttempt = 0
+    private var calibrationSaved = false
     private val thrustSensor = ThrustSensor(application)
     private val nearby = NearbyTransferManager(application, this)
 
@@ -166,6 +167,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     fun startCalibration() {
         calibration.start()
         lastCapturedAttempt = 0
+        calibrationSaved = false
         interpreter.calibration = calibration
         publishCalibration(calibration.current)
         // The panel is driven by its own ticker, not by the camera thread: it
@@ -174,11 +176,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         calibrationJob = viewModelScope.launch {
             while (isActive) {
                 val snapshot = calibration.current
-                if (snapshot.attempt > lastCapturedAttempt && snapshot.phase != GestureCalibration.Phase.PUSHING) {
+                if (snapshot.attempt > lastCapturedAttempt &&
+                    snapshot.phase != GestureCalibration.Phase.PUSHING
+                ) {
                     lastCapturedAttempt = snapshot.attempt
                     haptics.confirm()
                 }
                 publishCalibration(snapshot)
+
+                // Finished: keep the profile, celebrate briefly, then get out of
+                // the way on its own. A panel that stays open over the camera is
+                // exactly what made the app feel broken after calibrating.
+                if (snapshot.phase == GestureCalibration.Phase.DONE) {
+                    applyCalibratedProfile(snapshot)
+                    delay(CALIBRATION_LINGER_MS)
+                    if (isActive) {
+                        stopCalibrationEngine()
+                        _events.tryEmit(UiEvent.Message(app.getString(R.string.calibrated_ok)))
+                    }
+                    return@launch
+                }
                 delay(CALIBRATION_TICK_MS)
             }
         }
@@ -196,15 +213,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         _uiState.update { it.copy(calibration = null) }
     }
 
-    /** The overlay's "listo" button: persist the measured profile. */
+    /** Persists the measured thresholds exactly once per calibration. */
+    private fun applyCalibratedProfile(state: GestureCalibration.State) {
+        if (calibrationSaved) return
+        val profile = state.profile ?: return
+        if (!profile.calibrated) return
+        calibrationSaved = true
+        prefs.saveProfile(profile)
+        interpreter.profile = profile
+        haptics.confirm()
+    }
+
+    /** "Listo" on the panel: close immediately, the profile is already stored. */
     fun finishCalibration() {
-        val profile = calibration.current.profile
-        if (profile != null && profile.calibrated) {
-            prefs.saveProfile(profile)
-            interpreter.profile = profile
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.calibrated_ok)))
-        }
+        applyCalibratedProfile(calibration.current)
         stopCalibrationEngine()
+        _events.tryEmit(UiEvent.Message(app.getString(R.string.calibrated_ok)))
     }
 
     private fun publishCalibration(state: GestureCalibration.State) {
@@ -512,6 +536,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     companion object {
         private const val CALIBRATION_TICK_MS = 90L
+        /** How long the finished panel stays up before it dismisses itself. */
+        private const val CALIBRATION_LINGER_MS = 1500L
         private const val STATS_INTERVAL_MS = 500L
         private const val MAX_LOG_LINES = 3
     }

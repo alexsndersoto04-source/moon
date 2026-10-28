@@ -290,13 +290,39 @@ Ahora ambas rutas construyen los enteros de color a mano y escriben con
   fotograma, lo dice en la línea de abajo. Settings → Ver diagnóstico incluye ahora
   `cuadros / manos / fps / modo de color / sonda / fallos / modelo`.
 
+## Pantalla ordenada y calibración que se aparta sola (1.5.4)
+
+Dos defectos de composición, visibles en un solo pantallazo:
+
+- **Las pestañas flotaban dentro de la tarjeta de cámara.** Por orden de dibujo
+  quedaban **encima** del panel de calibración: el botón «Listo» aparecía detrás
+  de «Videos/PDFs/Música» y los toques caían en la pestaña en vez del botón. Ahora
+  las pestañas son una fila propia debajo de la cámara: no pueden solaparse con
+  nada.
+- **La calibración se quedaba abierta** pidiendo un toque más. Ahora, al llegar al
+  intento 3, guarda el perfil **sola**, da un pulso, muestra «Listo» 1,5 s y se
+  retira. La cámara y la tira de archivos quedan libres y la app sigue normal. Para
+  recalibrar: Ajustes → Calibrar gesto.
+
 ## Efecto de entrega
 
-Cuando un archivo sale por gesto —o por el botón— la tarjeta con su miniatura
-real asciende, se desvanece y deja dos anillos que se expanden, con la curva
-`PathInterpolator(0.16, 1, 0.3, 1)`: la misma desaceleración que usa iOS en sus
-transiciones. Todo se dibuja en un solo `Canvas` (una vista, un animador, 700 ms)
-y se desactiva si el sistema tiene las animaciones desactivadas.
+Cuando un archivo sale por gesto —o por el botón— se reproduce una coreografía de
+900 ms sobre un único `Canvas`:
+
+```
+0,00  el halo se enciende y estalla el primer anillo
+0,05  la tarjeta con su miniatura real despega, gira 3° y se eleva
+0,10  una estela de luz la sigue mientras sube
+0,18  segundo anillo · 0,34 tercero
+0,20  diez partículas ascienden a lo largo de su trayectoria
+0,70  la tarjeta se disuelve en la luz
+0,86  un destello suave cierra el movimiento
+```
+
+Las curvas son lo importante: `PathInterpolator(0.16, 1, 0.3, 1)` es la
+desaceleración que usa iOS en sus transiciones — salida rápida y posada larga.
+Nada es lineal, nada rebota. Se dibuja solo mientras dura y se desactiva si el
+teléfono tiene las animaciones desactivadas.
 
 ## Cola, cancelación y vigilante
 
