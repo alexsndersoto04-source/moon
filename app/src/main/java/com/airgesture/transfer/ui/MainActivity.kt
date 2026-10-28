@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.graphics.PointF
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Size
@@ -523,67 +522,17 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /**
-     * The real hand-off: the selected file leaves the phone with the same
-     * decelerating motion iOS uses, and the card carries its own thumbnail.
-     */
+    /** The light burst starts immediately when a file is queued for sending. */
     private fun playHandoff(name: String) {
-        // Never skip the effect: if the phone has animations turned off, the
-        // drop is shortened instead of disappearing. Deleting it leaves the user
-        // with no confirmation at all, which is worse.
-        val entry = viewModel.selectedEntry()
-        val origin = handoffOrigin()
-        ThumbnailLoader.bitmap(this, entry) { bitmap ->
-            binding.beam.play(
-                bitmap,
-                reduceMotion = animationsDisabled(),
-                isArrival = false,
-                origin = origin
-            )
-        }
+        binding.beam.play()
         showTransient(getString(R.string.handoff_sending, name))
     }
 
-    /**
-     * The stone has to hit the water where the file actually is: the ripple is
-     * anchored on the selected card in the shelf, not in the middle of the
-     * screen. Expressed as a fraction of the overlay so the view can scale it.
-     */
-    private fun handoffOrigin(): PointF? {
-        val beamWidth = binding.beam.width
-        val beamHeight = binding.beam.height
-        if (beamWidth <= 0 || beamHeight <= 0) return null
-
-        val list = IntArray(2)
-        binding.filesList.getLocationOnScreen(list)
-        val overlay = IntArray(2)
-        binding.beam.getLocationOnScreen(overlay)
-
-        val x = (list[0] + binding.filesList.width / 2f - overlay[0]) / beamWidth
-        val y = (list[1] + binding.filesList.height / 2f - overlay[1]) / beamHeight
-        return PointF(x.coerceIn(0.18f, 0.82f), y.coerceIn(0.18f, 0.82f))
-    }
-
-    /** Landing on this phone: the same language, played backwards. */
+    /** The same centered light burst accompanies a successfully received file. */
     private fun playArrival(name: String) {
-        // The "recibido" message and the pulse come from the transfer callback;
-        // here only the animation, so nothing is announced twice.
-        binding.beam.play(
-            null,
-            reduceMotion = animationsDisabled(),
-            isArrival = true,
-            origin = handoffOrigin()
-        )
+        // Arrival is emitted only after the received file has been written.
+        binding.beam.play()
     }
-
-    /** True when the system (or MIUI) has turned animations off. */
-    private fun animationsDisabled(): Boolean = runCatching {
-        android.provider.Settings.Global.getFloat(
-            contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f
-        ) == 0f
-    }.getOrDefault(false)
 
     private fun showTransient(text: String) {
         transientMessage = text
