@@ -226,6 +226,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { providerRef?.unbindAll() }
             cameraStarted = false
             boundFrontCamera = null
+            viewModel.onCameraSourceChanged()
             startCameraIfNeeded()
         }
     }

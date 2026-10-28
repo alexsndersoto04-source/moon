@@ -315,6 +315,40 @@ Detalles que importan en la mano:
 - En Ajustes → **Enviar cerrando el puño** se puede desactivar y volver al envío
   por empuje, para quien no pueda cerrar la mano.
 
+## Sin un solo trazo (1.7.1)
+
+Todas las versiones anteriores dibujaban la cresta con `Paint.Style.STROKE`. Un
+trazo **es** un borde: por suave que sea el color, el ojo lee «línea». Esta versión
+no dibuja ni una línea.
+
+Cada onda es un **degradado radial continuo** dentro de un círculo escalado:
+
+```
+radio 0,00 → 0,62   transparente             el agua quieta
+radio 0,62 → 0,84   apenas una sombra        la depresión tras la cresta
+radio 0,84 → 0,93   blanco que sube          la cara de la onda
+radio 0,93          blanco en su punto       la cresta
+radio 0,93 → 1,00   se apaga                 la cara opuesta
+```
+
+Como la caída es continua, **no hay borde que ver a ningún tamaño**: la banda se
+enciende y se apaga sola. Lo mismo para las gotas, el manto de luz y la gota de
+vidrio, cuyo contorno se difumina con una máscara `DST_IN`: la miniatura se
+disuelve en la luz en vez de terminar en un círculo.
+
+El degradado se construye **una vez** contra un radio unitario y se reutiliza en
+cada onda con `canvas.scale`, así que no hay ni una asignación por fotograma: se
+mantiene fluido en el Helio G35.
+
+### Además: la sonda de color se aprende
+
+El diagnóstico mostraba `sonda=auto fps=1`: al no haber mano delante, la sonda
+alternaba el orden de color en cada fotograma y **pagaba dos inferencias por
+fotograma** para siempre. Ahora el orden descubierto **se guarda en preferencias**:
+la primera vez que ve una mano, ese teléfono ya no vuelve a probar nunca, y solo se
+repite al cambiar de cámara (frontal/trasera pueden coincidir) o al restablecer
+ajustes.
+
 ## El efecto: agua de verdad, no círculos (1.7.0)
 
 El intento anterior eran círculos con trazo: geométricamente correctos y visualmente

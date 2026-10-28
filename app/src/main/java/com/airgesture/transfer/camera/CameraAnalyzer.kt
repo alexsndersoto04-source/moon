@@ -20,7 +20,11 @@ import java.util.concurrent.atomic.AtomicLong
 class CameraAnalyzer(
     private val converter: FrameConverter,
     private val trackerProvider: () -> HandTracker,
-    private val onResult: (List<NormalizedLandmark>?, Long) -> Unit
+    private val onResult: (List<NormalizedLandmark>?, Long) -> Unit,
+    /** Channel order already known for this device (0 = still unknown). */
+    colorOrderKnown: Int = 0,
+    /** Called once, the first time a hand is seen with a given order. */
+    private val onColorLocked: (Boolean) -> Unit = {}
 ) : ImageAnalysis.Analyzer {
 
     private val frameCounter = AtomicLong(0)
@@ -31,10 +35,20 @@ class CameraAnalyzer(
     private var lastFrameAtMs = 0L
     private var fpsEma = 0f
 
-    @Volatile private var probeLocked = false
+    @Volatile private var probeLocked = colorOrderKnown != 0
     private var probeAttempts = 0
     @Volatile private var landmarkError: String? = null
     private var lastDiagMs = 0L
+
+    /**
+     * Front and rear sensors of the same phone can disagree about the channel
+     * order, so the learned value is dropped when the user switches lens and the
+     * probe runs again for the new camera.
+     */
+    fun forgetColorOrder() {
+        probeLocked = false
+        probeAttempts = 0
+    }
 
     /** True once the probe found which channel order this device delivers. */
     val channelProbe: String
@@ -105,6 +119,9 @@ class CameraAnalyzer(
                     if (retry != null) {
                         landmarks = retry
                         probeLocked = true
+                        // Remembered for this phone: the probe then never runs
+                        // again, so no frame is ever paid twice.
+                        onColorLocked(converter.swapChannels)
                         Diag.add("Color de cámara fijado: ${converter.lastMode}")
                     }
                 }

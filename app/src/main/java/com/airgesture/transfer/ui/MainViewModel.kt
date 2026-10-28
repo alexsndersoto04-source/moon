@@ -58,7 +58,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     private fun tracker(): HandTracker =
         handTracker ?: HandTracker(getApplication()).also { handTracker = it }
 
-    private val converter = FrameConverter()
+    private val converter = FrameConverter().apply {
+        // Restore the order discovered on this device: if it is known, the
+        // analyser never has to spend a second inference per frame guessing.
+        if (prefs.cameraColorOrder == 2) swapChannels = true
+    }
     private val interpreter = GestureInterpreter().apply {
         sensitivity = prefs.sensitivity
         fistToSend = prefs.fistToSend
@@ -71,7 +75,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     private val thrustSensor = ThrustSensor(application)
     private val nearby = NearbyTransferManager(application, this)
 
-    val analyzer = CameraAnalyzer(converter, ::tracker, ::onLandmarks)
+    val analyzer = CameraAnalyzer(
+        converter = converter,
+        trackerProvider = ::tracker,
+        onResult = ::onLandmarks,
+        colorOrderKnown = prefs.cameraColorOrder,
+        onColorLocked = { swapped -> prefs.cameraColorOrder = if (swapped) 2 else 1 }
+    )
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState = _uiState.asStateFlow()
@@ -156,6 +166,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         interpreter.sensitivity = prefs.sensitivity
         interpreter.fistToSend = prefs.fistToSend
         if (interpreter.calibration == null) interpreter.profile = prefs.loadProfile()
+    }
+
+    /**
+     * The user switched between front and rear: the learned channel order and
+     * the video tracker both belong to the old lens.
+     */
+    fun onCameraSourceChanged() {
+        prefs.cameraColorOrder = 0
+        analyzer.forgetColorOrder()
+        converter.swapChannels = false
+        handTracker?.close()
+        handTracker = null
     }
 
     val isCalibrated: Boolean get() = prefs.calibrated

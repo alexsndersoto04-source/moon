@@ -36,6 +36,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_FIST_SEND, true)
         set(value) = sp.edit { putBoolean(KEY_FIST_SEND, value) }
 
+    /**
+     * Channel order this device's camera really delivers, discovered once.
+     * `0` unknown · `1` R,G,B,A · `2` B,G,R,A. Persisting it matters: while it is
+     * unknown the analyser has to try both orders every frame, which halves the
+     * frame rate on a phone that only manages 3 fps.
+     */
+    var cameraColorOrder: Int
+        get() = sp.getInt(KEY_COLOR_ORDER, 0)
+        set(value) = sp.edit { putInt(KEY_COLOR_ORDER, value) }
+
     /** Draw the 21-point hand skeleton over the preview. */
     var skeletonVisible: Boolean
         get() = sp.getBoolean(KEY_SKELETON, true)
@@ -121,6 +131,7 @@ class Prefs(context: Context) {
             putBoolean(KEY_CALIBRATED, false)
             putBoolean(KEY_CAL_ASKED, false)
             putBoolean(KEY_FIST_SEND, true)
+            putInt(KEY_COLOR_ORDER, 0)
         }
     }
 
@@ -131,6 +142,7 @@ class Prefs(context: Context) {
         private const val KEY_HAPTICS = "haptics"
         private const val KEY_SKELETON = "skeleton"
         private const val KEY_FIST_SEND = "fist_send"
+        private const val KEY_COLOR_ORDER = "color_order"
         private const val KEY_DIAGNOSTICS = "diagnostics"
         private const val KEY_KEEP_AWAKE = "keep_awake"
         private const val KEY_P_GROWTH = "p_growth"
