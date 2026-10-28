@@ -222,6 +222,45 @@ archivo como `FILE` desde un `ParcelFileDescriptor` (cero copias en memoria). El
 copia con `asUri()` a `Descargas/AirGesture` y responde un **ACK**: eso es lo que hace
 aparecer «El otro teléfono confirmó la recepción». Verificación real, no una suposición.
 
+## El diagnóstico de un Redmi 9C (1.5.3)
+
+El informe copiable devolvió esto:
+
+```
+cuadros=89 manos=57 fps=0 modoColor=RGBA (BGR) sonda=auto
+fallosConversion=0 modelo=ok inferencia=461ms
+```
+
+Tres conclusiones, en orden de importancia:
+
+1. **La mano sí se detectaba** (57 de 89 cuadros). El problema no era la
+   detección sino la **velocidad**: 461 ms por inferencia en un Helio G35 a
+   640x480 son 2 cuadros por segundo, y la sonda de color, que nunca llegaba a
+   fijarse, **duplicaba cada inferencia**: un cuadro por segundo en total. A esa
+   velocidad ninguna lógica de gesto puede funcionar, por bien escrita que esté.
+2. **La sonda se quedaba en `auto`** porque solo se fijaba al detectar en el
+   reintento, no en el primer pase. Ahora se fija en cuanto ve una mano, y si no
+   ve ninguna sigue reintentando cada 12 cuadros en vez de rendirse.
+3. **`fps=0` era un contador roto**, no una medida. Ahora mide el intervalo real
+   entre cuadros.
+
+### Lo que se cambió por rendimiento
+
+- **Inferencia a 320 px de lado**. El detector de MediaPipe trabaja internamente a
+  ~224 px: alimentarlo con 640x480 era tirar el 80 % del trabajo. Es el cambio
+  que más pesa en este teléfono.
+- **Análisis a 480x360**, previsualización a 640x480. Son dos presupuestos
+  distintos: la previsualización sigue fluida y solo el esqueleto va a la
+  frecuencia del detector.
+- **Una sola inferencia por cuadro** una vez fijado el color.
+- **Suavizado en función del tiempo, no de los cuadros**. El filtro anterior
+  avanzaba un tanto fijo *por cuadro*; a 2 fps eso hacía que cada gesto tardara
+  cuatro veces más, y la línea base tardaba 30 s en adaptarse. Ahora usa
+  constantes de tiempo en segundos (`exp(-dt/tau)`), así que el tacto es el mismo
+  a 8 fps que a 30.
+- **La ventana de movimiento acepta dos muestras** en vez de exigir tres: a 5 fps
+  la ventana casi nunca tenía tres y todas las señales leían cero.
+
 ## Por qué no se detectaba la mano (1.5.2)
 
 La previsualización y la inferencia son **dos tuberías distintas**. La que ves en

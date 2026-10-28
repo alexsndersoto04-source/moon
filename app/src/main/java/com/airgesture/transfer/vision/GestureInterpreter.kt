@@ -5,6 +5,7 @@ import com.airgesture.transfer.core.GestureState
 import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.exp
 import kotlin.math.max
 
 /**
@@ -94,6 +95,7 @@ class GestureInterpreter {
      * "the hand is coming closer" measurement — no thresholds, no pose.
      */
     private var baselineSize = 0f
+    private var lastBaselineMs = 0L
 
     /** 0 = strict, 1 = eager. Scales the calibrated thresholds. */
     var sensitivity: Float = DEFAULT_SENSITIVITY
@@ -150,29 +152,35 @@ class GestureInterpreter {
 
         // Baseline tracking. A re-acquired hand (or a lens change) starts a new
         // baseline instead of comparing against a stale one.
+        val dtSeconds = if (lastBaselineMs == 0L) 0f
+            else ((nowMs - lastBaselineMs).coerceIn(0L, 400L)) / 1000f
+        lastBaselineMs = nowMs
         if (baselineSize <= 0f) {
             baselineSize = palmSize
         } else {
             val ratio = palmSize / baselineSize
             if (ratio > 2.4f || ratio < 0.42f) {
                 baselineSize = palmSize
-            } else {
-                baselineSize += BASELINE_ALPHA * (palmSize - baselineSize)
+            } else if (dtSeconds > 0f) {
+                // Time-based, not frame-based: at 2 fps a fixed per-frame alpha
+                // needed half a minute to adapt, so every push looked permanent.
+                val alpha = 1f - exp(-dtSeconds / BASELINE_TAU)
+                baselineSize += alpha * (palmSize - baselineSize)
             }
         }
 
         val closure = closure(landmarks, rawPalm)
-        smoothedClosure += CLOSURE_SMOOTHING * (closure - smoothedClosure)
+        smoothedClosure = smooth(smoothedClosure, closure, dtSeconds, CLOSURE_TAU)
 
         pushSample(nowMs, palmX, palmY, palmSize, depth)
 
         val instantApproach = approachLevel()
-        smoothedApproach += APPROACH_SMOOTHING * (instantApproach - smoothedApproach)
+        smoothedApproach = smooth(smoothedApproach, instantApproach, dtSeconds, APPROACH_TAU)
         val motion = measure(nowMs, forwardAccel).withApproach(smoothedApproach)
         val effective = profile.withSensitivity(sensitivity)
         val push = fuse(motion, effective)
 
-        smoothedPush += PUSH_SMOOTHING * (push - smoothedPush)
+        smoothedPush = smooth(smoothedPush, push, dtSeconds, PUSH_TAU)
 
         // ---- Guided calibration takes over the engine ----------------------
         calibration?.let { calibration ->
@@ -302,6 +310,7 @@ class GestureInterpreter {
         smoothedPush = 0f
         smoothedApproach = 0f
         baselineSize = 0f
+        lastBaselineMs = 0L
         smoothedClosure = 0f
         closed = false
         pushArmed = true
@@ -374,7 +383,11 @@ class GestureInterpreter {
 
     /** Peak rates of every cue inside the current window. */
     private fun measure(nowMs: Long, forwardAccel: Float): Motion {
-        if (history.size < 3) {
+        // Two samples are enough for one interval. Requiring three meant that at
+        // 5 fps — the real frame rate of a Redmi 9C — the window almost never
+        // held enough samples and every cue read as zero, so no gesture could
+        // ever be produced no matter what the hand did.
+        if (history.size < 2) {
             return Motion(false, 0f, 0f, 0f, 0f, forwardAccel, palmSize, 0f, 0f)
         }
 
@@ -506,6 +519,19 @@ class GestureInterpreter {
     private fun distance2D(landmark: NormalizedLandmark, point: FloatArray): Float =
         hypot(landmark.x() - point[0], landmark.y() - point[1])
 
+    /**
+     * Frame-rate independent exponential smoothing.
+     *
+     * `alpha` is derived from elapsed time and a time constant, so the feel is
+     * the same at 8 fps (this phone) and at 30 fps: the previous fixed
+     * per-frame alpha made every gesture four times slower on slow hardware.
+     */
+    private fun smooth(previous: Float, target: Float, dtSeconds: Float, tau: Float): Float {
+        if (dtSeconds <= 0f) return previous + 0.5f * (target - previous)
+        val alpha = 1f - exp(-dtSeconds / tau)
+        return previous + alpha * (target - previous)
+    }
+
     private fun clamp(value: Float, min: Float = 0f, max: Float = 1f): Float =
         if (value < min) min else if (value > max) max else value
 
@@ -516,8 +542,7 @@ class GestureInterpreter {
 
         /** 18 % apparent growth over the resting baseline = a full push. */
         private const val APPROACH_SPAN = 0.18f
-        private const val APPROACH_SMOOTHING = 0.5f
-        private const val BASELINE_ALPHA = 0.02f
+
         const val DEFAULT_SENSITIVITY = 0.62f
 
         private const val WRIST = 0
@@ -533,14 +558,18 @@ class GestureInterpreter {
 
         private const val MIN_HAND_SIZE = 0.02f
         private const val CURL_SCALE = 0.26f
-        private const val CLOSURE_SMOOTHING = 0.5f
-        private const val PUSH_SMOOTHING = 0.55f
+        /** Time constants, in seconds, of the three smoothed channels. */
+        private const val CLOSURE_TAU = 0.09f
+        private const val PUSH_TAU = 0.09f
+        private const val APPROACH_TAU = 0.11f
+        private const val BASELINE_TAU = 1.6f
 
         private const val GRAB_LEVEL = 0.55f
         private const val RELEASE_LEVEL = 0.35f
 
-        private const val HISTORY_MS = 320L
-        private const val HISTORY_CAPACITY = 48
+        /** Wide enough to span several frames even at 5 fps. */
+        private const val HISTORY_MS = 420L
+        private const val HISTORY_CAPACITY = 32
         private const val MIN_DT_SECONDS = 0.012f
         private const val MIN_WINDOW_SECONDS = 0.09f
         private const val MIN_SWIPE_SECONDS = 0.12f
