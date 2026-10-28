@@ -9,8 +9,8 @@
     <string name="tab_pdfs">PDFs</string>
     <string name="tab_audio">Música</string>
 
-    <string name="hint_idle">Mueve la mano para elegir · empújala hacia la cámara para enviar</string>
-    <string name="hint_grab">Listo: empuja la mano hacia la cámara para enviar.</string>
+    <string name="hint_idle">Mueve la mano para elegir · cierra el puño y abre la mano para enviar</string>
+    <string name="hint_grab">Cargado · abre la mano para enviar</string>
     <string name="hint_sending">Enviando…</string>
     <string name="hint_receiving">Recibiendo…</string>
     <string name="handoff_sending">Sale %1$s</string>
@@ -90,6 +90,10 @@
     <string name="settings_sensitivity_high">muy fácil</string>
     <string name="settings_sensitivity_help">Sube la sensibilidad si el gesto no se dispara; bájala si se dispara solo.</string>
     <string name="settings_behaviour">Comportamiento</string>
+    <string name="settings_fist_send">Enviar cerrando el puño</string>
+    <string name="settings_fist_send_help">Cierra el puño para cargar el archivo y abre la mano para enviarlo. Desactívalo si prefieres que baste con empujar la mano.</string>
+    <string name="settings_effect_preview">Probar efecto de entrega</string>
+    <string name="settings_effect_help">Lo mismo que verás cuando sueltes el gesto, sin enviar nada.</string>
     <string name="settings_skeleton">Dibujar el esqueleto de la mano</string>
     <string name="settings_haptics">Vibración al detectar gestos</string>
     <string name="settings_awake">Mantener la pantalla encendida</string>

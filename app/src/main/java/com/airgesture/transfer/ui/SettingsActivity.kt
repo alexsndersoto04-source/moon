@@ -47,6 +47,16 @@ class SettingsActivity : AppCompatActivity() {
             }
         )
 
+        binding.switchFistSend.setOnCheckedChangeListener { _, checked ->
+            prefs.fistToSend = checked
+            haptics.tick()
+        }
+
+        binding.effectButton.setOnClickListener {
+            haptics.tick()
+            previewEffect()
+        }
+
         binding.switchSkeleton.setOnCheckedChangeListener { _, checked ->
             prefs.skeletonVisible = checked
         }
@@ -135,11 +145,44 @@ class SettingsActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * Plays the hand-off animation in a translucent dialog.
+     *
+     * This exists so the effect can be verified in one second without a second
+     * phone and without sending anything: the same [TransferBeamView] and the
+     * same call the real transfer uses, so what is seen here is what happens.
+     */
+    private fun previewEffect() {
+        val container = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#22000000"))
+        }
+        val beam = TransferBeamView(this)
+        container.addView(
+            beam,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val dialog = android.app.Dialog(
+            this,
+            android.R.style.Theme_Translucent_NoTitleBar_Fullscreen
+        )
+        dialog.setContentView(container)
+        dialog.setCancelable(true)
+        dialog.show()
+
+        beam.play(null, reduceMotion = false, isArrival = false)
+        container.postDelayed({ dialog.dismiss() }, 1200L)
+    }
+
     private fun loadValues() {
         updateCameraChips()
         val progress = (prefs.sensitivity.coerceIn(0f, 1f) * 100f).roundToInt()
         binding.sensitivitySlider.progress = progress
         updateSensitivityLabel(progress / 100f)
+        binding.switchFistSend.isChecked = prefs.fistToSend
         binding.switchSkeleton.isChecked = prefs.skeletonVisible
         binding.switchHaptics.isChecked = prefs.hapticsEnabled
         binding.switchAwake.isChecked = prefs.keepScreenOn

@@ -45,7 +45,9 @@ class GestureInterpreter {
         /** 0..3 band of the push meter, used for progressive haptics. */
         val pushZone: Int = 0,
         /** 0..1 geometric "hand is closer" measurement, shown in the HUD. */
-        val approach: Float = 0f
+        val approach: Float = 0f,
+        /** Fist seen: the file is loaded, waiting for the open hand. */
+        val loaded: Boolean = false
     )
 
     private data class Sample(
@@ -73,6 +75,9 @@ class GestureInterpreter {
     private var aboveSinceMs = 0L
 
     private var pushArmed = true
+    private var loaded = false
+    private var loadedAtMs = 0L
+    private var lastDisarmMs = 0L
     private var missingFrames = 0
     private var closed = false
     private var firstSeenMs = 0L
@@ -102,6 +107,14 @@ class GestureInterpreter {
         set(value) {
             field = value.coerceIn(0f, 1f)
         }
+
+    /**
+     * `true` (default): the send gesture is **fist to load, open hand to send**.
+     * The push cue only charges the meter; it can never fire on its own.
+     * `false`: the older push-only behaviour, kept as an accessibility option.
+     */
+    @Volatile
+    var fistToSend: Boolean = true
 
     /** Thresholds measured on this user, or the conservative defaults. */
     var profile: GestureProfile = GestureProfile()
@@ -216,10 +229,42 @@ class GestureInterpreter {
             event = GestureEvent.HAND_OPENED
         }
 
-        // ---- Arbitration: one gesture at a time ----------------------------
+        // ---- Send gesture --------------------------------------------------
+        //
+        // Two distinct things happen now, and they are not the same thing:
+        //   * the push cue CHARGES the meter (visual + progressive haptics);
+        //   * the fist LOADS the file and the open hand RELEASES it.
+        //
+        // The push alone can never send while [fistToSend] is on, which is what
+        // stopped the "it sends the moment I raise my hand" behaviour.
         val verdict = arbitrate(motion, smoothedPush)
+        val warm = nowMs - firstSeenMs >= WARMUP_MS
 
-        if (verdict == Verdict.FORWARD) {
+        if (fistToSend) {
+            if (!loaded && warm && event == GestureEvent.FIST_CLOSED &&
+                nowMs - lastDisarmMs > DISARM_COOLDOWN_MS
+            ) {
+                loaded = true
+                loadedAtMs = nowMs
+            }
+
+            if (loaded) {
+                val expired = nowMs - loadedAtMs > LOAD_WINDOW_MS
+                val released = smoothedClosure < RELEASE_LEVEL
+                if (released && nowMs - lastThrowMs > THROW_COOLDOWN_MS) {
+                    // The user opened the hand: this is the send, at this instant.
+                    loaded = false
+                    lastThrowMs = nowMs
+                    throwFlashUntilMs = nowMs + THROW_FLASH_MS
+                    event = GestureEvent.THROW
+                } else if (expired) {
+                    // Held too long: cancel silently instead of surprising anyone.
+                    loaded = false
+                    lastDisarmMs = nowMs
+                }
+            }
+            aboveSinceMs = 0L
+        } else if (verdict == Verdict.FORWARD) {
             // The trigger is the *push confidence*, on an absolute 0..1 scale,
             // never a speed value borrowed from another cue. Sensitivity moves
             // this single number, which is why the slider now behaves linearly.
@@ -227,7 +272,6 @@ class GestureInterpreter {
             if (ready && aboveSinceMs == 0L) aboveSinceMs = nowMs
             if (!ready) aboveSinceMs = 0L
             val heldLongEnough = aboveSinceMs != 0L && nowMs - aboveSinceMs >= HOLD_MS
-            val warm = nowMs - firstSeenMs >= WARMUP_MS
             if (!pushArmed && smoothedPush < REARM_LEVEL) pushArmed = true
 
             if (pushArmed && warm && heldLongEnough && ready &&
@@ -256,14 +300,15 @@ class GestureInterpreter {
 
         state = when {
             nowMs < throwFlashUntilMs -> GestureState.THROW_VECTOR
-            smoothedClosure > GRAB_LEVEL -> GestureState.GRAB_FIST
+            loaded || smoothedClosure > GRAB_LEVEL -> GestureState.GRAB_FIST
             else -> GestureState.IDLE
         }
 
+        val effectiveLevel = if (loaded) 1f else smoothedPush
         val zone = when {
-            smoothedPush >= 0.85f -> 3
-            smoothedPush >= 0.60f -> 2
-            smoothedPush >= 0.35f -> 1
+            effectiveLevel >= 0.85f -> 3
+            effectiveLevel >= 0.60f -> 2
+            effectiveLevel >= 0.35f -> 1
             else -> 0
         }
         lastZone = zone
@@ -274,12 +319,13 @@ class GestureInterpreter {
             handVisible = true,
             fistStrength = smoothedClosure.coerceIn(0f, 1f),
             openStrength = (1f - smoothedClosure).coerceIn(0f, 1f),
-            thrustStrength = smoothedPush.coerceIn(0f, 1f),
+            thrustStrength = effectiveLevel.coerceIn(0f, 1f),
             palmX = palmX,
             palmY = palmY,
             handSize = palmSize,
             pushZone = zone,
-            approach = smoothedApproach.coerceIn(0f, 1f)
+            approach = smoothedApproach.coerceIn(0f, 1f),
+            loaded = loaded
         )
     }
 
@@ -314,6 +360,8 @@ class GestureInterpreter {
         smoothedClosure = 0f
         closed = false
         pushArmed = true
+        loaded = false
+        loadedAtMs = 0L
         aboveSinceMs = 0L
         lastZone = 0
 
@@ -565,7 +613,10 @@ class GestureInterpreter {
         private const val BASELINE_TAU = 1.6f
 
         private const val GRAB_LEVEL = 0.55f
-        private const val RELEASE_LEVEL = 0.35f
+        private const val RELEASE_LEVEL = 0.40f
+        /** How long the fist stays "loaded" before it cancels itself. */
+        private const val LOAD_WINDOW_MS = 4000L
+        private const val DISARM_COOLDOWN_MS = 350L
 
         /** Wide enough to span several frames even at 5 fps. */
         private const val HISTORY_MS = 420L

@@ -83,6 +83,8 @@ class TransferBeamView @JvmOverloads constructor(
     private val path = Path()
 
     private var progress = 0f
+    private var arrival = false
+    private var durationMs = DURATION_MS
     private var bitmap: Bitmap? = null
     private var animator: ValueAnimator? = null
     private var haloShader: Shader? = null
@@ -113,18 +115,19 @@ class TransferBeamView @JvmOverloads constructor(
      * Plays the effect. [thumbnail] is optional: without it the card flies with
      * the same silhouette, so the animation never waits on a decode.
      */
-    fun play(thumbnail: Bitmap?, reduceMotion: Boolean = false) {
-        if (reduceMotion) {
-            visibility = GONE
-            return
-        }
+    fun play(thumbnail: Bitmap?, reduceMotion: Boolean = false, isArrival: Boolean = false) {
+        // Reduced motion shortens the flight instead of deleting it: the effect
+        // is the confirmation that something left the phone, so removing it
+        // entirely leaves the user with no answer at all.
+        arrival = isArrival
+        durationMs = if (reduceMotion) REDUCED_DURATION_MS else DURATION_MS
         bitmap = thumbnail
         animator?.cancel()
         progress = 0f
         visibility = VISIBLE
         alpha = 1f
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = DURATION_MS
+            duration = durationMs
             interpolator = LinearInterpolator()
             addUpdateListener {
                 progress = it.animatedValue as Float
@@ -141,13 +144,24 @@ class TransferBeamView @JvmOverloads constructor(
 
     fun isPlaying(): Boolean = visibility == VISIBLE && animator?.isRunning == true
 
+    /** Used by the settings preview so the button never stacks animations. */
+    fun stop() {
+        animator?.cancel()
+        animator = null
+        progress = 0f
+        visibility = GONE
+    }
+
     override fun onDraw(canvas: Canvas) {
         if (progress <= 0f) return
 
         val cx = width / 2f
         val originY = height * 0.66f
 
-        val fly = flyEase.getInterpolation(progress)
+        // Departure: 0 → 1, the card climbs away. Arrival: 1 → 0, it comes down
+        // from above and comes to rest at the same anchor point.
+        val eased = flyEase.getInterpolation(progress.coerceIn(0f, 1f))
+        val fly = if (arrival) 1f - eased else eased
         val cardWidth = minOf(width * 0.34f, 112f * density)
         val cardHeight = cardWidth * 1.26f
 
@@ -169,7 +183,9 @@ class TransferBeamView @JvmOverloads constructor(
         cardRect.set(centreX - halfW, centreY - halfH, centreX + halfW, centreY + halfH)
 
         val alphaIn = fadeEase.getInterpolation((progress / 0.10f).coerceIn(0f, 1f))
-        val alphaOut = 1f - fadeEase.getInterpolation(((progress - 0.66f) / 0.34f).coerceIn(0f, 1f))
+        val fadeStart = if (arrival) 0.82f else 0.66f
+        val fadeSpan = if (arrival) 0.18f else 0.34f
+        val alphaOut = 1f - fadeEase.getInterpolation(((progress - fadeStart) / fadeSpan).coerceIn(0f, 1f))
         val cardAlpha = (255 * alphaIn * alphaOut).toInt().coerceIn(0, 255)
 
         if (cardAlpha > 0) {
@@ -267,7 +283,10 @@ class TransferBeamView @JvmOverloads constructor(
         maxRadiusDp: Float
     ) {
         if (t <= 0f || t >= 1f) return
-        val radius = (16f * density) + t * maxRadiusDp * density
+        // Arrival rings close in, departure rings open out: same drawing, and the
+        // direction alone tells the user whether the file left or landed.
+        val spread = if (arrival) 1f - t else t
+        val radius = (16f * density) + spread * maxRadiusDp * density
         val alpha = ((1f - t) * 105f * weight).toInt().coerceIn(0, 255)
         if (alpha <= 0) return
 
@@ -378,6 +397,8 @@ class TransferBeamView @JvmOverloads constructor(
 
     private companion object {
         const val DURATION_MS = 900L
+        /** Shortened version used when the system asks for less motion. */
+        const val REDUCED_DURATION_MS = 320L
         const val PARTICLE_COUNT = 10
         val COLOR_INK: Int = Color.parseColor("#1A1A1A")
         val COLOR_HAIRLINE: Int = Color.parseColor("#E8E4DC")

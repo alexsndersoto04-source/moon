@@ -64,4 +64,6 @@ sealed interface UiEvent {
     data class Message(val text: String) : UiEvent
     /** A file is leaving the phone: the moment the hand-off effect belongs to. */
     data class Handoff(val name: String) : UiEvent
+    /** A file landed on this phone. */
+    data class Arrival(val name: String) : UiEvent
 }

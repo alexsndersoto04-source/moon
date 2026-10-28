@@ -105,6 +105,19 @@
             android:text="@string/settings_behaviour" />
 
         <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchFistSend"
+            style="@style/SettingsSwitch"
+            android:text="@string/settings_fist_send" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="2dp"
+            android:text="@string/settings_fist_send_help"
+            android:textColor="@color/ink_faint"
+            android:textSize="11sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchSkeleton"
             style="@style/SettingsSwitch"
             android:text="@string/settings_skeleton" />
@@ -173,6 +186,23 @@
                 android:layout_weight="1"
                 android:text="@string/diag_copy" />
         </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/effectButton"
+            style="@style/Widget.AirGesture.Button.Outlined"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="@string/settings_effect_preview" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:paddingStart="2dp"
+            android:text="@string/settings_effect_help"
+            android:textColor="@color/ink_faint"
+            android:textSize="11sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/resetButton"

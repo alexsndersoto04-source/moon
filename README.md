@@ -290,6 +290,47 @@ Ahora ambas rutas construyen los enteros de color a mano y escriben con
   fotograma, lo dice en la línea de abajo. Settings → Ver diagnóstico incluye ahora
   `cuadros / manos / fps / modo de color / sonda / fallos / modelo`.
 
+## Gesto con confirmación: cargar y soltar (1.6.0)
+
+Antes bastaba con que la mano se acercara: el acercamiento **por sí solo** podía
+cruzar el umbral, el motor arrancaba armado y el puño no participaba en la
+condición de envío. Resultado: el archivo salía al levantar la mano.
+
+Ahora son tres pasos separados, y el tercero es el que envía:
+
+```
+acercar   el medidor se llena y vibra por tramos      → no envía
+cerrar    el puño carga el archivo                    → un pulso grave
+abrir     la mano SE ENVIÓ                            → aquí arranca el efecto
+```
+
+Detalles que importan en la mano:
+
+- La ventana para soltar es de **4 s**; si pasa, se cancela en silencio en vez de
+  sorprender a nadie.
+- Hay **350 ms** de enfriamiento tras cancelar, para que un puño tembloroso no
+  vuelva a cargar solo.
+- Mientras está cargado, el medidor se queda **lleno**: la barra deja de ser un
+  adorno y pasa a ser «listo, suelta cuando quieras».
+- En Ajustes → **Enviar cerrando el puño** se puede desactivar y volver al envío
+  por empuje, para quien no pueda cerrar la mano.
+
+## El efecto de entrega (1.6.0)
+
+Las dos razones por las que no se veía, ya corregidas:
+
+1. Solo se disparaba cuando el archivo **empezaba a salir de verdad**; si quedaba
+   en cola, la pantalla no decía nada. Ahora el efecto responde **al gesto**, en el
+   instante en que se abre la mano, aunque el envío tenga que esperar conexión.
+2. Si el teléfono tenía las animaciones desactivadas —MIUI lo permite y a veces
+   viene así— el código hacía `return` y **borraba el efecto sin avisar**. Ahora se
+   acorta a 320 ms: el vuelo sigue existiendo.
+
+Además hay efecto de **llegada** en el receptor (la tarjeta desciende y se posa,
+los anillos se cierran en vez de abrirse) y un botón en Ajustes → **Probar efecto
+de entrega** que reproduce la animación en un segundo, sin segundo teléfono y sin
+enviar nada. Es la prueba que faltaba para saber si falla el efecto o el envío.
+
 ## Pantalla ordenada y calibración que se aparta sola (1.5.4)
 
 Dos defectos de composición, visibles en un solo pantallazo:

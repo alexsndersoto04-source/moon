@@ -61,6 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     private val converter = FrameConverter()
     private val interpreter = GestureInterpreter().apply {
         sensitivity = prefs.sensitivity
+        fistToSend = prefs.fistToSend
         profile = prefs.loadProfile()
     }
     private val calibration = GestureCalibration()
@@ -153,6 +154,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
      */
     fun applyPreferences() {
         interpreter.sensitivity = prefs.sensitivity
+        interpreter.fistToSend = prefs.fistToSend
         if (interpreter.calibration == null) interpreter.profile = prefs.loadProfile()
     }
 
@@ -417,6 +419,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         }
         queue.addLast(entry)
         publishQueue()
+        _events.tryEmit(UiEvent.Handoff(entry.name))
         if (!nearby.isConnected) {
             _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
             return
@@ -481,7 +484,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             return
         }
         haptics.confirm()
-        _events.tryEmit(UiEvent.Handoff(entry.name))
         _uiState.update {
             it.copy(
                 transfer = TransferProgress(
@@ -517,6 +519,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     override fun onFileReceived(fileName: String, uri: Uri) {
+        _events.tryEmit(UiEvent.Arrival(fileName))
         _uiState.update { it.copy(transfer = null) }
         haptics.tick()
         _events.tryEmit(UiEvent.Received(fileName))

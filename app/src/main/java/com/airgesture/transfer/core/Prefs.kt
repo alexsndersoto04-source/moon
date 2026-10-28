@@ -28,6 +28,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_HAPTICS, true)
         set(value) = sp.edit { putBoolean(KEY_HAPTICS, value) }
 
+    /**
+     * Send gesture: `true` = fist loads the file and the open hand releases it
+     * (default, deliberate), `false` = plain push (accessibility fallback).
+     */
+    var fistToSend: Boolean
+        get() = sp.getBoolean(KEY_FIST_SEND, true)
+        set(value) = sp.edit { putBoolean(KEY_FIST_SEND, value) }
+
     /** Draw the 21-point hand skeleton over the preview. */
     var skeletonVisible: Boolean
         get() = sp.getBoolean(KEY_SKELETON, true)
@@ -112,6 +120,7 @@ class Prefs(context: Context) {
             putBoolean(KEY_KEEP_AWAKE, true)
             putBoolean(KEY_CALIBRATED, false)
             putBoolean(KEY_CAL_ASKED, false)
+            putBoolean(KEY_FIST_SEND, true)
         }
     }
 
@@ -121,6 +130,7 @@ class Prefs(context: Context) {
         private const val KEY_FRONT_CAMERA = "front_camera"
         private const val KEY_HAPTICS = "haptics"
         private const val KEY_SKELETON = "skeleton"
+        private const val KEY_FIST_SEND = "fist_send"
         private const val KEY_DIAGNOSTICS = "diagnostics"
         private const val KEY_KEEP_AWAKE = "keep_awake"
         private const val KEY_P_GROWTH = "p_growth"

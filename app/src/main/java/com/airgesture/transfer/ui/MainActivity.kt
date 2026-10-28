@@ -276,6 +276,7 @@ class MainActivity : AppCompatActivity() {
                             is UiEvent.Received -> showTransient(getString(R.string.received_named, event.name))
                             is UiEvent.Message -> showTransient(event.text)
                             is UiEvent.Handoff -> playHandoff(event.name)
+                            is UiEvent.Arrival -> playArrival(event.name)
                         }
                     }
                 }
@@ -525,21 +526,31 @@ class MainActivity : AppCompatActivity() {
      * decelerating motion iOS uses, and the card carries its own thumbnail.
      */
     private fun playHandoff(name: String) {
-        val reduceMotion = runCatching {
-            android.provider.Settings.Global.getFloat(
-                contentResolver,
-                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-                1f
-            ) == 0f
-        }.getOrDefault(false)
-        if (reduceMotion) return
-
+        // Never skip the effect: if the phone has animations turned off, the
+        // flight is shortened to 320 ms instead of disappearing. Deleting it
+        // leaves the user with no confirmation at all, which is worse.
         val entry = viewModel.selectedEntry()
         ThumbnailLoader.bitmap(this, entry) { bitmap ->
-            binding.beam.play(bitmap, reduceMotion = false)
+            binding.beam.play(bitmap, reduceMotion = animationsDisabled(), isArrival = false)
         }
         showTransient(getString(R.string.handoff_sending, name))
     }
+
+    /** Landing on this phone: the same language, played backwards. */
+    private fun playArrival(name: String) {
+        // The "recibido" message and the pulse come from the transfer callback;
+        // here only the animation, so nothing is announced twice.
+        binding.beam.play(null, reduceMotion = animationsDisabled(), isArrival = true)
+    }
+
+    /** True when the system (or MIUI) has turned animations off. */
+    private fun animationsDisabled(): Boolean = runCatching {
+        android.provider.Settings.Global.getFloat(
+            contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    }.getOrDefault(false)
 
     private fun showTransient(text: String) {
         transientMessage = text
