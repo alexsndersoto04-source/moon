@@ -20,6 +20,19 @@ import java.util.Locale
 object Diag {
 
     private const val MAX_LINES = 40
+
+    /**
+     * Live camera numbers, refreshed by the analyzer. They are the first thing
+     * to look at when "the hand is not detected": they separate a camera that
+     * delivers no frames from a model that never loaded from a detector that
+     * runs but sees nothing.
+     */
+    @Volatile
+    private var pipeline: String = "sin datos"
+
+    fun setPipeline(line: String) {
+        pipeline = line
+    }
     private val lines = ArrayDeque<String>(MAX_LINES)
     private val stamp = SimpleDateFormat("HH:mm:ss", Locale.US)
 
@@ -55,6 +68,9 @@ object Diag {
         appendLine("Ubicación del sistema = ${Radios.locationEnabled(context)}")
         appendLine("Wi-Fi Direct (feature) = ${hasFeature(context, PackageManager.FEATURE_WIFI_DIRECT)}")
         appendLine("Bluetooth LE (feature) = ${hasFeature(context, PackageManager.FEATURE_BLUETOOTH_LE)}")
+        appendLine()
+        appendLine("--- Cámara y modelo ---")
+        appendLine(pipeline)
         appendLine()
         appendLine("--- Últimos eventos ---")
         val events = snapshot()

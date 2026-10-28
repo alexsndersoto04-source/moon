@@ -9,7 +9,6 @@ import android.graphics.Paint
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import java.nio.ByteOrder
-import java.nio.IntBuffer
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -45,6 +44,14 @@ class FrameConverter {
     @Volatile
     var lastMode: String = "—"
         private set
+
+    /**
+     * Set by [com.airgesture.transfer.camera.CameraAnalyzer] only while it is
+     * probing which channel order this device really delivers. Correct-by-spec
+     * is `false` (CameraX documents R,G,B,A).
+     */
+    @Volatile
+    var swapChannels: Boolean = false
 
     /**
      * Returns an upright bitmap ready for inference. The instance is reused on
@@ -100,35 +107,65 @@ class FrameConverter {
         }.getOrNull()
     }
 
+    /**
+     * RGBA_8888 → Bitmap, with an **explicit** colour-int conversion.
+     *
+     * CameraX hands back the bytes packed as `R,G,B,A`. Android's `ARGB_8888`
+     * pixel memory is `B,G,R,A` (Skia's kN32 is BGRA on every ARM device), so
+     * dumping the plane straight into the bitmap with [Bitmap.copyPixelsFromBuffer]
+     * reinterprets the bytes: red and blue come out **swapped**. The preview you
+     * see on screen is a different pipeline (PreviewView decodes YUV itself), so
+     * the camera looks perfect while MediaPipe receives a blue-skinned image and
+     * detects nothing at all.
+     *
+     * Building the colour ints by hand removes the ambiguity: [Bitmap.setPixels]
+     * takes documented `A,R,G,B` ints, exactly like [copyYuv] already does, so
+     * both paths now agree with each other.
+     */
     private fun copyRgba(image: ImageProxy, target: Bitmap, width: Int, height: Int): Boolean {
         val plane = image.planes.firstOrNull() ?: return false
         val source = plane.buffer
         val rowStride = plane.rowStride
-        if (rowStride <= 0) return false
+        if (rowStride <= 0 || rowStride % 4 != 0) return false
 
-        if (rowStride == width * 4 && source.remaining() >= width * height * 4) {
-            val duplicate = source.duplicate()
-            duplicate.rewind()
-            target.copyPixelsFromBuffer(duplicate)
-            lastMode = "RGBA"
-            return true
-        }
-
-        // Padded rows: go row by row through an IntBuffer view of the plane.
-        if (rowStride % 4 != 0) return false
         val rowStrideInts = rowStride / 4
-        val ints = source.duplicate().order(ByteOrder.nativeOrder()).asIntBuffer()
+        val ints = source.duplicate().order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
         val capacity = ints.capacity()
-        val out = rowScratch(width * height)
+        val count = width * height
+        val out = rowScratch(count)
 
+        var written = 0
         for (row in 0 until height) {
             val start = row * rowStrideInts
             if (start + width > capacity) return false
             ints.position(start)
-            ints.get(out, row * width, width)
+            ints.get(out, written, width)
+            written += width
         }
-        target.copyPixelsFromBuffer(IntBuffer.wrap(out))
-        lastMode = "RGBA"
+
+        // Unpack the RGBA bytes and re-pack them as ARGB colour ints. When the
+        // device is actually delivering BGRA (seen on a few OEM stacks) the probe
+        // flips [swapChannels] and the same code decodes it correctly.
+        if (swapChannels) {
+            for (i in 0 until count) {
+                val value = out[i]
+                val blue = value and 0xFF
+                val green = (value ushr 8) and 0xFF
+                val red = (value ushr 16) and 0xFF
+                out[i] = OPAQUE or (red shl 16) or (green shl 8) or blue
+            }
+        } else {
+            for (i in 0 until count) {
+                val value = out[i]
+                val red = value and 0xFF
+                val green = (value ushr 8) and 0xFF
+                val blue = (value ushr 16) and 0xFF
+                out[i] = OPAQUE or (red shl 16) or (green shl 8) or blue
+            }
+        }
+
+        target.setPixels(out, 0, width, 0, 0, width, height)
+        lastMode = if (swapChannels) "RGBA (BGR)" else "RGBA"
         return true
     }
 
@@ -171,7 +208,8 @@ class FrameConverter {
                 out[index++] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
             }
         }
-        target.copyPixelsFromBuffer(IntBuffer.wrap(out))
+        target.setPixels(out, 0, width, 0, 0, width, height)
+        // YUV carries chroma explicitly, so the RGBA probe never applies here.
         lastMode = "YUV"
         return true
     }
@@ -242,6 +280,11 @@ class FrameConverter {
     private fun rowScratch(size: Int): IntArray {
         if (scratch.size < size) scratch = IntArray(size)
         return scratch
+    }
+
+    private companion object {
+        /** Alpha is irrelevant for hand inference; force opaque so RGBX works. */
+        const val OPAQUE = 0xFF shl 24
     }
 
     fun release() {

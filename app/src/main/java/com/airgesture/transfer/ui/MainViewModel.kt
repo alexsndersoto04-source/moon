@@ -351,6 +351,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             handFrames = analyzer.handFrames,
             conversionFailures = analyzer.conversionFailures,
             conversionMode = analyzer.conversionMode,
+            colorProbe = analyzer.channelProbe,
             handVisible = reading.handVisible,
             landmarks = lastLandmarkCount,
             closure = reading.fistStrength,

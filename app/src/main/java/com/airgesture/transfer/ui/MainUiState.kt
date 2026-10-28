@@ -47,6 +47,7 @@ data class TrackingStats(
     val handFrames: Long = 0L,
     val conversionFailures: Long = 0L,
     val conversionMode: String = "—",
+    val colorProbe: String = "auto",
     val handVisible: Boolean = false,
     val landmarks: Int = 0,
     val closure: Float = 0f,

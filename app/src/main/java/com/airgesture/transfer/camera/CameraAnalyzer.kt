@@ -30,6 +30,18 @@ class CameraAnalyzer(
     private var windowStartMs = 0L
     private var windowFrames = 0
 
+    @Volatile private var probeLocked = false
+    @Volatile private var landmarkError: String? = null
+    private var lastDiagMs = 0L
+
+    /** True once the probe found which channel order this device delivers. */
+    val channelProbe: String
+        get() = when {
+            !probeLocked -> "auto"
+            converter.lastMode.endsWith("(BGR)") -> "BGR"
+            else -> "RGB"
+        }
+
     val frames: Long get() = frameCounter.get()
     val handFrames: Long get() = handCounter.get()
     val fps: Int get() = fpsValue.get()
@@ -37,31 +49,79 @@ class CameraAnalyzer(
     val conversionMode: String get() = converter.lastMode
     val inferenceMs: Long get() = tracker?.lastInferenceMs ?: 0L
     val modelReady: Boolean get() = tracker?.isReady ?: false
-    val modelError: String? get() = tracker?.modelError
+    val modelError: String? get() = tracker?.modelError ?: landmarkError
 
+    /**
+     * Colour-order probe.
+     *
+     * CameraX documents `R,G,B,A` for RGBA_8888 and that is what the converter
+     * assumes. A handful of OEM camera stacks pack `B,G,R,A` instead, and the
+     * symptom is brutal: a perfect preview and zero detections forever. Rather
+     * than guess, the analyzer tries both orders on the first frames and keeps
+     * whichever one actually finds a hand. Bounded to [PROBE_FRAMES] frames, so
+     * the extra inference cost disappears after the first couple of seconds.
+     */
     override fun analyze(image: ImageProxy) {
         val timestampMs = image.imageInfo.timestamp / NANOS_PER_MILLI
-        val bitmap = try {
-            converter.convert(image)
+        var landmarks: List<NormalizedLandmark>? = null
+
+        try {
+            val bitmap = runCatching { converter.convert(image) }.getOrNull()
+            if (bitmap == null) {
+                publishDiag()
+                onResult(null, timestampMs)
+                return
+            }
+
+            val engine = tracker ?: trackerProvider().also { tracker = it }
+            landmarks = if (engine.isReady) engine.detect(bitmap, timestampMs) else null
+
+            if (landmarks == null && engine.isReady && frameCounter.get() < PROBE_FRAMES) {
+                // Retry the same frame with the opposite channel order before
+                // the proxy is closed and the pixels are gone.
+                converter.swapChannels = !converter.swapChannels
+                val alternate = runCatching { converter.convert(image) }.getOrNull()
+                if (alternate != null) {
+                    val retry = engine.detect(alternate, timestampMs + PROBE_STEP_MS)
+                    if (retry != null) {
+                        landmarks = retry
+                        probeLocked = true
+                        com.airgesture.transfer.core.Diag.add(
+                            "Color de cámara detectado: ${converter.lastMode}"
+                        )
+                    } else if (!probeLocked) {
+                        // Nothing either way yet: keep alternating, cheap enough
+                        // while the probe window is open.
+                        converter.swapChannels = !converter.swapChannels
+                    }
+                }
+            }
         } catch (error: Throwable) {
-            null
+            landmarkError = error.message
         } finally {
             image.close()
         }
 
-        if (bitmap == null) {
-            onResult(null, timestampMs)
-            return
-        }
-
-        val engine = tracker ?: trackerProvider().also { tracker = it }
-        val landmarks = if (engine.isReady) engine.detect(bitmap, timestampMs) else null
-
         frameCounter.incrementAndGet()
         if (landmarks != null) handCounter.incrementAndGet()
         updateFps()
+        publishDiag()
 
         onResult(landmarks, timestampMs)
+    }
+
+    /** Publishes the pipeline numbers to the copyable diagnostic report. */
+    private fun publishDiag() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastDiagMs < DIAG_INTERVAL_MS) return
+        lastDiagMs = now
+        com.airgesture.transfer.core.Diag.setPipeline(
+            "cuadros=${frames} manos=${handFrames} fps=${fps} " +
+                "modoColor=${converter.lastMode} sonda=${channelProbe} " +
+                "fallosConversion=${conversionFailures} " +
+                "modelo=${if (modelReady) "ok" else "NO: ${modelError ?: "sin cargar"}"} " +
+                "inferencia=${inferenceMs}ms"
+        )
     }
 
     private fun updateFps() {
@@ -83,5 +143,10 @@ class CameraAnalyzer(
     companion object {
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val FPS_WINDOW_MS = 1000L
+        /** How many frames may be spent discovering the channel order. */
+        private const val PROBE_FRAMES = 90L
+        /** Keep MediaPipe timestamps strictly increasing across the probe pair. */
+        private const val PROBE_STEP_MS = 1L
+        private const val DIAG_INTERVAL_MS = 2_000L
     }
 }

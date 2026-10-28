@@ -70,6 +70,8 @@
     <!-- Live hand feedback -->
     <string name="hand_chip_none">Muestra tu mano</string>
     <string name="hand_chip_detected">Mano detectada</string>
+    <string name="hint_model_missing">El modelo de mano no cargó (%1$s). Reinstala el APK: sin él no hay gestos.</string>
+    <string name="hint_no_frames">No puedo leer la imagen de la cámara. Cierra la app y vuelve a abrirla.</string>
     <string name="hint_no_hand">Acerca la mano a la cámara: buena luz y un fondo liso ayudan mucho.</string>
     <string name="hint_push">Empuja la mano hacia el teléfono para enviar</string>
     <string name="sent_short">Enviado</string>

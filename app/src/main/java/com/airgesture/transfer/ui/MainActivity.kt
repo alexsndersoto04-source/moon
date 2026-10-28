@@ -309,7 +309,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var lastStats = TrackingStats()
+
     private fun onStats(stats: TrackingStats) {
+        lastStats = stats
         // The hint depends on how long ago the hand was last seen, so it is
         // refreshed from the stats tick even when the HUD is hidden.
         updateHint()
@@ -320,6 +323,7 @@ class MainActivity : AppCompatActivity() {
             append("mano ${stats.handFrames} · ${stats.conversionMode}\n")
             append(String.format(Locale.US, "cierre %.2f · empuje %.2f\n", stats.closure, stats.push))
             append(String.format(Locale.US, "acerca %.2f\n", stats.approach))
+            append("color ${stats.conversionMode} · ${stats.colorProbe}\n")
             append("cuadros ${stats.frames} · fallos ${stats.conversionFailures}\n")
             append(if (stats.modelReady) "modelo ok · dedos ${stats.landmarks}" else "modelo: ${stats.modelError}")
         }
@@ -422,10 +426,18 @@ class MainActivity : AppCompatActivity() {
         }
         val noHandFor = if (lastHandSeenAtMs == 0L) Long.MAX_VALUE else now - lastHandSeenAtMs
         val linkReady = currentState.nearbyState == NearbyState.CONNECTED
+        val stats = lastStats
         // Gesture feedback always wins over the connection status: while the
         // phones are still finding each other the user must still see that the
         // hand is being read.
         binding.hintText.text = when {
+            // The camera feed itself is the first thing to prove. If MediaPipe
+            // never loaded, or no frame can be decoded, no gesture can ever work
+            // and the user must be told instead of staring at a live preview.
+            !stats.modelReady && stats.modelError != null ->
+                getString(R.string.hint_model_missing, stats.modelError.orEmpty())
+            stats.frames == 0L && stats.conversionFailures > 30L ->
+                getString(R.string.hint_no_frames)
             currentState.calibration != null -> currentState.calibration!!.hint
             currentState.gestureState == GestureState.THROW_VECTOR -> getString(R.string.hint_sending)
             currentState.gestureState == GestureState.GRAB_FIST -> getString(R.string.hint_grab)

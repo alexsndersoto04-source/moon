@@ -57,7 +57,14 @@ class HandTracker(context: Context) {
     fun detect(bitmap: Bitmap, frameTimestampMs: Long): List<NormalizedLandmark>? {
         val engine = landmarker ?: return null
 
-        val timestamp = maxOf(frameTimestampMs, lastTimestamp + 1L, SystemClock.uptimeMillis())
+        // Strictly increasing, and never mixing two clock epochs: the camera's
+        // sensor time and uptimeMillis are different origins, and handing both
+        // to the tracker makes it lose its internal motion model on every call.
+        val timestamp = if (frameTimestampMs > 0L) {
+            maxOf(frameTimestampMs, lastTimestamp + 1L)
+        } else {
+            lastTimestamp + FRAME_FALLBACK_MS
+        }
         lastTimestamp = timestamp
 
         val started = SystemClock.elapsedRealtime()
@@ -84,8 +91,12 @@ class HandTracker(context: Context) {
         private const val TAG = "HandTracker"
         private const val MODEL_ASSET = "hand_landmarker.task"
         private const val LANDMARK_COUNT = 21
-        private const val DETECTION_CONFIDENCE = 0.5f
-        private const val PRESENCE_CONFIDENCE = 0.5f
-        private const val TRACKING_CONFIDENCE = 0.5f
+        // Slightly under the default 0.5: a budget 480p sensor at arm's length
+        // produces weaker scores, and the interpreter's own filtering removes
+        // the false positives this could introduce.
+        private const val DETECTION_CONFIDENCE = 0.4f
+        private const val PRESENCE_CONFIDENCE = 0.4f
+        private const val TRACKING_CONFIDENCE = 0.4f
+        private const val FRAME_FALLBACK_MS = 33L
     }
 }

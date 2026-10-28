@@ -222,6 +222,35 @@ archivo como `FILE` desde un `ParcelFileDescriptor` (cero copias en memoria). El
 copia con `asUri()` a `Descargas/AirGesture` y responde un **ACK**: eso es lo que hace
 aparecer «El otro teléfono confirmó la recepción». Verificación real, no una suposición.
 
+## Por qué no se detectaba la mano (1.5.2)
+
+La previsualización y la inferencia son **dos tuberías distintas**. La que ves en
+pantalla la pinta CameraX decodificando YUV; la que recibe MediaPipe la construye
+`FrameConverter`. Ese conversor tenía dos rutas que escribían **órdenes de bytes
+incompatibles** en el mismo `Bitmap`:
+
+- la ruta YUV escribía enteros de color `A,R,G,B` documentados;
+- la ruta RGBA volcaba los bytes crudos de CameraX —`R,G,B,A`— con
+  `copyPixelsFromBuffer`, que los reinterpreta según la memoria nativa del bitmap
+  (`B,G,R,A` en cualquier ARM).
+
+Intercambiaba rojo y azul: la cámara se veía perfecta y el modelo recibía una mano
+azul. Con eso la detección puede caer a cero y **nada** de lo que hay encima
+(gesto, calibración, envío) llega a ejecutarse.
+
+Ahora ambas rutas construyen los enteros de color a mano y escriben con
+`setPixels`, que está documentado y no admite interpretación. Además:
+
+- **Sonda automática de orden de color**: si en los primeros 90 cuadros no aparece
+  ninguna mano, el analizador prueba el orden opuesto en el mismo fotograma y se
+  queda con el que sí detecta. No depende de que yo acierte con tu teléfono.
+- **El modelo se verifica en el APK**: el CI falla si `hand_landmarker.task` no
+  está *Stored* **y** pesa más de 5 MB, así que un modelo truncado no puede
+  entregarse.
+- **La app ya no se queda callada**: si el modelo no cargó o no se puede leer ni un
+  fotograma, lo dice en la línea de abajo. Settings → Ver diagnóstico incluye ahora
+  `cuadros / manos / fps / modo de color / sonda / fallos / modelo`.
+
 ## Efecto de entrega
 
 Cuando un archivo sale por gesto —o por el botón— la tarjeta con su miniatura
