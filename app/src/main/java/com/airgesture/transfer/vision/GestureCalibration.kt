@@ -85,7 +85,13 @@ class GestureCalibration {
     fun onFrame(motion: Motion, nowMs: Long): State {
         if (current.phase == Phase.IDLE || current.phase == Phase.DONE) return current
 
-        val push = motion.approach.coerceIn(0f, 1f)
+        // Two independent measurements of "the hand is coming closer": the
+        // geometric approach ratio and the rate at which the palm grows. The
+        // bar follows whichever is stronger, so the panel responds even if one
+        // of the two is momentarily noisy. Nothing can leave it frozen.
+        val byApproach = motion.approach.coerceIn(0f, 1f)
+        val byGrowth = (motion.peakGrowth / GROWTH_FULL).coerceIn(0f, 1f)
+        val push = max(byApproach, byGrowth)
 
         if (!motion.handVisible) {
             if (current.phase == Phase.PUSHING) resetAttempt()
@@ -201,6 +207,8 @@ class GestureCalibration {
 
         /** Any measurable approach starts an attempt. */
         private const val START_LEVEL = 0.08f
+        /** Growth rate (relative size per second) that counts as a full push. */
+        private const val GROWTH_FULL = 1.5f
         /** Below this peak the attempt is not counted (it was noise). */
         private const val MIN_ATTEMPT_PEAK = 0.12f
         private const val RELEASE_RATIO = 0.55f

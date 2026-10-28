@@ -355,6 +355,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             landmarks = lastLandmarkCount,
             closure = reading.fistStrength,
             push = reading.thrustStrength,
+            approach = reading.approach,
             modelReady = analyzer.modelReady,
             modelError = analyzer.modelError
         )

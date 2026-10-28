@@ -50,6 +50,7 @@ data class TrackingStats(
     val handVisible: Boolean = false,
     val landmarks: Int = 0,
     val closure: Float = 0f,
+    val approach: Float = 0f,
     val push: Float = 0f,
     val modelReady: Boolean = false,
     val modelError: String? = null

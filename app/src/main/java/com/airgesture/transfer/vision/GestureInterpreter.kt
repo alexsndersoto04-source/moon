@@ -42,7 +42,9 @@ class GestureInterpreter {
         val palmY: Float,
         val handSize: Float,
         /** 0..3 band of the push meter, used for progressive haptics. */
-        val pushZone: Int = 0
+        val pushZone: Int = 0,
+        /** 0..1 geometric "hand is closer" measurement, shown in the HUD. */
+        val approach: Float = 0f
     )
 
     private data class Sample(
@@ -268,7 +270,8 @@ class GestureInterpreter {
             palmX = palmX,
             palmY = palmY,
             handSize = palmSize,
-            pushZone = zone
+            pushZone = zone,
+            approach = smoothedApproach.coerceIn(0f, 1f)
         )
     }
 

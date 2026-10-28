@@ -116,8 +116,8 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p artifacts
-          cp app/build/outputs/apk/release/app-release.apk "artifacts/AirGestureTransfer-1.5.0.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "artifacts/AirGestureTransfer-1.5.0-debug.apk"
+          cp app/build/outputs/apk/release/app-release.apk "artifacts/AirGestureTransfer-1.5.1.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "artifacts/AirGestureTransfer-1.5.1-debug.apk"
           ls -lh artifacts
           sha256sum artifacts/*.apk | tee artifacts/SHA256SUMS.txt
 
@@ -125,7 +125,7 @@ jobs:
       - name: Verify APK (model bundled, ABIs present, signature valid)
         run: |
           set -euo pipefail
-          APK=artifacts/AirGestureTransfer-1.5.0.apk
+          APK=artifacts/AirGestureTransfer-1.5.1.apk
 
           echo "--- MediaPipe model inside the APK (must be Stored, not Defl) ---"
           unzip -v "$APK" | grep "hand_landmarker.task" | tee model.txt
@@ -173,13 +173,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.5.0-build${{ github.run_number }}"
+          TAG="v1.5.1-build${{ github.run_number }}"
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "AirGesture Transfer 1.5.0 (build ${{ github.run_number }})" \
+            --title "AirGesture Transfer 1.5.1 (build ${{ github.run_number }})" \
             --notes "APK generado automáticamente por GitHub Actions desde \`${{ github.sha }}\`.
 
-          **Instalación:** descarga \`AirGestureTransfer-1.5.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» para tu navegador y ábrelo. Se instala **encima** de la versión anterior: la clave de firma es estable entre builds.
+          **Instalación:** descarga \`AirGestureTransfer-1.5.1.apk\` en el teléfono, permite «Instalar apps de origen desconocido» para tu navegador y ábrelo. Se instala **encima** de la versión anterior: la clave de firma es estable entre builds.
 
           - Compilado: $(date -u +'%Y-%m-%d %H:%M UTC')
           - Commit: \`${{ github.sha }}\`

@@ -163,7 +163,6 @@ class MainActivity : AppCompatActivity() {
         collectFlows()
         applyPermissions()
         showCrashReportIfAny()
-        promptCalibrationIfNeeded()
     }
 
     /**
@@ -320,6 +319,7 @@ class MainActivity : AppCompatActivity() {
             append(String.format(Locale.US, "fps %d · %d ms\n", stats.fps, stats.inferenceMs))
             append("mano ${stats.handFrames} · ${stats.conversionMode}\n")
             append(String.format(Locale.US, "cierre %.2f · empuje %.2f\n", stats.closure, stats.push))
+            append(String.format(Locale.US, "acerca %.2f\n", stats.approach))
             append("cuadros ${stats.frames} · fallos ${stats.conversionFailures}\n")
             append(if (stats.modelReady) "modelo ok · dedos ${stats.landmarks}" else "modelo: ${stats.modelError}")
         }
@@ -547,6 +547,9 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.startSession()
         startCameraIfNeeded()
+        // Only offer the calibration once the camera is actually available,
+        // never on top of the permission gate.
+        promptCalibrationIfNeeded()
     }
 
     private fun requestPermissions() {
