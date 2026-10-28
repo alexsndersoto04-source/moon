@@ -431,6 +431,24 @@
             android:text="@string/hint_idle"
             android:textColor="@color/ink_faint"
             android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/calibrateLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="16dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:letterSpacing="0.04"
+            android:paddingStart="14dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="8dp"
+            android:text="@string/calibrate_action"
+            android:textColor="@color/ink_soft"
+            android:textSize="10.5sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- ─── Permission gate ──────────────────────────────────────────────── -->

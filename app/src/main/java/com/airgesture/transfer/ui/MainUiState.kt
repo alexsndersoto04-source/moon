@@ -30,6 +30,7 @@ data class CalibrationUi(
     val progress: Float,
     val livePush: Float,
     val finished: Boolean,
+    val handVisible: Boolean,
     val hint: String
 )
 

@@ -25,6 +25,7 @@ import com.airgesture.transfer.vision.OverlayFrame
 import com.airgesture.transfer.vision.ThrustSensor
 import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +63,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         profile = prefs.loadProfile()
     }
     private val calibration = GestureCalibration()
+    private var calibrationJob: Job? = null
+    private var lastCapturedAttempt = 0
     private val thrustSensor = ThrustSensor(application)
     private val nearby = NearbyTransferManager(application, this)
 
@@ -147,7 +150,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
      */
     fun applyPreferences() {
         interpreter.sensitivity = prefs.sensitivity
-        interpreter.profile = prefs.loadProfile()
+        if (interpreter.calibration == null) interpreter.profile = prefs.loadProfile()
     }
 
     val isCalibrated: Boolean get() = prefs.calibrated
@@ -160,11 +163,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     /** Starts the guided calibration; the engine stops emitting transfer events. */
     fun startCalibration() {
         calibration.start()
+        lastCapturedAttempt = 0
         interpreter.calibration = calibration
         publishCalibration(calibration.current)
+        // The panel is driven by its own ticker, not by the camera thread: it
+        // keeps updating even when the hand leaves the frame.
+        calibrationJob?.cancel()
+        calibrationJob = viewModelScope.launch {
+            while (isActive) {
+                val snapshot = calibration.current
+                if (snapshot.attempt > lastCapturedAttempt && snapshot.phase != GestureCalibration.Phase.PUSHING) {
+                    lastCapturedAttempt = snapshot.attempt
+                    haptics.confirm()
+                }
+                publishCalibration(snapshot)
+                delay(CALIBRATION_TICK_MS)
+            }
+        }
     }
 
     fun cancelCalibration() {
+        stopCalibrationEngine()
+    }
+
+    private fun stopCalibrationEngine() {
+        calibrationJob?.cancel()
+        calibrationJob = null
         calibration.cancel()
         interpreter.calibration = null
         _uiState.update { it.copy(calibration = null) }
@@ -178,9 +202,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             interpreter.profile = profile
             _events.tryEmit(UiEvent.Message(app.getString(R.string.calibrated_ok)))
         }
-        calibration.cancel()
-        interpreter.calibration = null
-        _uiState.update { it.copy(calibration = null) }
+        stopCalibrationEngine()
     }
 
     private fun publishCalibration(state: GestureCalibration.State) {
@@ -191,6 +213,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             GestureCalibration.Phase.DONE -> app.getString(R.string.cal_hint_done)
             GestureCalibration.Phase.IDLE -> app.getString(R.string.cal_hint_ready)
         }
+        val handHint = if (state.handVisible || state.phase == GestureCalibration.Phase.DONE) {
+            hint
+        } else {
+            app.getString(R.string.cal_hint_no_hand)
+        }
         _uiState.update {
             it.copy(
                 calibration = CalibrationUi(
@@ -199,7 +226,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
                     progress = state.progress,
                     livePush = state.livePush,
                     finished = state.phase == GestureCalibration.Phase.DONE,
-                    hint = hint
+                    handVisible = state.handVisible,
+                    hint = handHint
                 )
             )
         }
@@ -261,11 +289,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         lastLandmarkCount = landmarks?.size ?: 0
         publishStats(reading)
 
-        val calibrationSession = interpreter.calibration
-        if (calibrationSession != null) {
-            val snapshot = calibrationSession.current
-            if (snapshot.phase != GestureCalibration.Phase.IDLE) publishCalibration(snapshot)
-        }
 
         if (reading.state != lastGestureState || reading.handVisible != lastHandVisible) {
             lastGestureState = reading.state
@@ -280,6 +303,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     private suspend fun handleGesture(event: GestureEvent) {
+        if (_uiState.value.calibration != null) return
+        if (_uiState.value.items.isEmpty()) {
+            // Never stay silent: an empty shelf with a working gesture looks
+            // exactly like a broken gesture.
+            if (event != GestureEvent.HAND_OPENED && event != GestureEvent.NONE) {
+                _events.tryEmit(UiEvent.Message(app.getString(R.string.no_files_gesture)))
+            }
+            return
+        }
         when (event) {
             GestureEvent.FIST_CLOSED -> {
                 val state = _uiState.value
@@ -440,6 +472,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     companion object {
+        private const val CALIBRATION_TICK_MS = 90L
         private const val STATS_INTERVAL_MS = 500L
         private const val MAX_LOG_LINES = 3
     }

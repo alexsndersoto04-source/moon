@@ -128,6 +128,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.bannerAction.setOnClickListener { fixBlocker() }
         binding.calibrationCancel.setOnClickListener { viewModel.cancelCalibration() }
+        binding.calibrateLink.setOnClickListener {
+            haptics.tick()
+            viewModel.startCalibration()
+        }
         binding.calibrationDone.setOnClickListener {
             haptics.confirm()
             viewModel.finishCalibration()
@@ -343,12 +347,16 @@ class MainActivity : AppCompatActivity() {
 
         val calibration = state.calibration
         binding.calibrationPanel.isVisible = calibration != null
+        binding.calibrateLink.isVisible = calibration == null && !viewModel.isCalibrated
         if (calibration != null) {
             binding.calibrationHint.text = calibration.hint
-            binding.calibrationCounter.text =
-                getString(R.string.cal_counter, (calibration.attempt + 1).coerceAtMost(calibration.total), calibration.total)
+            val shown = (calibration.attempt + 1).coerceAtMost(calibration.total)
+            binding.calibrationCounter.text = getString(R.string.cal_counter, shown, calibration.total)
+            // The bar is the live push level: it is the proof that the push is
+            // being registered, long before an attempt completes.
+            val level = if (calibration.finished) 1f else calibration.livePush
             binding.calibrationProgress.setProgressCompat(
-                (calibration.progress * 100f).toInt().coerceIn(0, 100), true
+                (level * 100f).toInt().coerceIn(0, 100), false
             )
             binding.calibrationDone.isVisible = calibration.finished
         }
@@ -398,11 +406,15 @@ class MainActivity : AppCompatActivity() {
         }
         val noHandFor = if (lastHandSeenAtMs == 0L) Long.MAX_VALUE else now - lastHandSeenAtMs
         val linkReady = currentState.nearbyState == NearbyState.CONNECTED
+        // Gesture feedback always wins over the connection status: while the
+        // phones are still finding each other the user must still see that the
+        // hand is being read.
         binding.hintText.text = when {
+            currentState.calibration != null -> currentState.calibration!!.hint
             currentState.gestureState == GestureState.THROW_VECTOR -> getString(R.string.hint_sending)
-            !linkReady && currentState.transfer == null -> getString(R.string.hint_no_link)
             currentState.gestureState == GestureState.GRAB_FIST -> getString(R.string.hint_grab)
             noHandFor > NO_HAND_HINT_MS -> getString(R.string.hint_no_hand)
+            !linkReady && currentState.transfer == null -> getString(R.string.hint_no_link)
             else -> getString(R.string.hint_idle)
         }
     }

@@ -121,6 +121,7 @@ Dispositivo: %2$s</string>
     <string name="cal_hint_push">Así, sigue empujando…</string>
     <string name="cal_hint_settle">Bien. Vuelve a la posición y repite.</string>
     <string name="cal_hint_done">Listo: el gesto ya usa tus medidas.</string>
+    <string name="cal_hint_no_hand">No veo tu mano. Ponla frente a la cámara, con buena luz.</string>
     <string name="cal_counter">Intento %1$d de %2$d</string>
     <string name="cal_done_button">Usar mis medidas</string>
     <string name="cal_cancel">Cancelar</string>
@@ -130,5 +131,6 @@ Dispositivo: %2$s</string>
     <string name="cal_intro">Dura 20 segundos: empujarás la mano hacia el teléfono tres veces y la app medirá tu velocidad y tu distancia reales. Después el gesto responde a cómo lo haces tú, no a un umbral genérico.</string>
     <string name="cal_later">Ahora no</string>
     <string name="queued_waiting">Se enviará en cuanto conecte con el otro teléfono</string>
-    <string name="hint_no_link">Abriendo enlace con el otro teléfono · mantén la app abierta en ambos y cerca</string>
+    <string name="hint_no_link">Gesto activo · abriendo enlace con el otro teléfono (mantén la app abierta en ambos)</string>
+    <string name="no_files_gesture">El gesto funciona: todavía no hay archivos en esta pestaña</string>
 </resources>

@@ -76,6 +76,7 @@ class GestureInterpreter {
 
     private var smoothedClosure = 0f
     private var smoothedPush = 0f
+    private var smoothedCalibration = 0f
     private var lastZone = 0
 
     private var palmX = 0f
@@ -148,7 +149,12 @@ class GestureInterpreter {
         // ---- Guided calibration takes over the engine ----------------------
         calibration?.let { calibration ->
             if (calibration.isActive) {
-                calibration.onFrame(motion.copy(push = smoothedPush), nowMs)
+                // Calibration must never depend on the profile it is about to
+                // replace: it measures against neutral thresholds, so any real
+                // push registers on the very first attempt.
+                val neutral = fuse(motion, CALIBRATION_PROFILE)
+                smoothedCalibration += CALIBRATION_SMOOTHING * (neutral - smoothedCalibration)
+                calibration.onFrame(motion.copy(push = smoothedCalibration), nowMs)
             }
             // While the overlay exists nothing else may fire: neither a throw nor
             // a swipe. Events come back as soon as the panel is dismissed.
@@ -242,6 +248,7 @@ class GestureInterpreter {
         history.clear()
         filterX.reset(); filterY.reset(); filterSize.reset(); filterDepth.reset()
         smoothedPush = 0f
+        smoothedCalibration = 0f
         smoothedClosure = 0f
         closed = false
         pushArmed = true
@@ -431,6 +438,16 @@ class GestureInterpreter {
 
     companion object {
         const val LANDMARK_COUNT = 21
+
+        /** Neutral thresholds used only while calibrating. */
+        private val CALIBRATION_PROFILE = GestureProfile(
+            growth = 0.30f,
+            depth = 1.10f,
+            speed = 1.60f,
+            accel = 1.40f
+        )
+
+        private const val CALIBRATION_SMOOTHING = 0.6f
         const val DEFAULT_SENSITIVITY = 0.62f
 
         private const val WRIST = 0

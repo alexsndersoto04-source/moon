@@ -138,6 +138,17 @@ Encima de eso hay tres cosas que antes no existían:
    cómo se «carga» el gesto en vez de disparar de golpe. La confirmación sigue siendo un
    doble pulso.
 
+**El gesto no depende de la conexión.** La lectura de la mano es local y sigue funcionando
+aunque el otro teléfono todavía no aparezca: si empujas sin enlace, el archivo queda en cola
+y sale al conectar. Desde la 1.4.2 la pista de la pantalla prioriza lo que está viendo la
+cámara («acerca la mano», «empuja», «seleccionado») y la conexión pasa a segundo plano; si la
+pestaña está vacía el gesto lo dice explícitamente en vez de quedarse mudo.
+
+La calibración se apoya en un **ticker propio**, no en el hilo de la cámara: el panel sigue
+respirando aunque la mano salga del cuadro, la barra muestra el **empuje en vivo** (así se ve
+que sí lo está registrando) y cada intento capturado da un pulso. Los umbrales de captura son
+relativos y neutros, de modo que un empuje normal cuenta en el primer intento.
+
 Los valores sin calibrar son conservadores y funcionan igual; la calibración solo los ajusta
 a tu mano. Si algo va demasiado sensible, Ajustes → **Sensibilidad** escala los umbrales
 (0 = estricto, 1 = ansioso).

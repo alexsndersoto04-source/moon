@@ -1,5 +1,6 @@
 package com.airgesture.transfer.vision
 
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -21,106 +22,142 @@ class GestureCalibration {
         val attempt: Int = 0,
         val total: Int = ATTEMPTS,
         val progress: Float = 0f,
+        /** Live push level of the current frame: the bar the user watches. */
         val livePush: Float = 0f,
+        val handVisible: Boolean = false,
         val profile: GestureProfile? = null
     )
 
     var current: State = State()
         private set
+
     private val growths = ArrayList<Float>(ATTEMPTS)
     private val speeds = ArrayList<Float>(ATTEMPTS)
     private val depths = ArrayList<Float>(ATTEMPTS)
     private val accels = ArrayList<Float>(ATTEMPTS)
     private val sizes = ArrayList<Float>(ATTEMPTS)
 
+    private var attemptPeak = 0f
     private var attemptGrowth = 0f
     private var attemptSpeed = 0f
     private var attemptDepth = 0f
     private var attemptAccel = 0f
     private var attemptSize = 0f
-    private var aboveSinceMs = 0L
+    private var startedAtMs = 0L
     private var lastAttemptMs = 0L
 
     val isActive: Boolean
         get() = current.phase != Phase.IDLE && current.phase != Phase.DONE
 
     fun start(): State {
-        growths.clear(); speeds.clear(); depths.clear(); accels.clear(); sizes.clear()
-        attemptGrowth = 0f; attemptSpeed = 0f; attemptDepth = 0f; attemptAccel = 0f
-        attemptSize = 0f; aboveSinceMs = 0L; lastAttemptMs = 0L
+        clear()
         current = State(phase = Phase.WAITING, attempt = 0, total = ATTEMPTS)
         return current
     }
 
     fun cancel() {
+        clear()
         current = State()
     }
 
+    private fun clear() {
+        growths.clear(); speeds.clear(); depths.clear(); accels.clear(); sizes.clear()
+        attemptPeak = 0f; attemptGrowth = 0f; attemptSpeed = 0f; attemptDepth = 0f
+        attemptAccel = 0f; attemptSize = 0f; startedAtMs = 0L; lastAttemptMs = 0L
+    }
+
+    private fun resetAttempt() {
+        attemptPeak = 0f; attemptGrowth = 0f; attemptSpeed = 0f; attemptDepth = 0f
+        attemptAccel = 0f; attemptSize = 0f; startedAtMs = 0L
+    }
+
     /**
-     * @param motion current frame metrics, already filtered.
+     * Deliberately permissive: an attempt *starts* as soon as there is any real
+     * forward motion, and it is *recorded* when the motion fades. Nothing here
+     * can leave the panel stuck at "Intento 1" forever, which is exactly what
+     * made the gesture feel unresponsive.
      */
     fun onFrame(motion: Motion, nowMs: Long): State {
         if (current.phase == Phase.IDLE || current.phase == Phase.DONE) return current
+
+        val push = motion.push.coerceIn(0f, 1f)
+
         if (!motion.handVisible) {
-            current = current.copy(phase = Phase.WAITING, livePush = 0f)
+            if (current.phase == Phase.PUSHING) resetAttempt()
+            current = current.copy(phase = Phase.WAITING, livePush = 0f, handVisible = false)
             return current
         }
 
-        val push = motion.push
-        val above = push >= CAPTURE_LEVEL
-        if (above && aboveSinceMs == 0L) aboveSinceMs = nowMs
-        if (!above) aboveSinceMs = 0L
+        val settling = current.phase == Phase.SETTLING && nowMs - lastAttemptMs < SETTLE_MS
+        if (current.phase != Phase.PUSHING && !settling &&
+            push >= START_LEVEL && nowMs - lastAttemptMs >= ATTEMPT_COOLDOWN_MS
+        ) {
+            resetAttempt()
+            startedAtMs = nowMs
+            current = current.copy(phase = Phase.PUSHING, handVisible = true)
+        }
 
-        attemptGrowth = max(attemptGrowth, motion.peakGrowth)
-        attemptSpeed = max(attemptSpeed, motion.peakSpeed)
-        attemptDepth = max(attemptDepth, motion.peakDepth)
-        attemptAccel = max(attemptAccel, motion.accel)
-        attemptSize = max(attemptSize, motion.size)
+        if (current.phase == Phase.PUSHING) {
+            if (push > attemptPeak) attemptPeak = push
+            if (motion.peakGrowth > attemptGrowth) attemptGrowth = motion.peakGrowth
+            if (motion.peakSpeed > attemptSpeed) attemptSpeed = motion.peakSpeed
+            if (motion.peakDepth > attemptDepth) attemptDepth = motion.peakDepth
+            if (abs(motion.accel) > attemptAccel) attemptAccel = abs(motion.accel)
+            if (motion.size > attemptSize) attemptSize = motion.size
 
-        current = when (current.phase) {
-            Phase.WAITING, Phase.SETTLING -> {
-                val next = current.copy(
-                    phase = if (current.phase == Phase.SETTLING) Phase.SETTLING else Phase.WAITING,
-                    livePush = push
-                )
-                if (above && nowMs - lastAttemptMs > ATTEMPT_COOLDOWN_MS) {
-                    next.copy(phase = Phase.PUSHING)
-                } else {
-                    next
-                }
-            }
+            val elapsed = nowMs - startedAtMs
+            val fading = push < attemptPeak * RELEASE_RATIO && elapsed >= MIN_PUSH_MS
+            val timedOut = elapsed >= MAX_ATTEMPT_MS
 
-            Phase.PUSHING -> {
-                val enough = nowMs - aboveSinceMs >= MIN_PUSH_MS || attemptGrowth > 0f
-                val stillRising = motion.push > CAPTURE_LEVEL * 0.6f
-                if (enough && !stillRising) {
-                    recordAttempt()
-                    lastAttemptMs = nowMs
-                    attemptGrowth = 0f; attemptSpeed = 0f; attemptDepth = 0f
-                    attemptAccel = 0f; attemptSize = 0f; aboveSinceMs = 0L
-                    val done = growths.size >= ATTEMPTS
-                    if (done) {
-                        State(phase = Phase.DONE, attempt = ATTEMPTS, total = ATTEMPTS, progress = 1f, profile = buildProfile())
-                    } else {
-                        State(
-                            phase = Phase.SETTLING,
-                            attempt = growths.size,
-                            total = ATTEMPTS,
-                            progress = growths.size / ATTEMPTS.toFloat(),
-                            livePush = push
-                        )
-                    }
-                } else {
-                    current.copy(
-                        phase = Phase.PUSHING,
+            if ((fading || timedOut) && attemptPeak >= MIN_ATTEMPT_PEAK) {
+                recordAttempt()
+                lastAttemptMs = nowMs
+                current = if (growths.size >= ATTEMPTS) {
+                    State(
+                        phase = Phase.DONE,
+                        attempt = ATTEMPTS,
+                        total = ATTEMPTS,
+                        progress = 1f,
                         livePush = push,
-                        progress = (growths.size + 0.5f) / ATTEMPTS.toFloat()
+                        handVisible = true,
+                        profile = buildProfile()
+                    )
+                } else {
+                    State(
+                        phase = Phase.SETTLING,
+                        attempt = growths.size,
+                        total = ATTEMPTS,
+                        progress = growths.size / ATTEMPTS.toFloat(),
+                        livePush = push,
+                        handVisible = true
                     )
                 }
+                resetAttempt()
+                return current
             }
 
-            else -> current.copy(livePush = push)
+            if (fading || timedOut) {
+                // Too weak to be a real push: do not count it, just go back.
+                resetAttempt()
+                current = current.copy(phase = Phase.WAITING, livePush = push, handVisible = true)
+                return current
+            }
+
+            current = current.copy(
+                phase = Phase.PUSHING,
+                livePush = push,
+                handVisible = true,
+                progress = (growths.size + attemptPeak.coerceIn(0f, 1f) * 0.9f) / ATTEMPTS.toFloat()
+            )
+            return current
         }
+
+        current = current.copy(
+            phase = if (settling) Phase.SETTLING else Phase.WAITING,
+            livePush = push,
+            handVisible = true,
+            progress = growths.size / ATTEMPTS.toFloat()
+        )
         return current
     }
 
@@ -156,9 +193,16 @@ class GestureCalibration {
 
     companion object {
         const val ATTEMPTS = 3
-        private const val CAPTURE_LEVEL = 0.22f
-        private const val MIN_PUSH_MS = 60L
-        private const val ATTEMPT_COOLDOWN_MS = 700L
+
+        /** Any real forward motion starts an attempt. */
+        private const val START_LEVEL = 0.10f
+        /** Below this peak the attempt is not counted (it was noise). */
+        private const val MIN_ATTEMPT_PEAK = 0.14f
+        private const val RELEASE_RATIO = 0.45f
+        private const val MIN_PUSH_MS = 90L
+        private const val MAX_ATTEMPT_MS = 1600L
+        private const val SETTLE_MS = 550L
+        private const val ATTEMPT_COOLDOWN_MS = 450L
     }
 }
 
