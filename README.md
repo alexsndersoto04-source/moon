@@ -12,9 +12,9 @@ desde la pestaña Actions**, sin necesidad de Android Studio.
 ## 1. Descargar e instalar el APK (2 minutos)
 
 1. Entra a **[Releases](https://github.com/alexsndersoto04-source/moon/releases/latest)**
-   y abre el último `AirGesture Transfer 1.0.0 (build N)`.
-2. Descarga `AirGestureTransfer-1.0.0.apk` **directamente en el teléfono**
-   (o envíatelo; también está `…-debug.apk` y un `SHA256SUMS.txt`).
+   y abre la versión más reciente de AirGesture Transfer.
+2. Descarga el APK de versión **directamente en el teléfono**
+   (también se publica una variante de depuración y `SHA256SUMS.txt`).
    - Alternativa: **Actions → Build APK → último run → Artifacts → `AirGestureTransfer-apk`**
      (requiere sesión de GitHub, el artifact es un `.zip`).
 3. Al abrir el APK, Android preguntará si permites instalar apps de esta fuente:
@@ -315,111 +315,23 @@ Detalles que importan en la mano:
 - En Ajustes → **Enviar cerrando el puño** se puede desactivar y volver al envío
   por empuje, para quien no pueda cerrar la mano.
 
-## Sin un solo trazo (1.7.1)
+## Efecto de transferencia estilo AirDrop
 
-Todas las versiones anteriores dibujaban la cresta con `Paint.Style.STROKE`. Un
-trazo **es** un borde: por suave que sea el color, el ojo lee «línea». Esta versión
-no dibuja ni una línea.
+La animación de envío se rediseñó para sentirse como una entrega cercana y luminosa:
+la miniatura del archivo vuela desde su tarjeta hacia un objetivo de dispositivo, con
+un halo azul, una estela brillante, partículas y ondas de luz. En el teléfono receptor
+la animación ocurre en sentido inverso. El movimiento se dibuja en un `Canvas` y se
+acorta si el sistema tiene activada la opción de reducir/desactivar animaciones.
 
-Cada onda es un **degradado radial continuo** dentro de un círculo escalado:
+Es una representación visual del inicio/llegada: **la confirmación del envío sigue
+dependiendo de la transferencia real**, no de que termine la animación. El efecto se
+puede probar desde Ajustes → **Probar efecto de entrega**, sin enviar un archivo.
 
-```
-radio 0,00 → 0,62   transparente             el agua quieta
-radio 0,62 → 0,84   apenas una sombra        la depresión tras la cresta
-radio 0,84 → 0,93   blanco que sube          la cara de la onda
-radio 0,93          blanco en su punto       la cresta
-radio 0,93 → 1,00   se apaga                 la cara opuesta
-```
+### Rendimiento de la cámara
 
-Como la caída es continua, **no hay borde que ver a ningún tamaño**: la banda se
-enciende y se apaga sola. Lo mismo para las gotas, el manto de luz y la gota de
-vidrio, cuyo contorno se difumina con una máscara `DST_IN`: la miniatura se
-disuelve en la luz en vez de terminar en un círculo.
-
-El degradado se construye **una vez** contra un radio unitario y se reutiliza en
-cada onda con `canvas.scale`, así que no hay ni una asignación por fotograma: se
-mantiene fluido en el Helio G35.
-
-### Además: la sonda de color se aprende
-
-El diagnóstico mostraba `sonda=auto fps=1`: al no haber mano delante, la sonda
-alternaba el orden de color en cada fotograma y **pagaba dos inferencias por
-fotograma** para siempre. Ahora el orden descubierto **se guarda en preferencias**:
-la primera vez que ve una mano, ese teléfono ya no vuelve a probar nunca, y solo se
-repite al cambiar de cámara (frontal/trasera pueden coincidir) o al restablecer
-ajustes.
-
-## El efecto: agua de verdad, no círculos (1.7.0)
-
-El intento anterior eran círculos con trazo: geométricamente correctos y visualmente
-planos. Un círculo dibujado no parece agua porque le falta lo único que hace que el
-agua parezca agua: **volumen y luz**.
-
-Ahora cada onda se pinta en cuatro capas superpuestas:
-
-```
-bloom   ancha y tenue   → la bruma que levanta la cresta
-surco   estrecha, oscura → la depresión detrás, la que da profundidad
-cresta  fina y blanca    → el filo, con la dirección de la luz
-glint   hilo de luz      → el especular sobre la cresta
-```
-
-Y tres decisiones que cambian por completo la lectura:
-
-- **La luz viene de un sitio.** Cada cresta lleva un `SweepGradient` anclado al punto
-  de impacto: brillante arriba a la izquierda, casi nada abajo a la derecha. Una
-  onda iluminada por igual es un dibujo; iluminada desde un lado es agua.
-- **Nada es un círculo perfecto.** Cada onda lleva una ondulación radial lenta: la
-  cresta respira en vez de ser un anillo geométrico.
-- **El archivo es una gota de vidrio**, no una tarjeta. Tiene sombra de contacto,
-  está aplastada por la superficie, lleva el reflejo del lado iluminado, un punto
-  especular y se disuelve cuando la onda lo alcanza.
-
-Seis ondas separadas 85 ms, un manto de luz (cáustica) bajo ellas, doce gotas
-despedidas con halo y un velo que barre la superficie entera. Duración: 1,25 s.
-
-## El efecto: una piedra en el agua (1.6.1)
-
-El intento anterior tenía una tarjeta quieta en el centro durante casi todo el
-recorrido: se percibía como una captura que aparece y desaparece. Este no tiene
-ni un fotograma estático.
-
-```
-0,00  el contacto: un destello donde el archivo sale
-0,00  onda 1 · después 2, 3, 4 y 5 — 110 ms entre cada una
-0,05  el archivo se hunde: crece, gira 5° y se disuelve
-0,10  gotas despedidas por el frente de la primera onda
-0,60  la última onda llega al borde y se apaga
-```
-
-Cada onda es su propia animación, con su propia vida: nace en el centro, se abre
-con una curva *ease-out* (rápida en el impacto, lenta en el borde — así se comporta
-el agua de verdad), adelgaza al crecer y se disuelve antes de tocar el marco.
-Lleva un filo oscuro y una luz interior, que es como una onda real refleja la luz
-por sus dos caras.
-
-Además:
-
-- **La piedra cae donde está el archivo**: el origen de las ondas se ancla a la
-  tarjeta seleccionada en la estantería, no al centro de la pantalla.
-- **Llegada**: la misma gramática al revés — las ondas se cierran y la tarjeta
-  sube hasta su sitio.
-
-## El efecto de entrega (1.6.0)
-
-Las dos razones por las que no se veía, ya corregidas:
-
-1. Solo se disparaba cuando el archivo **empezaba a salir de verdad**; si quedaba
-   en cola, la pantalla no decía nada. Ahora el efecto responde **al gesto**, en el
-   instante en que se abre la mano, aunque el envío tenga que esperar conexión.
-2. Si el teléfono tenía las animaciones desactivadas —MIUI lo permite y a veces
-   viene así— el código hacía `return` y **borraba el efecto sin avisar**. Ahora se
-   acorta a 320 ms: el vuelo sigue existiendo.
-
-Además hay efecto de **llegada** en el receptor (la tarjeta desciende y se posa,
-los anillos se cierran en vez de abrirse) y un botón en Ajustes → **Probar efecto
-de entrega** que reproduce la animación en un segundo, sin segundo teléfono y sin
-enviar nada. Es la prueba que faltaba para saber si falla el efecto o el envío.
+La sonda de color guarda en preferencias el orden descubierto para no repetir
+inferencias innecesarias en cada fotograma. El seguimiento de manos y la transferencia
+no dependen de la animación.
 
 ## Pantalla ordenada y calibración que se aparta sola (1.5.4)
 
@@ -435,25 +347,15 @@ Dos defectos de composición, visibles en un solo pantallazo:
   retira. La cámara y la tira de archivos quedan libres y la app sigue normal. Para
   recalibrar: Ajustes → Calibrar gesto.
 
-## Efecto de entrega
+## Efecto visual y transferencia real
 
-Cuando un archivo sale por gesto —o por el botón— se reproduce una coreografía de
-900 ms sobre un único `Canvas`:
+El efecto parte de la tarjeta seleccionada y representa el recorrido hacia un dispositivo
+cercano. La animación es decorativa: no modifica ni reemplaza el envío de Nearby
+Connections. Si el teléfono todavía no está conectado, la app conserva su comportamiento
+de cola; la animación nunca se toma como prueba de que el otro dispositivo recibió el
+archivo.
 
-```
-0,00  el halo se enciende y estalla el primer anillo
-0,05  la tarjeta con su miniatura real despega, gira 3° y se eleva
-0,10  una estela de luz la sigue mientras sube
-0,18  segundo anillo · 0,34 tercero
-0,20  diez partículas ascienden a lo largo de su trayectoria
-0,70  la tarjeta se disuelve en la luz
-0,86  un destello suave cierra el movimiento
-```
-
-Las curvas son lo importante: `PathInterpolator(0.16, 1, 0.3, 1)` es la
-desaceleración que usa iOS en sus transiciones — salida rápida y posada larga.
-Nada es lineal, nada rebota. Se dibuja solo mientras dura y se desactiva si el
-teléfono tiene las animaciones desactivadas.
+En Ajustes → **Probar efecto de entrega** se puede ver la animación sin transferir nada.
 
 ## Cola, cancelación y vigilante
 
@@ -473,7 +375,7 @@ app/src/main/java/com/airgesture/transfer/
 ├── camera/      FrameConverter · CameraAnalyzer               (480p, RGBA, cero allocs)
 ├── vision/      HandTracker · GestureInterpreter · OneEuroFilter · GestureProfile
 │                GestureCalibration · ThrustSensor
-├── transfer/    NearbyTransferManager · NearbyState           (Nearby Connections P2P_CLUSTER)
+├── transfer/    NearbyTransferManager · NearbyState           (Nearby Connections P2P_POINT_TO_POINT)
 ├── ui/          MainActivity · MainViewModel · FileAdapter · HandOverlayView · ThumbnailLoader
 └── util/        Permissions · Formatters · Haptics
 ```
@@ -560,8 +462,8 @@ ABIs incluidas: `arm64-v8a`, `armeabi-v7a`.
 
 ## 6. Límites conocidos (honestidad sobre el alcance)
 
-- Una conexión a la vez: el modelo mental es «el dispositivo más cercano». Con
-  `P2P_CLUSTER` la API admite hasta 4; el envío en paralelo no está implementado.
+- Una conexión a la vez: el modelo es «el dispositivo más cercano». La app usa
+  `P2P_POINT_TO_POINT`; no implementa envíos a varios teléfonos al mismo tiempo.
 - La transferencia vive mientras la app está en primer plano: no hay `ForegroundService`,
   así que si el sistema mata el proceso a mitad de envío, se cancela.
 - Los umbrales de gesto están afinados por razones físicas, no con un dataset: pueden

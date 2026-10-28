@@ -523,10 +523,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /**
-     * The real hand-off: the selected file leaves the phone with the same
-     * decelerating motion iOS uses, and the card carries its own thumbnail.
-     */
+    /** Plays the AirDrop-inspired visual hand-off from the selected file card. */
     private fun playHandoff(name: String) {
         // Never skip the effect: if the phone has animations turned off, the
         // drop is shortened instead of disappearing. Deleting it leaves the user
@@ -544,11 +541,7 @@ class MainActivity : AppCompatActivity() {
         showTransient(getString(R.string.handoff_sending, name))
     }
 
-    /**
-     * The stone has to hit the water where the file actually is: the ripple is
-     * anchored on the selected card in the shelf, not in the middle of the
-     * screen. Expressed as a fraction of the overlay so the view can scale it.
-     */
+    /** Returns the selected file card's position as a fraction of the overlay. */
     private fun handoffOrigin(): PointF? {
         val beamWidth = binding.beam.width
         val beamHeight = binding.beam.height
@@ -564,7 +557,7 @@ class MainActivity : AppCompatActivity() {
         return PointF(x.coerceIn(0.18f, 0.82f), y.coerceIn(0.18f, 0.82f))
     }
 
-    /** Landing on this phone: the same language, played backwards. */
+    /** Plays the incoming-file animation in the opposite direction. */
     private fun playArrival(name: String) {
         // The "recibido" message and the pulse come from the transfer callback;
         // here only the animation, so nothing is announced twice.

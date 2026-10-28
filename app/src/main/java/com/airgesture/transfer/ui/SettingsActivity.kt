@@ -145,13 +145,7 @@ class SettingsActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Plays the hand-off animation in a translucent dialog.
-     *
-     * This exists so the effect can be verified in one second without a second
-     * phone and without sending anything: the same [TransferBeamView] and the
-     * same call the real transfer uses, so what is seen here is what happens.
-     */
+    /** Previews the same AirDrop-inspired animation used by a real hand-off. */
     private fun previewEffect() {
         val container = android.widget.FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.parseColor("#22000000"))
