@@ -315,6 +315,35 @@ Detalles que importan en la mano:
 - En Ajustes → **Enviar cerrando el puño** se puede desactivar y volver al envío
   por empuje, para quien no pueda cerrar la mano.
 
+## El efecto: agua de verdad, no círculos (1.7.0)
+
+El intento anterior eran círculos con trazo: geométricamente correctos y visualmente
+planos. Un círculo dibujado no parece agua porque le falta lo único que hace que el
+agua parezca agua: **volumen y luz**.
+
+Ahora cada onda se pinta en cuatro capas superpuestas:
+
+```
+bloom   ancha y tenue   → la bruma que levanta la cresta
+surco   estrecha, oscura → la depresión detrás, la que da profundidad
+cresta  fina y blanca    → el filo, con la dirección de la luz
+glint   hilo de luz      → el especular sobre la cresta
+```
+
+Y tres decisiones que cambian por completo la lectura:
+
+- **La luz viene de un sitio.** Cada cresta lleva un `SweepGradient` anclado al punto
+  de impacto: brillante arriba a la izquierda, casi nada abajo a la derecha. Una
+  onda iluminada por igual es un dibujo; iluminada desde un lado es agua.
+- **Nada es un círculo perfecto.** Cada onda lleva una ondulación radial lenta: la
+  cresta respira en vez de ser un anillo geométrico.
+- **El archivo es una gota de vidrio**, no una tarjeta. Tiene sombra de contacto,
+  está aplastada por la superficie, lleva el reflejo del lado iluminado, un punto
+  especular y se disuelve cuando la onda lo alcanza.
+
+Seis ondas separadas 85 ms, un manto de luz (cáustica) bajo ellas, doce gotas
+despedidas con halo y un velo que barre la superficie entera. Duración: 1,25 s.
+
 ## El efecto: una piedra en el agua (1.6.1)
 
 El intento anterior tenía una tarjeta quieta en el centro durante casi todo el
