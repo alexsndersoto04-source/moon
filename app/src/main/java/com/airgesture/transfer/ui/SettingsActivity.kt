@@ -173,8 +173,10 @@ class SettingsActivity : AppCompatActivity() {
         dialog.setCancelable(true)
         dialog.show()
 
-        beam.play(null, reduceMotion = false, isArrival = false)
-        container.postDelayed({ dialog.dismiss() }, 1200L)
+        // Origin in the middle of the dialog: same animation the real transfer
+        // uses, so what is previewed is exactly what happens.
+        beam.play(null, reduceMotion = false, isArrival = false, origin = android.graphics.PointF(0.5f, 0.55f))
+        container.postDelayed({ dialog.dismiss() }, 1500L)
     }
 
     private fun loadValues() {

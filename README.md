@@ -315,6 +315,33 @@ Detalles que importan en la mano:
 - En Ajustes → **Enviar cerrando el puño** se puede desactivar y volver al envío
   por empuje, para quien no pueda cerrar la mano.
 
+## El efecto: una piedra en el agua (1.6.1)
+
+El intento anterior tenía una tarjeta quieta en el centro durante casi todo el
+recorrido: se percibía como una captura que aparece y desaparece. Este no tiene
+ni un fotograma estático.
+
+```
+0,00  el contacto: un destello donde el archivo sale
+0,00  onda 1 · después 2, 3, 4 y 5 — 110 ms entre cada una
+0,05  el archivo se hunde: crece, gira 5° y se disuelve
+0,10  gotas despedidas por el frente de la primera onda
+0,60  la última onda llega al borde y se apaga
+```
+
+Cada onda es su propia animación, con su propia vida: nace en el centro, se abre
+con una curva *ease-out* (rápida en el impacto, lenta en el borde — así se comporta
+el agua de verdad), adelgaza al crecer y se disuelve antes de tocar el marco.
+Lleva un filo oscuro y una luz interior, que es como una onda real refleja la luz
+por sus dos caras.
+
+Además:
+
+- **La piedra cae donde está el archivo**: el origen de las ondas se ancla a la
+  tarjeta seleccionada en la estantería, no al centro de la pantalla.
+- **Llegada**: la misma gramática al revés — las ondas se cierran y la tarjeta
+  sube hasta su sitio.
+
 ## El efecto de entrega (1.6.0)
 
 Las dos razones por las que no se veía, ya corregidas:
