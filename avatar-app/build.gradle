@@ -72,7 +72,9 @@ dependencies {
 // animaciones que ya están en assets/. Sin internet, el avatar igual aparece.
 def avatarModelFile = file("$projectDir/src/main/assets/avatar_model.glb")
 def avatarModelUrls = [
-        // Preset masculino oficial de Ready Player Me (Visage) con cara ARKit
+        // Modelo masculino oficial de los ejemplos de Ready Player Me (su CDN S3)
+        "https://readyplayerme-assets.s3.amazonaws.com/animations/visage/male.glb",
+        // Presets de Ready Player Me (respaldo) con cara ARKit
         "https://models.readyplayer.me/64e3055495439dfcf3f0b665.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
         "https://models.readyplayer.me/64d61e9e17883fd73ebe5eb7.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
         "https://models.readyplayer.me/64d62255f0367d0750492913.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
