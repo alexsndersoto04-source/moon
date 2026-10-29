@@ -10,9 +10,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.view.View
@@ -47,7 +44,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var voice: Voice
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private var recognizer: SpeechRecognizer? = null
+    private lateinit var live: LiveVoice
+    private var liveOn = false
+    private val avatarCaption = StringBuilder()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var mouthFallback: Runnable? = null
     private var avatarReady = false
@@ -105,20 +104,43 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         voice = Voice(brain)
         tts = TextToSpeech(this, this)
 
-        findViewById<TextView>(R.id.micButton).setOnClickListener { startListening() }
-        findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
-
-        val textRow = findViewById<View>(R.id.textInputRow)
-        findViewById<TextView>(R.id.keyboardButton).setOnClickListener {
-            textRow.visibility = if (textRow.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-        val input = findViewById<EditText>(R.id.textInput)
-        findViewById<TextView>(R.id.sendTextButton).setOnClickListener {
-            val text = input.text.toString().trim()
-            if (text.isNotEmpty()) {
-                input.text.clear()
-                hear(text)
+        live = LiveVoice(this, brain, object : LiveVoice.Listener {
+            override fun onConnected() {
+                mainHandler.post {
+                    liveOn = true
+                    findViewById<TextView>(R.id.micButton).text = "⏹ Detener"
+                    status.text = "🟢 EN VIVO · habla, te escucha en tiempo real"
+                }
             }
+            override fun onDisconnected(reason: String) {
+                mainHandler.post {
+                    liveOn = false
+                    setSpeaking(false)
+                    findViewById<TextView>(R.id.micButton).text = "🔴 En vivo"
+                    status.text = reason
+                }
+            }
+            override fun onSpeaking(speaking: Boolean) {
+                mainHandler.post { setSpeaking(speaking) }
+            }
+            override fun onUserText(text: String) {
+                mainHandler.post { caption.text = "Tú: $text" }
+            }
+            override fun onAvatarText(text: String) {
+                mainHandler.post {
+                    avatarCaption.append(text)
+                    caption.text = avatarCaption.toString()
+                }
+            }
+            override fun onInterrupted() {
+                mainHandler.post { status.text = "🟢 EN VIVO · lo interrumpiste, sigue hablando" }
+            }
+        })
+
+        findViewById<TextView>(R.id.micButton).setOnClickListener { toggleLive() }
+        findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
+        findViewById<TextView>(R.id.keyboardButton).setOnClickListener {
+            startActivity(Intent(this, TextChatActivity::class.java))
         }
         status.text = "Despertando a tu avatar 3D…"
     }
@@ -226,61 +248,30 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------- Oídos del avatar (STT) ----------
-    private fun startListening() {
+    // ---------- Modo EN VIVO (único modo hablado) ----------
+    private fun toggleLive() {
+        if (liveOn || live.isRunning()) {
+            live.stop()
+            liveOn = false
+            setSpeaking(false)
+            findViewById<TextView>(R.id.micButton).text = "🔴 En vivo"
+            status.text = "Modo en vivo detenido · toca En vivo para hablar"
+            return
+        }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
             return
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, "Este teléfono no tiene reconocimiento de voz", Toast.LENGTH_LONG).show()
+        if (brain.apiKey.isBlank() || brain.provider != "gemini") {
+            Toast.makeText(this, "El modo en vivo necesita tu clave de Gemini en ⚙️ Ajustes", Toast.LENGTH_LONG).show()
+            showSettings()
             return
         }
         tts?.stop()
         if (::voice.isInitialized) voice.stop()
-        setSpeaking(false)
-
-        if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        recognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onResults(results: Bundle?) {
-                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull().orEmpty()
-                status.text = "Pensando…"
-                if (text.isNotBlank()) hear(text) else status.text = "No te escuché, intenta otra vez"
-            }
-            override fun onError(error: Int) {
-                status.text = "No te escuché · toca el micrófono e intenta otra vez"
-            }
-            override fun onReadyForSpeech(params: Bundle?) {
-                status.text = "Escuchando… habla ahora 🎤"
-            }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-        }
-        try {
-            recognizer?.startListening(intent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "No pude abrir el micrófono", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    /** El usuario dijo algo: el cerebro piensa y el avatar ACTÚA la respuesta. */
-    private fun hear(text: String) {
-        caption.text = "Tú: $text"
-        react(Emotion.THINKING, Gesture.THINK)
-        status.text = "${brain.avatarName} está pensando…"
-        brain.think(text) { reply ->
-            mainHandler.post { say(reply) }
-        }
+        avatarCaption.clear()
+        status.text = "Conectando en vivo…"
+        live.start()
     }
 
     // ---------- Ajustes: identidad, cerebro y cuerpo 3D ----------
@@ -343,7 +334,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            startListening()
+            toggleLive()
         } else if (requestCode == 42) {
             Toast.makeText(this, "Sin permiso de micrófono no puede escucharte", Toast.LENGTH_LONG).show()
         }
@@ -353,7 +344,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (::voice.isInitialized) voice.stop()
         tts?.stop()
         tts?.shutdown()
-        recognizer?.destroy()
+        if (::live.isInitialized) live.stop()
         avatarWeb.destroy()
         super.onDestroy()
     }

@@ -78,39 +78,6 @@
             android:textColor="@color/text_main"
             android:textSize="16sp" />
 
-        <!-- Fila de texto opcional (oculta por defecto: esto NO es un chat) -->
-        <LinearLayout
-            android:id="@+id/textInputRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal"
-            android:visibility="gone">
-
-            <EditText
-                android:id="@+id/textInput"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@drawable/bg_caption"
-                android:hint="Escríbele algo…"
-                android:padding="13dp"
-                android:textColor="@color/text_main"
-                android:textColorHint="@color/text_soft"
-                android:textSize="15sp" />
-
-            <TextView
-                android:id="@+id/sendTextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_circle_button"
-                android:gravity="center"
-                android:padding="13dp"
-                android:text="➤"
-                android:textColor="@color/text_main"
-                android:textSize="16sp" />
-        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -130,7 +97,7 @@
                 android:paddingTop="15dp"
                 android:paddingEnd="26dp"
                 android:paddingBottom="15dp"
-                android:text="🎤 Hablar"
+                android:text="🔴 En vivo"
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:textStyle="bold" />
@@ -146,7 +113,7 @@
                 android:paddingTop="13dp"
                 android:paddingEnd="16dp"
                 android:paddingBottom="13dp"
-                android:text="⌨️"
+                android:text="💬 Texto"
                 android:textSize="16sp" />
         </LinearLayout>
     </LinearLayout>
