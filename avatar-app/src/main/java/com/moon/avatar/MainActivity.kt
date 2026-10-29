@@ -17,8 +17,11 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewAssetLoader
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.Spinner
@@ -123,7 +126,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun loadAvatar() {
         avatarReady = false
-        val url = StringBuilder("file:///android_asset/avatar3d.html?inapp=1")
+        val url = StringBuilder("https://appassets.androidplatform.net/assets/avatar3d.html?inapp=1")
         if (brain.modelUrl.isNotBlank()) {
             url.append("&model=").append(Uri.encode(brain.modelUrl))
         }

@@ -14,8 +14,8 @@ android {
         applicationId "com.moon.avatar"
         minSdk 29
         targetSdk 34
-        versionCode 5
-        versionName "0.5.0"
+        versionCode 6
+        versionName "0.6.0"
     }
 
     signingConfigs {
@@ -61,5 +61,9 @@ android {
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
+    // WebViewAssetLoader: sirve assets/ por https://appassets... (origen web
+    // real), para que el XHR de three.js pueda leer el .glb local. Sin esto,
+    // Android bloquea file:///android_asset/*.glb y el modelo "no carga".
+    implementation 'androidx.webkit:webkit:1.11.0'
 }
 
