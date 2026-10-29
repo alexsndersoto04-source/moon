@@ -1,0 +1,117 @@
+name: Build Avatar APK
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    paths:
+      - 'avatar-humano/**'
+      - 'avatar-native/**'
+      - '.github/workflows/build-avatar-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-avatar-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Alex APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Copy web assets to native assets
+        run: |
+          echo "Syncing avatar-humano -> avatar-native assets"
+          rm -rf avatar-native/app/src/main/assets/avatar_humano
+          mkdir -p avatar-native/app/src/main/assets
+          cp -r avatar-humano avatar-native/app/src/main/assets/avatar_humano
+          ls -lh avatar-native/app/src/main/assets/avatar_humano/
+
+      - name: Generate keystore if needed
+        run: |
+          mkdir -p ci
+          if [ ! -f ci/avatar-humano.jks ]; then
+            keytool -genkeypair -v \
+              -keystore ci/avatar-humano.jks -storetype PKCS12 \
+              -storepass avatarhumano -keypass avatarhumano \
+              -alias avatarhumano -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=Alex Avatar,O=AvatarHumano,C=VE"
+            git config user.email "ci@avatar.local"
+            git config user.name "Avatar CI"
+            git add -f ci/avatar-humano.jks
+            git commit -m "chore: keystore avatar-humano [skip ci]" || true
+            git push || true
+          fi
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+          cache-read-only: false
+
+      - name: Generate wrapper
+        working-directory: avatar-native
+        run: |
+          gradle wrapper --gradle-version 8.7 --distribution-type bin
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build APK (release + debug)
+        working-directory: avatar-native
+        run: |
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:assembleDebug 2>&1 | tee ../build-avatar.log
+
+      - name: Verify APK
+        run: |
+          ls -lh avatar-native/app/build/outputs/apk/*/*.apk
+          for apk in avatar-native/app/build/outputs/apk/*/*.apk; do
+            echo "=== $apk ==="
+            apksigner verify --print-certs "$apk" | head -n 20
+          done
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AlexAvatar-APK
+          path: |
+            avatar-native/app/build/outputs/apk/**/*.apk
+            build-avatar.log
+
+      - name: Create Release (only on push to arena branch)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/arena/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: avatar-apk-${{ github.run_number }}
+          name: "Alex Avatar APK ${{ github.run_number }}"
+          body: |
+            📲 **Alex - Avatar Humano Fluido - APK Nativo**
+
+            Instalación directa sin PWA:
+            1. Descarga `app-release.apk` en tu móvil
+            2. Ajustes → Permitir instalar apps desconocidas (Chrome / Gestor)
+            3. Instala y abre. Concede cámara y micro.
+
+            - Avatar 3D guapo con gestos humanos, parpadeo, lipsync
+            - Te ve (cámara), te escucha (micro), habla fluido
+            - Cerebro: Modo demo gratis + Gemini/Groq/OpenAI (pon tu key en ⚙️)
+            - Sin tocar AirGesture, proyecto independiente.
+
+            Commit: ${{ github.sha }}
+          files: |
+            avatar-native/app/build/outputs/apk/release/*.apk
+            avatar-native/app/build/outputs/apk/debug/*.apk

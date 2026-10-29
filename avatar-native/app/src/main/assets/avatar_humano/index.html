@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Avatar Humano - Tu Compañero Fluido</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c3aed">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Alex">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="avatar-canvas"></canvas>
+    <div id="vision-preview-wrap">
+      <video id="vision-video" autoplay playsinline muted></video>
+      <span id="vision-label">👁️ TE ESTÁ VIENDO</span>
+      <button id="close-vision" title="Cerrar cámara">✕</button>
+    </div>
+    <div id="avatar-status">
+      <span id="status-dot"></span>
+      <span id="status-text">Listo para conocerte</span>
+    </div>
+    <div id="avatar-nameplate">
+      <strong>ALEX</strong>
+      <span>Tu compañero • fluido • humano • 24/7</span>
+    </div>
+  </div>
+
+  <div id="chat-overlay">
+    <div id="chat-history">
+      <div class="msg bot">
+        <div class="msg-avatar">A</div>
+        <div class="msg-bubble">
+          ¡Hola! Soy Alex 👋 Soy tu avatar, totalmente humano y fluido. Puedo <b>verte</b>, <b>escucharte</b> y <b>hablar</b> como una persona normal. Háblame con el micro o escríbeme. ¿Cómo te llamas? 😊
+        </div>
+      </div>
+    </div>
+
+    <div id="suggestions">
+      <button class="sug" data-text="Hola Alex, ¿me ves? Describeme lo que ves">👁️ ¿Me ves?</button>
+      <button class="sug" data-text="Cuéntame un chiste">😂 Chiste</button>
+      <button class="sug" data-text="Háblame como si fueras mi mejor amigo">💙 Modo amigo</button>
+      <button class="sug" data-text="Bailar o hacer un gesto divertido">💃 Haz un gesto</button>
+    </div>
+
+    <div id="input-bar">
+      <button id="btn-camera" title="Activar visión (verme)">👁️</button>
+      <button id="btn-settings" title="Ajustes / Cerebro IA">⚙️</button>
+      <input id="text-input" type="text" placeholder="Escríbele a Alex..." autocomplete="off" />
+      <button id="btn-send" title="Enviar">➤</button>
+      <button id="btn-mic" title="Mantén para hablar">
+        <span class="mic-icon">🎤</span>
+      </button>
+    </div>
+    <div id="mic-hint">Toca 🎤 para hablar • Toca 👁️ para que te vea • Todo gratis sin OpenAI</div>
+  </div>
+
+  <!-- Modal Ajustes -->
+  <div id="settings-modal" class="hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>⚙️ Cerebro de Alex</h2>
+        <button id="close-settings">✕</button>
+      </div>
+      
+      <div class="setting-group">
+        <label>🧠 Proveedor de IA</label>
+        <select id="brain-provider">
+          <option value="mock">MODO DEMO - Sin clave (funciona ya, gratis)</option>
+          <option value="gemini">Gemini Gratis (Google AI Studio) - Recomendado</option>
+          <option value="groq">Groq Gratis (Llama 3.3 - Súper rápido)</option>
+          <option value="openai">OpenAI (si tienes key)</option>
+          <option value="openrouter">OpenRouter (modelos gratis)</option>
+        </select>
+        <p class="hint">El modo demo YA habla fluido sin necesidad de nada. Solo si quieres inteligencia máxima, pega una clave gratuita abajo.</p>
+      </div>
+
+      <div class="setting-group" id="api-key-group">
+        <label>🔑 API Key (opcional - solo si elegiste Gemini/Groq/OpenAI)</label>
+        <input id="api-key-input" type="password" placeholder="Pega aquí tu clave... (se guarda solo en tu móvil)" />
+        <p class="hint" id="api-key-hint">Consigue Gemini gratis en: <b>aistudio.google.com</b> → Get API Key → Crear. Sin tarjeta.</p>
+      </div>
+
+      <div class="setting-group">
+        <label>🎭 Personalidad</label>
+        <select id="personality">
+          <option value="amigo">Mejor amigo - cálido, divertido, coqueto sano</option>
+          <option value="novio">Novio virtual - atento, romántico, guapo</option>
+          <option value="coach">Coach motivador - te impulsa</option>
+          <option value="chill">Chill - relajado, gracioso</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label>🗣️ Voz</label>
+        <select id="voice-select"><option>Cargando voces...</option></select>
+        <div class="row">
+          <label>Velocidad <span id="speed-val">1.0</span></label>
+          <input id="voice-speed" type="range" min="0.7" max="1.4" step="0.1" value="1.0">
+        </div>
+      </div>
+
+      <div class="info-box">
+        <b>💡 ¿Sin PC? ¿Sin OpenAI? No hay problema:</b><br>
+        1. Usa <b>Modo Demo</b> y ya funciona.<br>
+        2. Para cerebro real gratis: en tu mismo móvil ve a <b>aistudio.google.com</b>, crea tu key Gemini en 1 min y pégala aquí.<br>
+        3. Voz y oídos usan tu teléfono, 100% gratis, sin gastar nada.<br>
+        4. Todo se guarda solo en tu navegador, no se envía a nadie.
+      </div>
+
+      <button id="save-settings" class="primary-btn">Guardar y Probar con Alex</button>
+      <button id="test-voice" class="ghost-btn">🔊 Probar voz: "Hola, soy Alex, tu avatar humano"</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <script type="module" src="js/app.js"></script>
+  <button id="install-btn" style="display:none; position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:linear-gradient(135deg,#7c3aed,#ec4899); color:#fff; border:none; padding:12px 18px; border-radius:999px; font-weight:800; box-shadow:0 8px 20px rgba(0,0,0,0.4); z-index:40">📲 Instalar Alex en tu móvil</button>
+  <script>
+    // Registrar Service Worker para instalar como APP
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('./sw.js');
+    }
+    let deferredPrompt;
+    const installBtn=document.getElementById('install-btn');
+    window.addEventListener('beforeinstallprompt', (e)=>{
+      e.preventDefault();
+      deferredPrompt=e;
+      installBtn.style.display='block';
+    });
+    installBtn.addEventListener('click', async ()=>{
+      if(!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const {outcome}=await deferredPrompt.userChoice;
+      if(outcome==='accepted') installBtn.style.display='none';
+      deferredPrompt=null;
+    });
+    window.addEventListener('appinstalled', ()=>{ installBtn.style.display='none'; });
+  </script>
+</body>
+</html>
