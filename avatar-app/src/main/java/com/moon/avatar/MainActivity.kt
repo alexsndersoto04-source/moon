@@ -71,6 +71,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         @JavascriptInterface
         fun onClips(info: String) { /* diagnóstico futuro */ }
+
+        @JavascriptInterface
+        fun onDebug(info: String) {
+            mainHandler.post {
+                android.util.Log.i("MoonAvatar3D", info)
+                if (!avatarReady) status.text = "Avatar 3D cargado · encuadrando…"
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
