@@ -35,6 +35,10 @@ data class AvatarReply(
  */
 class Brain(context: Context) {
 
+    /** Último error real del cerebro en la nube (para mostrarlo, no adivinar). */
+    @Volatile var lastError: String = ""
+        private set
+
     private val prefs = context.getSharedPreferences("moon_avatar", Context.MODE_PRIVATE)
 
     // ---------- Ajustes ----------
@@ -114,7 +118,6 @@ class Brain(context: Context) {
     }
 
     private fun askGemini(key: String, userText: String): AvatarReply? {
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$key")
         val contents = JSONArray()
         val h = history()
         for (i in 0 until h.length()) {
@@ -128,10 +131,28 @@ class Brain(context: Context) {
                 JSONArray().put(JSONObject().put("text", systemPrompt()))))
             .put("contents", contents)
             .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 300))
-        val raw = postJson(url, body, null) ?: return null
-        val text = JSONObject(raw).getJSONArray("candidates").getJSONObject(0)
-            .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
-        return parseReply(text)
+        // Los nombres de modelo de Google rotan: probar los vigentes en orden.
+        val models = listOf("gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite")
+        for (model in models) {
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+            val result = postJson(url, body, null, "x-goog-api-key" to key)
+            if (result.text != null) {
+                try {
+                    val text = JSONObject(result.text).getJSONArray("candidates").getJSONObject(0)
+                        .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+                    lastError = ""
+                    return parseReply(text)
+                } catch (e: Exception) {
+                    lastError = "Respuesta rara de Gemini ($model)"
+                    continue
+                }
+            }
+            lastError = describeHttpError("Gemini", result.code, result.errorBody)
+            // Clave mala o sin permisos: no tiene sentido probar mas modelos.
+            if (result.code == 400 && result.errorBody?.contains("API_KEY_INVALID") == true) break
+            if (result.code == 401 || result.code == 403) break
+        }
+        return null
     }
 
     private fun askGroq(key: String, userText: String): AvatarReply? {
@@ -150,26 +171,54 @@ class Brain(context: Context) {
             .put("messages", messages)
             .put("temperature", 0.8)
             .put("max_tokens", 300)
-        val raw = postJson(url, body, "Bearer $key") ?: return null
+        val result = postJson(url, body, "Bearer $key")
+        val raw = result.text ?: run {
+            lastError = describeHttpError("Groq", result.code, result.errorBody)
+            return null
+        }
         val text = JSONObject(raw).getJSONArray("choices").getJSONObject(0)
             .getJSONObject("message").getString("content")
         return parseReply(text)
     }
 
-    private fun postJson(url: URL, body: JSONObject, auth: String?): String? {
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 15000
-        conn.readTimeout = 30000
-        conn.doOutput = true
-        conn.setRequestProperty("Content-Type", "application/json")
-        if (auth != null) conn.setRequestProperty("Authorization", auth)
-        OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(body.toString()) }
-        val code = conn.responseCode
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-        conn.disconnect()
-        return if (code in 200..299) text else null
+    private data class HttpResult(val code: Int, val text: String?, val errorBody: String?)
+
+    private fun postJson(url: URL, body: JSONObject, auth: String?, vararg headers: Pair<String, String>): HttpResult {
+        return try {
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 30000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            if (auth != null) conn.setRequestProperty("Authorization", auth)
+            for ((k, v) in headers) conn.setRequestProperty(k, v)
+            OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(body.toString()) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            conn.disconnect()
+            if (code in 200..299) HttpResult(code, text, null) else HttpResult(code, null, text)
+        } catch (e: Exception) {
+            HttpResult(-1, null, e.message)
+        }
+    }
+
+    private fun describeHttpError(providerName: String, code: Int, body: String?): String {
+        val detail = try {
+            if (body.isNullOrBlank()) "" else JSONObject(body).optJSONObject("error")
+                ?.optString("message")?.take(140) ?: body.take(140)
+        } catch (e: Exception) { body?.take(140) ?: "" }
+        return when {
+            code == -1 -> "Sin conexión con $providerName (revisa tu internet)"
+            code == 400 && detail.contains("API_KEY_INVALID") ->
+                "La clave de $providerName no es válida: vuelve a copiarla en Ajustes"
+            code == 401 || code == 403 ->
+                "Clave rechazada por $providerName ($code): revisa tu clave en Ajustes"
+            code == 404 -> "Modelo no disponible en $providerName (404)"
+            code == 429 -> "Límite gratuito de $providerName alcanzado: espera un poco"
+            else -> "$providerName respondió $code: $detail"
+        }
     }
 
     private fun parseReply(raw: String): AvatarReply {
@@ -212,7 +261,8 @@ class Brain(context: Context) {
         val name = if (userName.isBlank()) "" else " $userName"
         return when {
             sinConexion -> AvatarReply(
-                "Uy, no pude conectar con mi cerebro en la nube. Revisa tu internet o tu clave en Ajustes, ¿sí?",
+                if (lastError.isNotBlank()) "Uy, mi cerebro falló: $lastError"
+                else "Uy, no pude conectar con mi cerebro en la nube. Revisa tu internet o tu clave en Ajustes, ¿sí?",
                 Emotion.THINKING, Gesture.THINK)
             t.contains("hola") || t.contains("buenas") -> AvatarReply(
                 "¡Hola$name! Qué bueno verte. ¿En qué te ayudo hoy?",
