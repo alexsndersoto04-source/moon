@@ -84,3 +84,14 @@ La vía real para que se parezca a ti: crea tu avatar gratis en
 **readyplayer.me** (desde una selfie), copia el enlace `.glb` de tu avatar y
 pégalo en ⚙️ Ajustes → «Su cuerpo 3D». La app lo cargará con las mismas
 reacciones automáticas.
+
+## v0.5 — el modelo va EN el repositorio (cero descargas)
+
+Las v0.3/v0.4 fallaron porque el modelo se bajaba de un servidor externo
+(al abrir la app o al compilar) y esos enlaces están caídos. Ahora
+`assets/avatar_model.glb` (8 MB) está commiteado: un avatar masculino
+Ready Player Me (texturas PBR, 52 morphs faciales ARKit, esqueleto RPM
+Hips/Spine/Head — el mismo de las animaciones mocap empaquetadas),
+tomado del repo MIT GodotXRAnimationRecorder (Malcolmnixon), que a su vez
+lo exportó de Ready Player Me. El APK es 100% autónomo: motor three.js,
+modelo y animaciones viajan dentro y funcionan sin internet.
