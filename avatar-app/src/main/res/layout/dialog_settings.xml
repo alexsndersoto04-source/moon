@@ -71,6 +71,22 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="🗣️ Su voz"
+            android:textStyle="bold" />
+        <Spinner
+            android:id="@+id/setVoice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Las voces «humanas» las genera la IA con tu clave de Gemini y suenan a persona real. La del sistema es la robótica de siempre (respaldo)."
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="🧍 Su cuerpo 3D (opcional)"
             android:textStyle="bold" />

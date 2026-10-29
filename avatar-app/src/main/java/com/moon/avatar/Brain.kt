@@ -63,6 +63,12 @@ class Brain(context: Context) {
             "Eres cercana, alegre y curiosa. Hablas en español, con frases cortas y naturales, como una persona de verdad. Te gusta ayudar y conversar.") ?: ""
         set(v) = prefs.edit().putString("personality", v).apply()
 
+    // ---------- Voz ----------
+    /** charon/orus/enceladus = voces humanas de Gemini; system = la del teléfono. */
+    var voiceMode: String
+        get() = prefs.getString("voice_mode", "charon") ?: "charon"
+        set(v) = prefs.edit().putString("voice_mode", v).apply()
+
     // ---------- Cuerpo 3D ----------
     /** URL de un .glb propio (ej. Ready Player Me desde una selfie). Vacío = modelo de serie. */
     var modelUrl: String

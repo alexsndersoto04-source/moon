@@ -44,6 +44,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var nameText: TextView
     private lateinit var brain: Brain
 
+    private lateinit var voice: Voice
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var recognizer: SpeechRecognizer? = null
@@ -101,6 +102,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         avatarWeb.addJavascriptInterface(AvatarBridge(), "AvatarBridge")
         loadAvatar()
 
+        voice = Voice(brain)
         tts = TextToSpeech(this, this)
 
         findViewById<TextView>(R.id.micButton).setOnClickListener { startListening() }
@@ -151,7 +153,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val result = tts?.setLanguage(Locale("es", "ES"))
             ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
                 result != TextToSpeech.LANG_NOT_SUPPORTED
-            tts?.setPitch(1.0f)
+            // Mejor voz disponible en español (las de red suenan menos robóticas)
+            try {
+                val spanishVoices = tts?.voices?.filter {
+                    it.locale.language == "es"
+                }?.sortedByDescending { v -> (if (v.isNetworkConnectionRequired) 2 else 0) + v.quality } ?: emptyList()
+                spanishVoices.firstOrNull()?.let { tts?.voice = it }
+            } catch (e: Exception) { /* sin selección: voz por defecto */ }
+            tts?.setPitch(0.85f)
+            tts?.setSpeechRate(0.97f)
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     mainHandler.post { setSpeaking(true) }
@@ -175,6 +185,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         react(reply.emotion, reply.gesture)
         status.text = "${brain.avatarName} está hablando…"
 
+        // 1) Voz HUMANA generada por la IA (con tu clave de Gemini)
+        if (brain.voiceMode != "system" && brain.provider == "gemini" && brain.apiKey.isNotBlank()) {
+            val voiceName = when (brain.voiceMode) {
+                "orus" -> "Orus"
+                "enceladus" -> "Enceladus"
+                else -> "Charon"
+            }
+            voice.speak(reply.text, voiceName,
+                onStart = { mainHandler.post { setSpeaking(true) } },
+                onDone = { ok ->
+                    mainHandler.post {
+                        setSpeaking(false)
+                        if (ok) {
+                            status.text = "Te escucho · toca el micrófono"
+                        } else {
+                            // Respaldo: que al menos lo diga con la voz del sistema
+                            speakWithSystemTts(reply)
+                        }
+                    }
+                })
+            return
+        }
+        speakWithSystemTts(reply)
+    }
+
+    /** Respaldo: voz del sistema (la robótica), mejorada eligiendo la mejor voz es. */
+    private fun speakWithSystemTts(reply: AvatarReply) {
         if (ttsReady) {
             tts?.speak(reply.text, TextToSpeech.QUEUE_FLUSH, null, "avatar_speech")
         } else {
@@ -200,6 +237,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             return
         }
         tts?.stop()
+        if (::voice.isInitialized) voice.stop()
         setSpeaking(false)
 
         if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this)
@@ -254,6 +292,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val providerSpinner = view.findViewById<Spinner>(R.id.setProvider)
         val keyInput = view.findViewById<EditText>(R.id.setApiKey)
         val modelInput = view.findViewById<EditText>(R.id.setModelUrl)
+        val voiceSpinner = view.findViewById<Spinner>(R.id.setVoice)
 
         nameInput.setText(brain.avatarName)
         userInput.setText(brain.userName)
@@ -264,6 +303,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         providerSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
             listOf("Gemini (Google, gratis)", "Groq (muy rápido, gratis)"))
         providerSpinner.setSelection(if (brain.provider == "groq") 1 else 0)
+
+        voiceSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+            listOf("Humana IA · Charon (masculina, recomendada)", "Humana IA · Orus (masculina firme)",
+                "Humana IA · Enceladus (masculina suave)", "Sistema del teléfono (robótica)"))
+        voiceSpinner.setSelection(when (brain.voiceMode) {
+            "orus" -> 1; "enceladus" -> 2; "system" -> 3; else -> 0 })
 
         AlertDialog.Builder(this)
             .setTitle("⚙️ Tu avatar, a tu manera")
@@ -276,6 +321,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 brain.provider = if (providerSpinner.selectedItemPosition == 1) "groq" else "gemini"
                 brain.apiKey = keyInput.text.toString()
                 brain.modelUrl = modelInput.text.toString()
+                brain.voiceMode = when (voiceSpinner.selectedItemPosition) {
+                    1 -> "orus"; 2 -> "enceladus"; 3 -> "system"; else -> "charon" }
 
                 nameText.text = brain.avatarName
                 if (modelChanged) loadAvatar()
@@ -303,6 +350,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        if (::voice.isInitialized) voice.stop()
         tts?.stop()
         tts?.shutdown()
         recognizer?.destroy()

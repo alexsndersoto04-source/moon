@@ -78,15 +78,15 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p artifacts-avatar
-          cp avatar-app/build/outputs/apk/release/avatar-release.apk "artifacts-avatar/MoonAvatar-0.9.0.apk"
-          cp avatar-app/build/outputs/apk/debug/avatar-debug.apk "artifacts-avatar/MoonAvatar-0.9.0-debug.apk"
+          cp avatar-app/build/outputs/apk/release/avatar-release.apk "artifacts-avatar/MoonAvatar-1.0.0.apk"
+          cp avatar-app/build/outputs/apk/debug/avatar-debug.apk "artifacts-avatar/MoonAvatar-1.0.0-debug.apk"
           ls -lh artifacts-avatar
           sha256sum artifacts-avatar/*.apk | tee artifacts-avatar/SHA256SUMS.txt
 
       - name: Verify APK (signature valid, is the avatar app)
         run: |
           set -euo pipefail
-          APK=artifacts-avatar/MoonAvatar-0.9.0.apk
+          APK=artifacts-avatar/MoonAvatar-1.0.0.apk
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | head -3
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | grep -q "com.moon.avatar"
@@ -113,13 +113,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="avatar-v0.9.0-build${{ github.run_number }}"
+          TAG="avatar-v1.0.0-build${{ github.run_number }}"
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "Moon Avatar 0.9.0 (build ${{ github.run_number }})" \
+            --title "Moon Avatar 1.0.0 (build ${{ github.run_number }})" \
             --notes "Avatar personal con cerebro de IA (Gemini/Groq), voz, gestos y memoria local. App independiente de AirGesture Transfer.
 
-          **Instalación:** descarga \`MoonAvatar-0.9.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» y ábrelo. Al abrir ⚙️ Ajustes puedes poner tu API key gratuita (Gemini o Groq), su nombre, personalidad y apariencia.
+          **Instalación:** descarga \`MoonAvatar-1.0.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» y ábrelo. Al abrir ⚙️ Ajustes puedes poner tu API key gratuita (Gemini o Groq), su nombre, personalidad y apariencia.
 
           - Compilado: $(date -u +'%Y-%m-%d %H:%M UTC')
           - Commit: \`${{ github.sha }}\`" \
