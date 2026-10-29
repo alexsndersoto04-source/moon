@@ -33,8 +33,22 @@ const voice = new Voice();
 const vision = new Vision(visionVideo, visionWrap);
 let avatar;
 
-// Init avatar 3D
-avatar = new Avatar3D(canvas, voice);
+// Init avatar 3D con manejo de errores visible
+try {
+  avatar = new Avatar3D(canvas, voice);
+} catch(e){
+  console.error("Error Avatar3D", e);
+  document.getElementById('status-text').textContent = "Error 3D: " + (e.message||e);
+  // Fallback 2D extremo: dibujar cara simple si falla WebGL
+  const ctx = canvas.getContext('2d');
+  if(ctx){
+    canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+    ctx.fillStyle="#1a1033"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#ffdbac"; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2-40, 80, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="#111"; ctx.font="14px sans-serif"; ctx.textAlign="center"; ctx.fillText("Modo 2D: WebGL no soportado", canvas.width/2, canvas.height/2+80);
+  }
+}
+window.addEventListener('error', (e)=>{ showToast("Error: "+(e.message||"desconocido")); console.error(e); });
 
 // Voice callbacks
 voice.onState = (s) => {
