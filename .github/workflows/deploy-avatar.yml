@@ -1,0 +1,49 @@
+name: Deploy Avatar Alex PWA
+
+on:
+  push:
+    branches: ['arena/**', main]
+    paths:
+      - 'avatar-humano/**'
+      - '.github/workflows/deploy-avatar.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-avatar
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build avatar site
+        run: |
+          mkdir -p _site
+          cp -r avatar-humano/* _site/
+          # Crear 404 y copia para rutas
+          cp _site/index.html _site/404.html
+          echo "Avatar Alex PWA built at $(date)" >> _site/build.txt
+          ls -lh _site/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
