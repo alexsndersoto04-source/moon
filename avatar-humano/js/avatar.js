@@ -66,7 +66,12 @@ export class Avatar3D {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // Load avatar
+    // Crear avatar procedural INSTANTÁNEO para que siempre se vea algo, aunque falle internet
+    try {
+      this.createProceduralAvatar();
+    } catch(e){ console.error("procedural fail", e) }
+
+    // Intentar cargar modelo realista encima (reemplaza al procedural si baja bien)
     this.loadAvatar();
 
     window.addEventListener('resize', () => this.onResize());
@@ -75,22 +80,27 @@ export class Avatar3D {
 
   async loadAvatar() {
     const loader = new GLTFLoader();
-    let loaded = false;
     for (const url of CONFIG.avatar.models) {
       try {
         const gltf = await loader.loadAsync(url);
-        this.setupModel(gltf.scene);
-        loaded = true;
         console.log("Avatar cargado:", url);
+        // Reemplazar procedural por modelo real
+        if (this.avatar) {
+          try { this.scene.remove(this.avatar); } catch {}
+          this.avatar = null;
+          this.bones = {};
+          this.morphTargets = [];
+        }
+        this.setupModel(gltf.scene);
         break;
       } catch (e) {
         console.warn("Fallo modelo", url, e);
       }
     }
-    if (!loaded) this.createProceduralAvatar();
   }
 
   setupModel(scene) {
+    // Si teníamos procedural, ya fue removido
     this.avatar = scene;
     this.avatar.traverse(o => {
       if (o.isMesh) {
