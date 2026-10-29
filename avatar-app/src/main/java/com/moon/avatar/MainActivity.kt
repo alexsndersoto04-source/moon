@@ -56,6 +56,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         fun onReady(info: String) {
             mainHandler.post {
                 avatarReady = true
+                ensureLive()
                 status.text = if (brain.apiKey.isBlank())
                     "Avatar 3D listo · cerebro local (pon tu clave en ⚙️)"
                 else "Avatar 3D listo · cerebro conectado (${brain.provider})"
@@ -108,7 +109,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             override fun onConnected() {
                 mainHandler.post {
                     liveOn = true
-                    findViewById<TextView>(R.id.micButton).text = "⏹ Detener"
                     status.text = "🟢 EN VIVO · habla, te escucha en tiempo real"
                 }
             }
@@ -116,8 +116,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 mainHandler.post {
                     liveOn = false
                     setSpeaking(false)
-                    findViewById<TextView>(R.id.micButton).text = "🔴 En vivo"
-                    status.text = reason
+                    status.text = reason + " · toca la pantalla para reintentar"
                 }
             }
             override fun onSpeaking(speaking: Boolean) {
@@ -137,8 +136,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         })
 
-        findViewById<TextView>(R.id.micButton).setOnClickListener { toggleLive() }
         findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
+        // Sin botones de llamada: el en vivo arranca solo. Tocar la pantalla
+        // reintenta si se corto.
+        avatarWeb.setOnClickListener { ensureLive() }
+        caption.setOnClickListener { ensureLive() }
         findViewById<TextView>(R.id.keyboardButton).setOnClickListener {
             startActivity(Intent(this, TextChatActivity::class.java))
         }
@@ -248,23 +250,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------- Modo EN VIVO (único modo hablado) ----------
-    private fun toggleLive() {
-        if (liveOn || live.isRunning()) {
-            live.stop()
-            liveOn = false
-            setSpeaking(false)
-            findViewById<TextView>(R.id.micButton).text = "🔴 En vivo"
-            status.text = "Modo en vivo detenido · toca En vivo para hablar"
+    // ---------- Modo EN VIVO automatico (sin botones) ----------
+    /** El en vivo se conecta solo al abrir y al volver a la app. */
+    private fun ensureLive() {
+        if (liveOn || (::live.isInitialized && live.isRunning())) return
+        if (brain.apiKey.isBlank() || brain.provider != "gemini") {
+            status.text = "Pon tu clave de Gemini en ⚙️ y el en vivo arranca solo"
             return
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
-            return
-        }
-        if (brain.apiKey.isBlank() || brain.provider != "gemini") {
-            Toast.makeText(this, "El modo en vivo necesita tu clave de Gemini en ⚙️ Ajustes", Toast.LENGTH_LONG).show()
-            showSettings()
             return
         }
         tts?.stop()
@@ -272,6 +267,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         avatarCaption.clear()
         status.text = "Conectando en vivo…"
         live.start()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::live.isInitialized) ensureLive()
     }
 
     // ---------- Ajustes: identidad, cerebro y cuerpo 3D ----------
@@ -334,7 +334,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            toggleLive()
+            ensureLive()
         } else if (requestCode == 42) {
             Toast.makeText(this, "Sin permiso de micrófono no puede escucharte", Toast.LENGTH_LONG).show()
         }

@@ -64,13 +64,18 @@ class LiveVoice(
     @Volatile private var playRunning = false
     @Volatile private var speakingNow = false
 
-    // Modelos Live vigentes (si uno no existe en la cuenta, se prueba el siguiente)
-    private val models = listOf(
+    // Modelos Live: primero los que la PROPIA clave diga (bidiGenerateContent),
+    // luego los nombres oficiales vigentes como respaldo.
+    @Volatile private var models: List<String> = listOf(
+        "gemini-3.8-live",
         "gemini-3.1-flash-live-preview",
+        "gemini-2.5-flash-native-audio-latest",
         "gemini-2.5-flash-native-audio-preview-12-2025",
-        "gemini-2.5-flash-native-audio-preview-09-2025",
-        "gemini-2.0-flash-live-001"
+        "gemini-2.5-flash-native-audio-preview-09-2025"
     )
+    @Volatile private var attemptId = 0
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var setupTimeout: Runnable? = null
 
     fun isRunning(): Boolean = running
 
@@ -86,11 +91,52 @@ class LiveVoice(
         }
         running = true
         modelIndex = 0
-        connect()
+        // Descubrir en segundo plano los modelos Live reales de esta clave
+        thread(name = "live-discover") {
+            val found = discoverLiveModels(brain.apiKey)
+            if (found.isNotEmpty()) {
+                models = (found + models).distinct()
+            }
+            if (running) connect()
+        }
+    }
+
+    /** Modelos con metodo bidiGenerateContent que esta clave puede usar de verdad. */
+    private fun discoverLiveModels(key: String): List<String> {
+        return try {
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=$key")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 12000
+            conn.readTimeout = 20000
+            if (conn.responseCode !in 200..299) return emptyList()
+            val raw = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            conn.disconnect()
+            val arr = JSONObject(raw).optJSONArray("models") ?: return emptyList()
+            val ranked = mutableListOf<Pair<Int, String>>()
+            for (i in 0 until arr.length()) {
+                val m = arr.getJSONObject(i)
+                val methods = m.optJSONArray("supportedGenerationMethods")?.toString() ?: ""
+                if (!methods.contains("bidiGenerateContent")) continue
+                val id = m.optString("name").removePrefix("models/")
+                if (id.isBlank()) continue
+                val rank = when {
+                    id.contains("native-audio") -> 0
+                    id.contains("flash-live") || id.contains("-live") -> 1
+                    id.contains("live") -> 2
+                    else -> 3
+                }
+                ranked.add(rank to id)
+            }
+            ranked.sortedBy { it.first }.map { it.second }.take(5)
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     fun stop() {
         running = false
+        setupTimeout?.let { mainHandler.removeCallbacks(it) }
         stopCapture()
         stopPlayback()
         try { ws?.close(1000, "bye") } catch (e: Exception) { /* noop */ }
@@ -100,41 +146,55 @@ class LiveVoice(
     private fun connect() {
         if (!running) return
         setupDone = false
+        val myAttempt = ++attemptId
         val model = models[modelIndex]
         val url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${brain.apiKey}"
         val request = Request.Builder().url(url).build()
+        // Timeout duro: si en 12 s no hay setupComplete, este intento murio.
+        setupTimeout?.let { mainHandler.removeCallbacks(it) }
+        setupTimeout = Runnable {
+            if (running && !setupDone && myAttempt == attemptId) {
+                failAttempt("sin respuesta del servidor con $model")
+            }
+        }
+        mainHandler.postDelayed(setupTimeout!!, 12000)
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                sendSetup(model)
+                if (myAttempt == attemptId) sendSetup(model)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                handleServerMessage(text)
+                if (myAttempt == attemptId) handleServerMessage(text)
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (!setupDone && modelIndex < models.lastIndex - 1 && running) {
-                    modelIndex++
-                    connect()
-                } else if (running) {
-                    running = false
-                    stopCapture(); stopPlayback()
-                    listener.onDisconnected("Se cortó el modo en vivo: ${t.message ?: "sin conexión"}")
+                if (myAttempt == attemptId && running) {
+                    failAttempt(t.message ?: "fallo de red")
                 }
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                if (!setupDone && code != 1000 && modelIndex < models.lastIndex - 1 && running) {
-                    modelIndex++
-                    try { webSocket.close(1000, null) } catch (e: Exception) { /* noop */ }
-                    connect()
-                } else if (running) {
-                    running = false
-                    stopCapture(); stopPlayback()
-                    listener.onDisconnected("Modo en vivo cerrado ($code)")
+                if (myAttempt == attemptId && running && code != 1000) {
+                    failAttempt("cerrado ($code) $reason")
                 }
             }
         })
+    }
+
+    /** Un intento fallo: probar el siguiente modelo o rendirse DICIENDO por que. */
+    private fun failAttempt(reason: String) {
+        if (!running) return
+        setupTimeout?.let { mainHandler.removeCallbacks(it) }
+        try { ws?.cancel() } catch (e: Exception) { /* noop */ }
+        ws = null
+        if (!setupDone && modelIndex < models.lastIndex - 1) {
+            modelIndex++
+            connect()
+        } else {
+            running = false
+            stopCapture(); stopPlayback()
+            listener.onDisconnected("No se pudo conectar en vivo: $reason")
+        }
     }
 
     private fun sendSetup(model: String) {
@@ -165,7 +225,14 @@ class LiveVoice(
 
     private fun handleServerMessage(text: String) {
         val msg = try { JSONObject(text) } catch (e: Exception) { return }
+        if (msg.has("error")) {
+            val detail = msg.optJSONObject("error")?.optString("message")?.take(160)
+                ?: msg.optString("error")
+            if (!setupDone) failAttempt(detail.ifBlank { "error del servidor" })
+            return
+        }
         if (msg.has("setupComplete")) {
+            setupTimeout?.let { mainHandler.removeCallbacks(it) }
             setupDone = true
             startCapture()
             startPlayback()
