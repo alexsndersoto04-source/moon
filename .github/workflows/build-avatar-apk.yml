@@ -31,9 +31,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Copy web assets to native assets
         run: |
           echo "Syncing avatar-humano -> avatar-native assets"
