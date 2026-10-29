@@ -78,18 +78,23 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p artifacts-avatar
-          cp avatar-app/build/outputs/apk/release/avatar-release.apk "artifacts-avatar/MoonAvatar-0.3.0.apk"
-          cp avatar-app/build/outputs/apk/debug/avatar-debug.apk "artifacts-avatar/MoonAvatar-0.3.0-debug.apk"
+          cp avatar-app/build/outputs/apk/release/avatar-release.apk "artifacts-avatar/MoonAvatar-0.4.0.apk"
+          cp avatar-app/build/outputs/apk/debug/avatar-debug.apk "artifacts-avatar/MoonAvatar-0.4.0-debug.apk"
           ls -lh artifacts-avatar
           sha256sum artifacts-avatar/*.apk | tee artifacts-avatar/SHA256SUMS.txt
 
       - name: Verify APK (signature valid, is the avatar app)
         run: |
           set -euo pipefail
-          APK=artifacts-avatar/MoonAvatar-0.3.0.apk
+          APK=artifacts-avatar/MoonAvatar-0.4.0.apk
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -1)
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | head -3
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | grep -q "com.moon.avatar"
+          echo "--- 3D empaquetado en el APK (modelo, motor y animaciones) ---"
+          unzip -l "$APK" | grep -E "assets/(avatar_model.glb|avatar3d.html|lib/three.min.js|lib/GLTFLoader.js|anim/idle.glb|anim/talking.glb|anim/celebrate.glb)"
+          for f in avatar_model.glb avatar3d.html lib/three.min.js anim/idle.glb; do
+            unzip -l "$APK" | grep -q "assets/$f" || { echo "FALTA assets/$f en el APK"; exit 1; }
+          done
           "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | head -6
 
       - name: Upload APK artifact
@@ -105,13 +110,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="avatar-v0.3.0-build${{ github.run_number }}"
+          TAG="avatar-v0.4.0-build${{ github.run_number }}"
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "Moon Avatar 0.3.0 (build ${{ github.run_number }})" \
+            --title "Moon Avatar 0.4.0 (build ${{ github.run_number }})" \
             --notes "Avatar personal con cerebro de IA (Gemini/Groq), voz, gestos y memoria local. App independiente de AirGesture Transfer.
 
-          **Instalación:** descarga \`MoonAvatar-0.3.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» y ábrelo. Al abrir ⚙️ Ajustes puedes poner tu API key gratuita (Gemini o Groq), su nombre, personalidad y apariencia.
+          **Instalación:** descarga \`MoonAvatar-0.4.0.apk\` en el teléfono, permite «Instalar apps de origen desconocido» y ábrelo. Al abrir ⚙️ Ajustes puedes poner tu API key gratuita (Gemini o Groq), su nombre, personalidad y apariencia.
 
           - Compilado: $(date -u +'%Y-%m-%d %H:%M UTC')
           - Commit: \`${{ github.sha }}\`" \

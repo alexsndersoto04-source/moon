@@ -41,20 +41,20 @@
   var params = new URLSearchParams(location.search);
   var isApp = params.get('inapp') === '1';
 
-  // ── Modelo profesional de serie: Ready Player Me masculino (preset oficial
-  //    usado por el propio visor de RPM con cámara e idle MASCULINOS), con
-  //    morphs ARKit + visemas para cara y boca reales. Sustituible por
-  //    cualquier .glb profesional con ?model=…
-  var DEFAULT_MODEL = 'https://models.readyplayer.me/64e3055495439dfcf3f0b665.glb' +
+  // ── Modelo profesional de serie, EMPAQUETADO en la app (assets): no se
+  //    descarga al abrir, así que aparece siempre, incluso sin internet.
+  //    Ready Player Me masculino con morphs ARKit + visemas para cara y boca.
+  //    Sustituible por cualquier .glb profesional con ?model=…
+  var DEFAULT_MODEL = isApp ? 'avatar_model.glb' :
+    'https://models.readyplayer.me/64e3055495439dfcf3f0b665.glb' +
     '?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0';
   var MODEL_URL = params.get('model') || DEFAULT_MODEL;
 
-  // ── Animaciones motion-capture oficiales RPM (rama masculina), en GLB
-  var ANIM_BASE = 'https://cdn.jsdelivr.net/gh/readyplayerme/animation-library@master/masculine/glb/';
+  // ── Animaciones motion-capture oficiales RPM, también empaquetadas
   var ANIMS = {
-    idle:      ANIM_BASE + 'idle/M_Standing_Idle_001.glb',
-    talking:   ANIM_BASE + 'expression/M_Talking_Variations_001.glb',
-    celebrate: ANIM_BASE + 'dance/M_Dances_001.glb'
+    idle:      'anim/idle.glb',
+    talking:   'anim/talking.glb',
+    celebrate: 'anim/celebrate.glb'
   };
 
   var loadText = document.getElementById('loadText');
