@@ -8,6 +8,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 
+/** Emociones que el cerebro puede pedir en cada respuesta. */
+enum class Emotion { NEUTRAL, HAPPY, SAD, SURPRISED, THINKING, EXCITED, SHY }
+
+/** Gestos que el cerebro puede pedir: el avatar los actúa solo, sin botones. */
+enum class Gesture { NONE, WAVE, NOD, SHAKE, THINK, CELEBRATE, BOW }
+
 /** Lo que el cerebro decide: qué decir + cómo sentirlo + qué gesto hacer. */
 data class AvatarReply(
     val text: String,
