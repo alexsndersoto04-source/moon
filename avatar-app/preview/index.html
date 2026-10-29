@@ -33,8 +33,9 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="lib/three.min.js"></script>
+<script src="lib/GLTFLoader.js"></script>
+<script src="model-data.js"></script>
 <script>
 (function(){
   "use strict";
@@ -113,18 +114,26 @@
   var gestureFx = null, gestureFxStart = 0;   // gesto procedural (nod/shake/wave/think)
   var framesRendered = 0, readySent = false;
 
+  // Sin descargas ni lecturas de archivos .glb: los datos vienen incrustados
+  // en model-data.js (base64 generado al compilar) y se parsean en memoria.
+  function b64ToArrayBuffer(b64) {
+    var bin = atob(b64), len = bin.length, bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
   function loadAnim(keyName, url, loop) {
-    loader.load(url, function(gltf){
-      if (!gltf.animations || !gltf.animations.length || !mixer) return;
-      var clip = gltf.animations[0];
-      var action = mixer.clipAction(clip);
+    var b64 = (window.__ANIM_B64 || {})[keyName];
+    if (!b64 || !mixer) return;
+    loader.parse(b64ToArrayBuffer(b64), '', function(gltf){
+      if (!gltf.animations || !gltf.animations.length) return;
+      var action = mixer.clipAction(gltf.animations[0]);
       action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
       actions[keyName] = action;
       if (keyName === 'idle' && !activeAction) {
         action.play(); activeAction = action;
       }
       bridge('onClips', keyName);
-    }, undefined, function(){ /* anim opcional: el idle procedural cubre */ });
+    }, function(){ /* anim opcional */ });
   }
   function switchTo(action, fade) {
     if (!action || action === activeAction) return;
@@ -168,8 +177,8 @@
     key.intensity = emotionNow === 'sad' ? 1.15 : (emotionNow === 'excited' ? 1.7 : 1.5);
   }
 
-  // ---------- Carga del modelo con encuadre AUTOMÁTICO verificable ----------
-  loader.load(MODEL_URL, function(gltf){
+  // ---------- Modelo: se PARSEA desde memoria (base64 incrustado) ----------
+  function onModelLoaded(gltf){
     model = gltf.scene;
     scene.add(model);
     // 1) Normalizar SOLO con medidas del propio modelo (nada de valores a ojo):
@@ -201,13 +210,24 @@
       ' morphs=' + morphMeshes.length + ' bones=' + Object.keys(bones).length);
     document.getElementById('loading').style.display = 'none';
     applyEmotion('happy');
-  }, function(xhr){
-    if (xhr.total) loadText.textContent = 'Cargando a tu avatar 3D profesional… ' +
-      Math.round(xhr.loaded/xhr.total*100) + '%';
-  }, function(err){
-    loadText.textContent = 'No se pudo cargar el modelo 3D. Revisa tu conexión y reabre la app.';
-    bridge('onError', 'model-load');
-  });
+  }
+  function onModelError(err){
+    loadText.textContent = 'No se pudo interpretar el modelo 3D (' +
+      ((err && err.message) || err || 'error') + ').';
+    bridge('onError', 'model-parse');
+  }
+  var customModel = params.get('model');
+  if (customModel) {
+    loader.load(customModel, onModelLoaded, undefined, onModelError);
+  } else if (window.__MODEL_B64) {
+    try {
+      loader.parse(b64ToArrayBuffer(window.__MODEL_B64), '', onModelLoaded, onModelError);
+    } catch (e) { onModelError(e); }
+  } else if (!isApp) {
+    loader.load(MODEL_URL, onModelLoaded, undefined, onModelError);
+  } else {
+    onModelError(new Error('datos 3D no generados'));
+  }
 
   // ---------- Reacciones: SOLO las ordena el cerebro ----------
   function bone(name) {
