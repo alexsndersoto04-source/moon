@@ -131,8 +131,10 @@ class Brain(context: Context) {
                 JSONArray().put(JSONObject().put("text", systemPrompt()))))
             .put("contents", contents)
             .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 300))
-        // Los nombres de modelo de Google rotan: probar los vigentes en orden.
-        val models = listOf("gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite")
+        // Nada de adivinar nombres: primero preguntar a Google que modelos
+        // tiene ESTA clave/proyecto y usar los que de verdad existan.
+        val discovered = discoverGeminiModels(key)
+        val models = (discovered + listOf("gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite")).distinct()
         for (model in models) {
             val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
             val result = postJson(url, body, null, "x-goog-api-key" to key)
@@ -153,6 +155,56 @@ class Brain(context: Context) {
             if (result.code == 401 || result.code == 403) break
         }
         return null
+    }
+
+    /** Lista real de modelos generateContent que la clave puede usar (o vacio). */
+    private fun discoverGeminiModels(key: String): List<String> {
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=100")
+        val result = getJson(url, "x-goog-api-key" to key)
+        val raw = result.text ?: run {
+            lastError = describeHttpError("Gemini", result.code, result.errorBody)
+            return emptyList()
+        }
+        return try {
+            val arr = JSONObject(raw).optJSONArray("models") ?: return emptyList()
+            val found = mutableListOf<Pair<Int, String>>()
+            for (i in 0 until arr.length()) {
+                val m = arr.getJSONObject(i)
+                val methods = m.optJSONArray("supportedGenerationMethods")?.toString() ?: ""
+                if (!methods.contains("generateContent")) continue
+                val id = m.optString("name").removePrefix("models/")
+                if (id.isBlank()) continue
+                val rank = when {
+                    id.contains("2.5") && id.contains("flash") && !id.contains("lite") -> 0
+                    id.contains("flash") && !id.contains("lite") && !id.contains("image") -> 1
+                    id.contains("flash") -> 2
+                    id.contains("pro") -> 3
+                    id.contains("Gemini") -> 4
+                    else -> 5
+                }
+                found.add(rank to id)
+            }
+            found.sortedBy { it.first }.map { it.second }.take(6)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun getJson(url: URL, vararg headers: Pair<String, String>): HttpResult {
+        return try {
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 30000
+            for ((k, v) in headers) conn.setRequestProperty(k, v)
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            conn.disconnect()
+            if (code in 200..299) HttpResult(code, text, null) else HttpResult(code, null, text)
+        } catch (e: Exception) {
+            HttpResult(-1, null, e.message)
+        }
     }
 
     private fun askGroq(key: String, userText: String): AvatarReply? {
