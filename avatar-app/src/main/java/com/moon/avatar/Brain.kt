@@ -53,14 +53,11 @@ class Brain(context: Context) {
             "Eres cercana, alegre y curiosa. Hablas en español, con frases cortas y naturales, como una persona de verdad. Te gusta ayudar y conversar.") ?: ""
         set(v) = prefs.edit().putString("personality", v).apply()
 
-    // ---------- Apariencia guardada ----------
-    fun saveAppearance(skin: Int, hair: Int, hairStyle: Int, shirt: Int) {
-        prefs.edit().putInt("skin", skin).putInt("hair", hair)
-            .putInt("hair_style", hairStyle).putInt("shirt", shirt).apply()
-    }
-    fun appearance(): IntArray = intArrayOf(
-        prefs.getInt("skin", -1), prefs.getInt("hair", -1),
-        prefs.getInt("hair_style", -1), prefs.getInt("shirt", -1))
+    // ---------- Cuerpo 3D ----------
+    /** URL de un .glb propio (ej. Ready Player Me desde una selfie). Vacío = modelo de serie. */
+    var modelUrl: String
+        get() = prefs.getString("model_url", "") ?: ""
+        set(v) = prefs.edit().putString("model_url", v.trim()).apply()
 
     // ---------- Memoria ----------
     private fun history(): JSONArray =

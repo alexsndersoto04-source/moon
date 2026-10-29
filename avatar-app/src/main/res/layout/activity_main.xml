@@ -5,8 +5,8 @@
     android:background="@color/bg_deep"
     android:fitsSystemWindows="true">
 
-    <!-- El avatar ocupa TODA la pantalla: él es la app, no un chat. -->
-    <com.moon.avatar.AvatarView
+    <!-- El avatar 3D ocupa TODA la pantalla: él es la app, no un chat. -->
+    <WebView
         android:id="@+id/avatarView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
@@ -118,20 +118,6 @@
             android:layout_marginTop="12dp"
             android:gravity="center"
             android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/gestureButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_circle_button"
-                android:gravity="center"
-                android:paddingStart="16dp"
-                android:paddingTop="13dp"
-                android:paddingEnd="16dp"
-                android:paddingBottom="13dp"
-                android:text="👋 Gestos"
-                android:textColor="@color/text_main"
-                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/micButton"

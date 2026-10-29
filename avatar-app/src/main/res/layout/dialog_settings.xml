@@ -72,31 +72,17 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="🎨 Su apariencia"
+            android:text="🧍 Su cuerpo 3D (opcional)"
             android:textStyle="bold" />
-
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Pelo" />
-        <Spinner
-            android:id="@+id/setHairStyle"
+        <EditText
+            android:id="@+id/setModelUrl"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Color de pelo" />
-        <Spinner
-            android:id="@+id/setHairColor"
+            android:layout_height="wrap_content"
+            android:hint="URL de tu modelo .glb (vacío = el de serie)" />
+        <TextView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Tono de piel" />
-        <Spinner
-            android:id="@+id/setSkin"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Color de ropa" />
-        <Spinner
-            android:id="@+id/setShirt"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:text="Para un avatar desde TU foto: crea tu avatar gratis en readyplayer.me, copia el enlace .glb de tu avatar y pégalo aquí. Vacío usa el hombre 3D incluido."
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

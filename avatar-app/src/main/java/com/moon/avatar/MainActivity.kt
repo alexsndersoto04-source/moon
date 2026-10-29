@@ -1,11 +1,12 @@
 package com.moon.avatar
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +16,9 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.view.View
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.Spinner
@@ -23,14 +27,18 @@ import android.widget.Toast
 import java.util.Locale
 
 /**
- * Pantalla única: el AVATAR es la app.
- * No hay lista de mensajes ni burbujas de chat: le hablas, y él te responde
- * hablando, con gestos y expresiones. El texto solo aparece como subtítulo
- * de lo que el avatar está diciendo.
+ * Pantalla única: el AVATAR 3D es la app.
+ *
+ * No hay caricatura ni botones de gestos: el avatar es un modelo humano 3D
+ * (WebGL/Three.js en avatar3d.html) y SOLO se mueve por tres motivos:
+ *   1. Vida idle automática (respiración, balanceo, cabeceo).
+ *   2. Al hablar (lip/cabeceo sincronizado con su voz TTS).
+ *   3. Reacciones que decide el CEREBRO en cada respuesta
+ *      (emoción + gesto del JSON: asentir, negar, celebrar, pensar…).
  */
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
-    private lateinit var avatarView: AvatarView
+    private lateinit var avatarWeb: WebView
     private lateinit var caption: TextView
     private lateinit var status: TextView
     private lateinit var nameText: TextView
@@ -41,52 +49,53 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var recognizer: SpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var mouthFallback: Runnable? = null
+    private var avatarReady = false
 
-    // Opciones de apariencia: nombre visible -> valor
-    private val skinOptions = listOf(
-        "Clara" to Color.rgb(240, 199, 165),
-        "Media" to Color.rgb(214, 158, 110),
-        "Trigueña" to Color.rgb(198, 134, 88),
-        "Morena" to Color.rgb(150, 92, 56),
-        "Oscura" to Color.rgb(105, 62, 38)
-    )
-    private val hairColorOptions = listOf(
-        "Negro" to Color.rgb(28, 22, 20),
-        "Castaño" to Color.rgb(92, 56, 32),
-        "Rubio" to Color.rgb(214, 176, 92),
-        "Rojo" to Color.rgb(178, 74, 44),
-        "Violeta" to Color.rgb(124, 78, 200),
-        "Azul" to Color.rgb(58, 110, 200)
-    )
-    private val hairStyleOptions = listOf("Corto", "Largo", "Moño", "Rizado")
-    private val shirtOptions = listOf(
-        "Violeta" to Color.rgb(99, 82, 220),
-        "Azul" to Color.rgb(52, 120, 220),
-        "Verde" to Color.rgb(46, 160, 110),
-        "Rosa" to Color.rgb(226, 110, 160),
-        "Naranja" to Color.rgb(235, 140, 60),
-        "Negro" to Color.rgb(42, 42, 52)
-    )
+    inner class AvatarBridge {
+        @JavascriptInterface
+        fun onReady(info: String) {
+            mainHandler.post {
+                avatarReady = true
+                status.text = if (brain.apiKey.isBlank())
+                    "Avatar 3D listo · cerebro local (pon tu clave en ⚙️)"
+                else "Avatar 3D listo · cerebro conectado (${brain.provider})"
+            }
+        }
 
+        @JavascriptInterface
+        fun onError(info: String) {
+            mainHandler.post {
+                status.text = "Problema cargando el 3D: revisa tu conexión y reabre la app"
+            }
+        }
+
+        @JavascriptInterface
+        fun onClips(info: String) { /* diagnóstico futuro */ }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         brain = Brain(this)
 
-        avatarView = findViewById(R.id.avatarView)
+        avatarWeb = findViewById(R.id.avatarView)
         caption = findViewById(R.id.captionText)
         status = findViewById(R.id.statusText)
         nameText = findViewById(R.id.avatarNameText)
-
-        applyAppearance()
         nameText.text = brain.avatarName
-        avatarView.emotion = Emotion.HAPPY
-        avatarView.playGesture(Gesture.WAVE)
+        caption.text = "¡Hola! Soy ${brain.avatarName}. Háblame con el micrófono 🎤"
+
+        avatarWeb.settings.javaScriptEnabled = true
+        avatarWeb.settings.domStorageEnabled = true
+        avatarWeb.settings.mediaPlaybackRequiresUserGesture = false
+        avatarWeb.webViewClient = WebViewClient()
+        avatarWeb.addJavascriptInterface(AvatarBridge(), "AvatarBridge")
+        loadAvatar()
 
         tts = TextToSpeech(this, this)
 
         findViewById<TextView>(R.id.micButton).setOnClickListener { startListening() }
-        findViewById<TextView>(R.id.gestureButton).setOnClickListener { showGestures() }
         findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
 
         val textRow = findViewById<View>(R.id.textInputRow)
@@ -101,34 +110,53 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 hear(text)
             }
         }
-
-        if (brain.apiKey.isBlank()) {
-            status.text = "Cerebro local · añade tu clave en ⚙️ para la IA completa"
-        } else {
-            status.text = "Cerebro conectado (${brain.provider}) · háblale 🎤"
-        }
+        status.text = "Despertando a tu avatar 3D…"
     }
 
-    // ---------- Voz del avatar (TTS + lip-sync) ----------
+    private fun loadAvatar() {
+        avatarReady = false
+        val url = StringBuilder("file:///android_asset/avatar3d.html?inapp=1")
+        if (brain.modelUrl.isNotBlank()) {
+            url.append("&model=").append(Uri.encode(brain.modelUrl))
+        }
+        avatarWeb.loadUrl(url.toString())
+    }
+
+    /** El cerebro manda: emoción + gesto. Sin intervención manual del usuario. */
+    private fun react(emotion: Emotion, gesture: Gesture) {
+        if (!avatarReady) return
+        val e = emotion.name.lowercase()
+        val g = gesture.name.lowercase()
+        avatarWeb.evaluateJavascript(
+            "window.Avatar3D && window.Avatar3D.react('$e','$g');", null)
+    }
+
+    private fun setSpeaking(speaking: Boolean) {
+        if (!avatarReady) return
+        avatarWeb.evaluateJavascript(
+            "window.Avatar3D && window.Avatar3D.setSpeaking($speaking);", null)
+    }
+
+    // ---------- Voz del avatar (TTS) ----------
     override fun onInit(statusCode: Int) {
         if (statusCode == TextToSpeech.SUCCESS) {
-            val spanish = Locale("es", "ES")
-            val result = tts?.setLanguage(spanish)
-            ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
-            tts?.setPitch(1.05f)
+            val result = tts?.setLanguage(Locale("es", "ES"))
+            ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
+                result != TextToSpeech.LANG_NOT_SUPPORTED
+            tts?.setPitch(1.0f)
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    mainHandler.post { avatarView.speaking = true }
+                    mainHandler.post { setSpeaking(true) }
                 }
                 override fun onDone(utteranceId: String?) {
                     mainHandler.post {
-                        avatarView.speaking = false
+                        setSpeaking(false)
                         status.text = "Te escucho · toca el micrófono"
                     }
                 }
                 @Deprecated("deprecated in API level 21")
                 override fun onError(utteranceId: String?) {
-                    mainHandler.post { avatarView.speaking = false }
+                    mainHandler.post { setSpeaking(false) }
                 }
             })
         }
@@ -136,19 +164,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun say(reply: AvatarReply) {
         caption.text = reply.text
-        avatarView.emotion = reply.emotion
-        if (reply.gesture != Gesture.NONE) avatarView.playGesture(reply.gesture)
+        react(reply.emotion, reply.gesture)
         status.text = "${brain.avatarName} está hablando…"
 
         if (ttsReady) {
             tts?.speak(reply.text, TextToSpeech.QUEUE_FLUSH, null, "avatar_speech")
         } else {
-            // Sin voz instalada, al menos mueve la boca el tiempo estimado.
-            avatarView.speaking = true
+            setSpeaking(true)
             mouthFallback?.let { mainHandler.removeCallbacks(it) }
             val durationMs = (1200L + reply.text.length * 55L).coerceAtMost(12000L)
             mouthFallback = Runnable {
-                avatarView.speaking = false
+                setSpeaking(false)
                 status.text = "Te escucho · toca el micrófono"
             }
             mainHandler.postDelayed(mouthFallback!!, durationMs)
@@ -166,7 +192,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             return
         }
         tts?.stop()
-        avatarView.speaking = false
+        setSpeaking(false)
 
         if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this)
         recognizer?.setRecognitionListener(object : RecognitionListener {
@@ -178,11 +204,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
             override fun onError(error: Int) {
                 status.text = "No te escuché · toca el micrófono e intenta otra vez"
-                avatarView.emotion = Emotion.NEUTRAL
             }
             override fun onReadyForSpeech(params: Bundle?) {
                 status.text = "Escuchando… habla ahora 🎤"
-                avatarView.emotion = Emotion.NEUTRAL
             }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
@@ -203,31 +227,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    /** El usuario dijo algo (por voz o texto): el cerebro piensa y el avatar actúa. */
+    /** El usuario dijo algo: el cerebro piensa y el avatar ACTÚA la respuesta. */
     private fun hear(text: String) {
         caption.text = "Tú: $text"
-        avatarView.emotion = Emotion.THINKING
+        react(Emotion.THINKING, Gesture.THINK)
         status.text = "${brain.avatarName} está pensando…"
         brain.think(text) { reply ->
             mainHandler.post { say(reply) }
         }
     }
 
-    // ---------- Gestos a petición ----------
-    private fun showGestures() {
-        val names = arrayOf("👋 Saludar", "😄 Celebrar", "🙏 Reverencia", "🤔 Pensar", "👍 Asentir", "🙅 Negar")
-        val gestures = arrayOf(Gesture.WAVE, Gesture.CELEBRATE, Gesture.BOW, Gesture.THINK, Gesture.NOD, Gesture.SHAKE)
-        val emotions = arrayOf(Emotion.HAPPY, Emotion.EXCITED, Emotion.HAPPY, Emotion.THINKING, Emotion.HAPPY, Emotion.NEUTRAL)
-        AlertDialog.Builder(this)
-            .setTitle("Pídele un gesto")
-            .setItems(names) { _, which ->
-                avatarView.emotion = emotions[which]
-                avatarView.playGesture(gestures[which])
-            }
-            .show()
-    }
-
-    // ---------- Ajustes: identidad, cerebro y apariencia ----------
+    // ---------- Ajustes: identidad, cerebro y cuerpo 3D ----------
     private fun showSettings() {
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         val nameInput = view.findViewById<EditText>(R.id.setAvatarName)
@@ -235,53 +245,37 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val personalityInput = view.findViewById<EditText>(R.id.setPersonality)
         val providerSpinner = view.findViewById<Spinner>(R.id.setProvider)
         val keyInput = view.findViewById<EditText>(R.id.setApiKey)
-        val hairStyleSpinner = view.findViewById<Spinner>(R.id.setHairStyle)
-        val hairColorSpinner = view.findViewById<Spinner>(R.id.setHairColor)
-        val skinSpinner = view.findViewById<Spinner>(R.id.setSkin)
-        val shirtSpinner = view.findViewById<Spinner>(R.id.setShirt)
+        val modelInput = view.findViewById<EditText>(R.id.setModelUrl)
 
         nameInput.setText(brain.avatarName)
         userInput.setText(brain.userName)
         personalityInput.setText(brain.personality)
         keyInput.setText(brain.apiKey)
+        modelInput.setText(brain.modelUrl)
 
         providerSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
             listOf("Gemini (Google, gratis)", "Groq (muy rápido, gratis)"))
         providerSpinner.setSelection(if (brain.provider == "groq") 1 else 0)
 
-        hairStyleSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, hairStyleOptions)
-        hairStyleSpinner.setSelection(avatarView.hairStyle)
-        hairColorSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, hairColorOptions.map { it.first })
-        hairColorSpinner.setSelection(hairColorOptions.indexOfFirst { it.second == avatarView.hairColor }.coerceAtLeast(0))
-        skinSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, skinOptions.map { it.first })
-        skinSpinner.setSelection(skinOptions.indexOfFirst { it.second == avatarView.skinColor }.coerceAtLeast(0))
-        shirtSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, shirtOptions.map { it.first })
-        shirtSpinner.setSelection(shirtOptions.indexOfFirst { it.second == avatarView.shirtColor }.coerceAtLeast(0))
-
         AlertDialog.Builder(this)
             .setTitle("⚙️ Tu avatar, a tu manera")
             .setView(view)
             .setPositiveButton("Guardar") { _, _ ->
+                val modelChanged = modelInput.text.toString().trim() != brain.modelUrl
                 brain.avatarName = nameInput.text.toString().ifBlank { "Luna" }
                 brain.userName = userInput.text.toString()
                 brain.personality = personalityInput.text.toString()
                 brain.provider = if (providerSpinner.selectedItemPosition == 1) "groq" else "gemini"
                 brain.apiKey = keyInput.text.toString()
-
-                avatarView.hairStyle = hairStyleSpinner.selectedItemPosition
-                avatarView.hairColor = hairColorOptions[hairColorSpinner.selectedItemPosition].second
-                avatarView.skinColor = skinOptions[skinSpinner.selectedItemPosition].second
-                avatarView.shirtColor = shirtOptions[shirtSpinner.selectedItemPosition].second
-                brain.saveAppearance(avatarView.skinColor, avatarView.hairColor,
-                    avatarView.hairStyle, avatarView.shirtColor)
+                brain.modelUrl = modelInput.text.toString()
 
                 nameText.text = brain.avatarName
-                avatarView.invalidate()
+                if (modelChanged) loadAvatar()
                 status.text = if (brain.apiKey.isBlank())
                     "Cerebro local · añade tu clave para la IA completa"
                 else "Cerebro conectado (${brain.provider}) · háblale 🎤"
-                say(AvatarReply("¡Listo! Así me veo ahora. ¿Te gusta?",
-                    Emotion.HAPPY, Gesture.WAVE))
+                say(AvatarReply("¡Listo! Así soy ahora. ¿Te gusta?",
+                    Emotion.HAPPY, Gesture.NOD))
             }
             .setNeutralButton("Borrar memoria") { _, _ ->
                 brain.forgetAll()
@@ -289,14 +283,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
             .setNegativeButton("Cancelar", null)
             .show()
-    }
-
-    private fun applyAppearance() {
-        val saved = brain.appearance()
-        if (saved[0] != -1) avatarView.skinColor = saved[0]
-        if (saved[1] != -1) avatarView.hairColor = saved[1]
-        if (saved[2] != -1) avatarView.hairStyle = saved[2]
-        if (saved[3] != -1) avatarView.shirtColor = saved[3]
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -312,6 +298,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         tts?.stop()
         tts?.shutdown()
         recognizer?.destroy()
+        avatarWeb.destroy()
         super.onDestroy()
     }
 }

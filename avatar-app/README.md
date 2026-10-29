@@ -63,3 +63,24 @@ avatar-app/
     │   └── Brain.kt              # Gemini/Groq + memoria + cerebro local
     └── res/layout/…              # la interfaz (el avatar es el protagonista)
 ```
+
+## v0.2 — Avatar 3D real (sustituye a la caricatura)
+
+La primera versión dibujaba un avatar 2D en Canvas: se descartó por completo
+(`AvatarView.kt` eliminado). Ahora el avatar es un **modelo humano 3D masculino**
+(GLB con esqueleto y animaciones reales de Mixamo, servido por threejs.org),
+renderizado con Three.js/WebGL dentro de la app (`assets/avatar3d.html`):
+
+- Vida idle automática: respiración, balanceo, cabeceo — nunca una estatua.
+- Al hablar: cabeceo sincronizado con la voz.
+- **Sin gestos manuales**: el botón «Gestos» desapareció. Las reacciones las
+  decide el cerebro en cada respuesta (asentir `agree`, negar `headShake`,
+  pensar, celebrar…) y el avatar las actúa solo.
+
+### Tu propio avatar desde una foto (lo más "tú" y realista posible)
+
+Un humano fotorrealista nivel película no es viable en un teléfono modesto.
+La vía real para que se parezca a ti: crea tu avatar gratis en
+**readyplayer.me** (desde una selfie), copia el enlace `.glb` de tu avatar y
+pégalo en ⚙️ Ajustes → «Su cuerpo 3D». La app lo cargará con las mismas
+reacciones automáticas.

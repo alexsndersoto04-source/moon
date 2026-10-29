@@ -2,236 +2,278 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Moon Avatar — Vista previa</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Moon Avatar 3D</title>
 <style>
-  * { box-sizing: border-box; margin: 0; font-family: system-ui, sans-serif; }
-  body { background: #0c0a22; color: #f5f3ff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
-  header { width: 100%; max-width: 520px; padding: 18px 20px 4px; display: flex; justify-content: space-between; align-items: start; }
-  h1 { font-size: 24px; } .sub { color: #b9b3e3; font-size: 12px; margin-top: 2px; }
-  .gear { background:#2a2650; border:1px solid #ffffff22; color:#fff; border-radius:50%; width:44px; height:44px; font-size:19px; cursor:pointer; }
-  .stage { position: relative; width: min(92vw, 430px); }
-  svg { width: 100%; height: auto; display: block; }
-  .breathe { animation: breathe 3.8s ease-in-out infinite; transform-origin: 200px 330px; }
-  @keyframes breathe { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-5px) } }
-  .sway { animation: sway 5.5s ease-in-out infinite; transform-origin: 200px 200px; }
-  @keyframes sway { 0%,100%{ transform: rotate(-1.1deg) } 50%{ transform: rotate(1.1deg) } }
-  .eyes { animation: blink 3.4s infinite; transform-origin: 200px 158px; }
-  @keyframes blink { 0%,92%,100%{ transform: scaleY(1) } 95%{ transform: scaleY(.08) } }
-  .mouth-talk { animation: talk .28s infinite; transform-origin: 200px 205px; }
-  @keyframes talk { 0%,100%{ transform: scaleY(.35) } 50%{ transform: scaleY(1.15) } }
-  .arm-wave { animation: wave 1.6s ease-in-out; transform-origin: 118px 268px; }
-  @keyframes wave { 0%,100%{ transform: rotate(0) } 20%,60%{ transform: rotate(-38deg) } 40%,80%{ transform: rotate(-14deg) } }
-  .celebrate-L { animation: upL 1.6s ease-in-out; transform-origin: 118px 268px; }
-  .celebrate-R { animation: upR 1.6s ease-in-out; transform-origin: 282px 268px; }
-  @keyframes upL { 0%,100%{ transform: rotate(0) } 30%,75%{ transform: rotate(-52deg) } }
-  @keyframes upR { 0%,100%{ transform: rotate(0) } 30%,75%{ transform: rotate(52deg) } }
-  .nod { animation: nod 1.4s ease-in-out; transform-origin: 200px 190px; }
-  @keyframes nod { 0%,100%{ transform: translateY(0) } 30%,60%{ transform: translateY(9px) } }
-  .shake { animation: shake 1.2s ease-in-out; transform-origin: 200px 160px; }
-  @keyframes shake { 0%,100%{ transform: rotate(0) } 25%{ transform: rotate(-4deg) } 75%{ transform: rotate(4deg) } }
-  .thinktilt { animation: think 1.8s ease-in-out; transform-origin: 200px 160px; }
-  @keyframes think { 0%,100%{ transform: rotate(0) } 40%,70%{ transform: rotate(5deg) } }
-  .panel { width: min(92vw, 430px); padding: 0 4px 26px; }
-  .caption { background: #1e1b3dee; border:1px solid #ffffff22; border-radius:20px; padding:16px; text-align:center; font-size:16px; min-height:58px; }
-  .controls { display:flex; gap:10px; justify-content:center; margin-top:12px; flex-wrap:wrap; }
-  button.ctl { background:#2a2650; color:#fff; border:1px solid #ffffff22; border-radius:24px; padding:12px 16px; font-size:14px; cursor:pointer; }
-  button.mic { background:#6c5ce7; border:none; font-weight:700; font-size:16px; padding:14px 26px; border-radius:28px; }
-  .row { display:none; gap:8px; margin-top:10px; } .row.open{display:flex}
-  input[type=text]{ flex:1; background:#1e1b3d; border:1px solid #ffffff22; color:#fff; border-radius:16px; padding:12px; }
-  dialog { background:#1e1b3d; color:#f5f3ff; border:1px solid #ffffff33; border-radius:20px; padding:22px; width:min(92vw,430px); }
-  dialog::backdrop{ background:#000a }
-  dialog label{ display:block; font-size:13px; color:#b9b3e3; margin:12px 0 5px }
-  dialog input, dialog select, dialog textarea{ width:100%; background:#12102a; color:#fff; border:1px solid #ffffff2a; border-radius:10px; padding:10px; }
-  .note{ font-size:11px; color:#b9b3e3; margin-top:5px; line-height:1.5 }
-  .save{ background:#6c5ce7; color:#fff; border:none; border-radius:12px; padding:11px 18px; font-weight:700; cursor:pointer }
-  .ghost{ background:transparent; color:#b9b3e3; border:1px solid #ffffff2a; border-radius:12px; padding:11px 14px; cursor:pointer }
+  * { margin:0; box-sizing:border-box; font-family: system-ui, sans-serif; }
+  html,body { height:100%; overflow:hidden; background:#0c0a22; color:#f5f3ff; }
+  #scene { position:fixed; inset:0; }
+  canvas { display:block; }
+  #loading { position:fixed; inset:0; display:flex; flex-direction:column; gap:10px; align-items:center; justify-content:center; color:#b9b3e3; font-size:14px; z-index:5; text-align:center; padding:24px; }
+  .spin { width:38px; height:38px; border-radius:50%; border:3px solid #ffffff2a; border-top-color:#8b7cff; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg) } }
+  /* Controles SOLO para la vista previa en navegador (?demo=1). En la app van ocultos:
+     en la app los gestos los decide el cerebro, nunca un botón manual. */
+  #demoUI { display:none; position:fixed; left:0; right:0; bottom:0; padding:12px 16px 20px; z-index:6; }
+  #demoUI .cap { background:#1e1b3dee; border:1px solid #ffffff22; border-radius:18px; padding:14px; text-align:center; font-size:15px; }
+  #demoUI .row { display:flex; gap:8px; margin-top:10px; }
+  #demoUI input { flex:1; background:#1e1b3d; border:1px solid #ffffff22; color:#fff; border-radius:14px; padding:12px; }
+  #demoUI button { background:#6c5ce7; color:#fff; border:none; border-radius:14px; padding:12px 18px; font-weight:700; }
 </style>
 </head>
 <body>
-<header>
-  <div><h1 id="nameTitle">Luna</h1><div class="sub" id="status">Despierta · toca el micrófono y háblale</div></div>
-  <button class="gear" id="openSettings" title="Ajustes">⚙️</button>
-</header>
+<div id="scene"></div>
+<div id="loading"><div class="spin"></div><div id="loadText">Despertando a tu avatar 3D…</div></div>
 
-<div class="stage">
-<svg viewBox="0 0 400 430" role="img" aria-label="Tu avatar">
-  <defs><radialGradient id="halo" cx="50%" cy="38%"><stop offset="0%" stop-color="#8b7cff" stop-opacity=".4"/><stop offset="100%" stop-color="#8b7cff" stop-opacity="0"/></radialGradient></defs>
-  <circle cx="200" cy="180" r="165" fill="url(#halo)"/>
-  <g class="breathe"><g class="sway" id="wholeAvatar">
-    <!-- brazo izquierdo (saluda) -->
-    <g id="armL"><path d="M118 268 Q74 300 66 344" stroke="#6352dc" stroke-width="30" stroke-linecap="round" fill="none" id="sleeveL"/><circle id="handL" cx="66" cy="348" r="16" fill="#c68658"/></g>
-    <!-- brazo derecho -->
-    <g id="armR"><path d="M282 268 Q326 300 334 344" stroke="#6352dc" stroke-width="30" stroke-linecap="round" fill="none" id="sleeveR"/><circle id="handR" cx="334" cy="348" r="16" fill="#c68658"/></g>
-    <!-- torso -->
-    <path id="shirt" d="M108 430 L116 282 Q118 252 160 246 L240 246 Q282 252 284 282 L292 430 Z" fill="#6352dc"/>
-    <rect x="178" y="222" width="44" height="42" rx="10" fill="#c68658" class="skin"/>
-    <g id="headGroup">
-      <circle cx="118" cy="162" r="13" fill="#c68658" class="skin"/><circle cx="282" cy="162" r="13" fill="#c68658" class="skin"/>
-      <circle cx="200" cy="160" r="82" fill="#c68658" class="skin"/>
-      <path id="hairTop" d="M118 158 A82 82 0 0 1 282 158 L282 138 A82 70 0 0 0 118 138 Z" fill="#261c16"/>
-      <g id="hairExtra"></g>
-      <g class="eyes" id="eyesGroup" fill="#1e1614">
-        <circle id="eyeL" cx="169" cy="158" r="7"/><circle id="eyeR" cx="231" cy="158" r="7"/>
-      </g>
-      <path id="browL" d="M156 140 Q169 134 182 140" stroke="#261c16" stroke-width="5" fill="none" stroke-linecap="round"/>
-      <path id="browR" d="M218 140 Q231 134 244 140" stroke="#261c16" stroke-width="5" fill="none" stroke-linecap="round"/>
-      <circle id="cheekL" cx="152" cy="184" r="12" fill="#ff7882" opacity="0"/><circle id="cheekR" cx="248" cy="184" r="12" fill="#ff7882" opacity="0"/>
-      <path d="M200 166 Q196 180 201 184" stroke="#5a321e" stroke-width="3" fill="none" opacity=".55"/>
-      <ellipse id="mouth" cx="200" cy="204" rx="13" ry="4" fill="#7a3430"/>
-    </g>
-  </g></g>
-</svg>
-</div>
-
-<div class="panel">
-  <div class="caption" id="caption">¡Hola! Soy tu avatar. Háblame con el micrófono 🎤</div>
-  <div class="row" id="textRow"><input type="text" id="textInput" placeholder="Escríbele algo…"><button class="ctl" id="sendText">➤</button></div>
-  <div class="controls">
-    <button class="ctl" id="gestureBtn">👋 Gestos</button>
-    <button class="ctl mic" id="micBtn">🎤 Hablar</button>
-    <button class="ctl" id="kbBtn">⌨️</button>
+<div id="demoUI">
+  <div class="cap" id="demoCap">Háblale o escríbele: él reacciona SOLO según lo que el cerebro responda.</div>
+  <div class="row">
+    <input id="demoInput" type="text" placeholder="Ej: hola, cuéntame un chiste, ¿qué opinas?">
+    <button id="demoSend">➤</button>
+    <button id="demoMic">🎤</button>
   </div>
-  <p class="note" style="text-align:center;margin-top:12px">Vista previa del mismo avatar que irá en el APK · <span id="brainState">cerebro local (demo)</span></p>
 </div>
 
-<dialog id="settings">
-  <h3>⚙️ Tu avatar, a tu manera</h3>
-  <label>Su nombre</label><input id="inName" type="text">
-  <label>Tu nombre</label><input id="inUser" type="text">
-  <label>Su personalidad</label><textarea id="inPersonality" rows="3"></textarea>
-  <label>🧠 Cerebro — proveedor</label>
-  <select id="inProvider"><option value="gemini">Gemini (Google, gratis)</option><option value="groq">Groq (muy rápido, gratis)</option></select>
-  <label>API key (se guarda solo en este navegador)</label><input id="inKey" type="password" placeholder="Pega aquí tu clave gratuita">
-  <p class="note">Gemini: aistudio.google.com → «Get API key». Groq: console.groq.com → «API Keys». Sin clave usa el cerebro local de demostración.</p>
-  <label>Pelo</label><select id="inHairStyle"><option value="0">Corto</option><option value="1">Largo</option><option value="2">Moño</option><option value="3">Rizado</option></select>
-  <label>Color de pelo</label><select id="inHairColor"></select>
-  <label>Tono de piel</label><select id="inSkin"></select>
-  <label>Color de ropa</label><select id="inShirt"></select>
-  <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end"><button class="ghost" id="forget">Borrar memoria</button><button class="ghost" id="cancelSettings">Cancelar</button><button class="save" id="saveSettings">Guardar</button></div>
-</dialog>
-
+<!-- Three.js (global, versión estable y ligera) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
-const $ = id => document.getElementById(id);
-const store = JSON.parse(localStorage.getItem('moonAvatar') || '{}');
-const cfg = Object.assign({name:'Luna', user:'', personality:'Eres cercana, alegre y curiosa. Hablas en español, con frases cortas y naturales.', provider:'gemini', key:'', hairStyle:0, hairColor:'#261c16', skin:'#c68658', shirt:'#6352dc', history:[]}, store);
-const skins = [['Clara','#f0c7a5'],['Media','#d69e6e'],['Trigueña','#c68658'],['Morena','#965c38'],['Oscura','#693e26']];
-const hairColors = [['Negro','#1c1614'],['Castaño','#5c3820'],['Rubio','#d6b05c'],['Rojo','#b24a2c'],['Violeta','#7c4ec8'],['Azul','#3a6ec8']];
-const shirts = [['Violeta','#6352dc'],['Azul','#3478dc'],['Verde','#2ea06e'],['Rosa','#e26ea0'],['Naranja','#eb8c3c'],['Negro','#2a2a34']];
-function fill(sel, opts, val){ sel.innerHTML = opts.map(([n,v])=>`<option value="${v}" ${v===val?'selected':''}>${n}</option>`).join(''); }
-function save(){ localStorage.setItem('moonAvatar', JSON.stringify(cfg)); }
-function apply(){
-  $('nameTitle').textContent = cfg.name;
-  document.querySelectorAll('.skin').forEach(e=>{ e.setAttribute('fill', cfg.skin); });
-  $('handL').setAttribute('fill', cfg.skin); $('handR').setAttribute('fill', cfg.skin);
-  $('shirt').setAttribute('fill', cfg.shirt); $('sleeveL').setAttribute('stroke', cfg.shirt); $('sleeveR').setAttribute('stroke', cfg.shirt);
-  $('hairTop').setAttribute('fill', cfg.hairColor); $('browL').setAttribute('stroke', cfg.hairColor); $('browR').setAttribute('stroke', cfg.hairColor);
-  const extra = $('hairExtra'); extra.innerHTML='';
-  if(cfg.hairStyle==1) extra.innerHTML = `<path d="M112 130 Q104 260 124 292 L150 292 Q132 220 134 150 Z M288 130 Q296 260 276 292 L250 292 Q268 220 266 150 Z" fill="${cfg.hairColor}"/>`;
-  if(cfg.hairStyle==2) extra.innerHTML = `<circle cx="200" cy="70" r="27" fill="${cfg.hairColor}"/>`;
-  if(cfg.hairStyle==3) extra.innerHTML = [-66,-44,-22,0,22,44,66].map((x,i)=>`<circle cx="${200+x}" cy="${88+(i%2?8:0)}" r="24" fill="${cfg.hairColor}"/>`).join('');
-  $('brainState').textContent = cfg.key ? `cerebro conectado (${cfg.provider})` : 'cerebro local (demo)';
-}
-function setEmotion(e){
-  const cheeks = (e==='happy'||e==='excited'||e==='shy') ? .45 : 0;
-  $('cheekL').setAttribute('opacity', cheeks); $('cheekR').setAttribute('opacity', cheeks);
-  $('eyeL').setAttribute('r', e==='surprised'?10:7); $('eyeR').setAttribute('r', e==='surprised'?10:7);
-  $('browL').setAttribute('d', e==='sad'?'M156 136 Q169 142 182 146': e==='surprised'?'M156 132 Q169 127 182 132':'M156 140 Q169 134 182 140');
-  $('browR').setAttribute('d', e==='sad'?'M218 146 Q231 142 244 136': e==='surprised'?'M218 132 Q231 127 244 132':'M218 140 Q231 134 244 140');
-  if(!speaking) $('mouth').setAttribute('ry', e==='surprised'?10 : e==='sad'?3 : 4);
-}
-let speaking = false, mouthTimer;
-function playGesture(g){
-  const armL=$('armL'), armR=$('armR'), head=$('headGroup');
-  [armL,armR,head].forEach(e=>e.classList.remove('arm-wave','celebrate-L','celebrate-R','nod','shake','thinktilt'));
-  void armL.getBoundingClientRect();
-  if(g==='wave') armL.classList.add('arm-wave');
-  if(g==='celebrate'){ armL.classList.add('celebrate-L'); armR.classList.add('celebrate-R'); }
-  if(g==='nod') head.classList.add('nod');
-  if(g==='shake') head.classList.add('shake');
-  if(g==='think') head.classList.add('thinktilt');
-  if(g==='bow') head.classList.add('nod');
-}
-function speak(text){
-  $('caption').textContent = text;
-  const m = $('mouth'); clearTimeout(mouthTimer);
-  if('speechSynthesis' in window){
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text); u.lang='es-ES'; u.rate=1.02; u.pitch=1.05;
-    u.onstart=()=>{ speaking=true; m.classList.add('mouth-talk'); $('status').textContent = cfg.name+' está hablando…'; };
-    u.onend=()=>{ speaking=false; m.classList.remove('mouth-talk'); m.setAttribute('ry',4); $('status').textContent='Te escucho · toca el micrófono'; };
-    speechSynthesis.speak(u);
-    mouthTimer=setTimeout(()=>{ m.classList.remove('mouth-talk'); speaking=false; }, 1200 + text.length*70);
-  } else { m.classList.add('mouth-talk'); mouthTimer=setTimeout(()=>m.classList.remove('mouth-talk'), 1200+text.length*60); }
-}
-function act(r){ setEmotion(r.emotion||'happy'); if(r.gesture) playGesture(r.gesture); speak(r.text); cfg.history.push({role:'model', text:r.text}); cfg.history=cfg.history.slice(-16); save(); }
-function localBrain(t){
-  t=t.toLowerCase(); const n = cfg.user ? ' '+cfg.user : '';
-  if(t.includes('hola')||t.includes('buenas')) return {text:`¡Hola${n}! Qué bueno verte. ¿En qué te ayudo hoy?`, emotion:'happy', gesture:'wave'};
-  if(t.includes('tu nombre')||t.includes('te llamas')) return {text:`Me llamo ${cfg.name}. Puedes cambiarme el nombre, la personalidad y el look en Ajustes.`, emotion:'happy', gesture:'nod'};
-  if(t.includes('gracias')) return {text:'¡De nada! Para eso estoy.', emotion:'happy', gesture:'bow'};
-  if(t.includes('triste')) return {text:'Lo siento mucho… Estoy aquí contigo. Cuéntame qué pasó, ¿quieres?', emotion:'sad', gesture:'none'};
-  if(t.includes('chiste')) return {text:'¿Por qué el libro de matemáticas estaba triste? ¡Porque tenía demasiados problemas!', emotion:'excited', gesture:'celebrate'};
-  if(t.includes('baile')||t.includes('baila')||t.includes('saluda')) return {text:'¡Claro! Mira esto.', emotion:'excited', gesture:'celebrate'};
-  if(t.includes('piensa')||t.includes('opinas')) return {text:'Déjame pensarlo un momento… Creo que es una gran idea.', emotion:'thinking', gesture:'think'};
-  if(t.includes('adiós')||t.includes('adios')||t.includes('chao')) return {text:`¡Hasta luego${n}! Aquí estaré cuando vuelvas.`, emotion:'happy', gesture:'wave'};
-  return {text:'Te escucho. Pon tu clave gratuita de Gemini o Groq en Ajustes y podré conversar de todo contigo.', emotion:'neutral', gesture:'none'};
-}
-async function think(text){
-  $('caption').textContent = 'Tú: '+text; setEmotion('thinking'); $('status').textContent = cfg.name+' está pensando…';
-  cfg.history.push({role:'user', text}); cfg.history=cfg.history.slice(-16); save();
-  if(!cfg.key){ act(localBrain(text)); return; }
-  const sys = `Eres ${cfg.name}, un avatar humano. Personalidad: ${cfg.personality} Hablas con ${cfg.user||'la persona'}. Responde SOLO JSON válido: {"text":"respuesta breve 1-3 frases","emotion":"happy|sad|surprised|thinking|excited|shy|neutral","gesture":"wave|nod|shake|think|celebrate|bow|none"}. Nunca menciones el JSON.`;
-  try{
-    let raw='';
-    if(cfg.provider==='groq'){
-      const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify({model:'llama-3.3-70b-versatile',temperature:.8,max_tokens:300,messages:[{role:'system',content:sys},...cfg.history.map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}))]})});
-      const j=await r.json(); raw=j.choices[0].message.content;
-    } else {
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system_instruction:{parts:[{text:sys}]},contents:cfg.history.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}]})),generationConfig:{temperature:.8,maxOutputTokens:300}})});
-      const j=await r.json(); raw=j.candidates[0].content.parts[0].text;
+(function(){
+  "use strict";
+  var params = new URLSearchParams(location.search);
+  var isApp = params.get('inapp') === '1';
+  // Modelo humano 3D masculino (personaje Mixamo servido por threejs.org, con
+  // animaciones reales: idle / agree (asentir) / headShake (negar) / sad…).
+  // Se puede sustituir por un .glb propio (ej. Ready Player Me desde una selfie)
+  // pasando ?model=https://…
+  var MODEL_URL = params.get('model') ||
+    'https://threejs.org/examples/models/gltf/Xbot.glb';
+
+  var loadText = document.getElementById('loadText');
+  function bridge(name, arg){
+    if (window.AvatarBridge && typeof window.AvatarBridge[name] === 'function') {
+      try { window.AvatarBridge[name](arg || ''); } catch(e){}
     }
-    const a=raw.indexOf('{'), b=raw.lastIndexOf('}');
-    act(JSON.parse(raw.substring(a,b+1)));
-  }catch(e){ act({text:'No pude conectar con mi cerebro en la nube. Revisa tu internet o tu clave en Ajustes.', emotion:'thinking', gesture:'think'}); }
-}
-// Controles
-$('micBtn').onclick = () => {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ $('textRow').classList.add('open'); $('caption').textContent='Este navegador no reconoce voz: escríbele aquí abajo 👇'; return; }
-  const rec = new SR(); rec.lang='es-ES';
-  $('status').textContent='Escuchando… habla ahora 🎤';
-  rec.onresult = e => think(e.results[0][0].transcript);
-  rec.onerror = () => { $('status').textContent='No te escuché · intenta otra vez'; };
-  rec.start();
-};
-$('kbBtn').onclick = () => $('textRow').classList.toggle('open');
-function sendText(){ const v=$('textInput').value.trim(); if(v){ $('textInput').value=''; think(v); } }
-$('sendText').onclick = sendText;
-$('textInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendText(); });
-$('gestureBtn').onclick = () => {
-  const opts=[['👋 Saludar','wave','happy'],['😄 Celebrar','celebrate','excited'],['🙏 Reverencia','bow','happy'],['🤔 Pensar','think','thinking'],['👍 Asentir','nod','happy'],['🙅 Negar','shake','neutral']];
-  const pick = prompt('Pídele un gesto:\n'+opts.map((o,i)=>`${i+1}. ${o[0]}`).join('\n'), '1');
-  const o = opts[parseInt(pick)-1]; if(o){ setEmotion(o[2]); playGesture(o[1]); }
-};
-// Ajustes
-$('openSettings').onclick = () => {
-  $('inName').value=cfg.name; $('inUser').value=cfg.user; $('inPersonality').value=cfg.personality;
-  $('inProvider').value=cfg.provider; $('inKey').value=cfg.key; $('inHairStyle').value=cfg.hairStyle;
-  fill($('inSkin'), skins, cfg.skin); fill($('inHairColor'), hairColors, cfg.hairColor); fill($('inShirt'), shirts, cfg.shirt);
-  $('settings').showModal();
-};
-$('cancelSettings').onclick = e => { e.preventDefault(); $('settings').close(); };
-$('forget').onclick = e => { e.preventDefault(); cfg.history=[]; save(); alert('Memoria borrada'); };
-$('saveSettings').onclick = e => {
-  e.preventDefault();
-  cfg.name=$('inName').value||'Luna'; cfg.user=$('inUser').value; cfg.personality=$('inPersonality').value;
-  cfg.provider=$('inProvider').value; cfg.key=$('inKey').value.trim(); cfg.hairStyle=parseInt($('inHairStyle').value);
-  cfg.skin=$('inSkin').value; cfg.hairColor=$('inHairColor').value; cfg.shirt=$('inShirt').value;
-  save(); apply(); $('settings').close();
-  act({text:'¡Listo! Así me veo ahora. ¿Te gusta?', emotion:'happy', gesture:'wave'});
-};
-apply(); setEmotion('happy'); playGesture('wave');
+  }
+  if (typeof THREE === 'undefined') {
+    loadText.textContent = 'No se pudo cargar el motor 3D (revisa tu conexión).';
+    bridge('onError', 'three-missing');
+    return;
+  }
+
+  var container = document.getElementById('scene');
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0c0a22);
+  scene.fog = new THREE.Fog(0x0c0a22, 9, 18);
+
+  var camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 1.55, 4.6);
+
+  var renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  container.appendChild(renderer.domElement);
+
+  // Luces de estudio: clave cálida + relleno frío + rim, para piel y volumen reales
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a1430, 0.75));
+  var key = new THREE.DirectionalLight(0xfff1dd, 1.15);
+  key.position.set(2.5, 4, 3.5); key.castShadow = true;
+  key.shadow.mapSize.set(1024,1024);
+  scene.add(key);
+  var rim = new THREE.DirectionalLight(0x8b7cff, 0.8);
+  rim.position.set(-3, 2.5, -2.5); scene.add(rim);
+  var fill = new THREE.PointLight(0x6c8cff, 0.35, 12);
+  fill.position.set(-2, 1.4, 3); scene.add(fill);
+
+  // Escenario: suelo con sombra suave y halo
+  var ground = new THREE.Mesh(
+    new THREE.CircleGeometry(3.4, 48),
+    new THREE.MeshStandardMaterial({ color:0x191536, roughness:1, metalness:0 })
+  );
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+  var halo = new THREE.Mesh(
+    new THREE.CircleGeometry(1.15, 48),
+    new THREE.MeshBasicMaterial({ color:0x8b7cff, transparent:true, opacity:0.16 })
+  );
+  halo.rotation.x = -Math.PI/2; halo.position.y = 0.01; scene.add(halo);
+
+  var mixer = null, clips = {}, current = null, idleAction = null;
+  var model = null, headBone = null, speaking = false;
+  var emotionNow = 'happy';
+  var returnTimer = null;
+
+  function findClip(names){
+    for (var i=0;i<names.length;i++){
+      var want = names[i].toLowerCase();
+      for (var k in clips){ if (k.toLowerCase().indexOf(want) !== -1) return clips[k]; }
+    }
+    return null;
+  }
+  function playClip(clip, holdMs){
+    if (!mixer || !clip || clip.name === currentName) return;
+    if (currentName && clips[currentName]) mixer.clipAction(clips[currentName]).fadeOut(0.35);
+    var action = mixer.clipAction(clip);
+    action.reset(); action.setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true;
+    action.fadeIn(0.35); action.play();
+    currentName = clip.name;
+    clearTimeout(returnTimer);
+    returnTimer = setTimeout(toIdle, holdMs || 2100);
+  }
+  function toIdle(){
+    if (!mixer || !idleAction) return;
+    if (currentName && clips[currentName] && currentName !== idleName) {
+      mixer.clipAction(clips[currentName]).fadeOut(0.5);
+    }
+    idleAction.reset(); idleAction.setLoop(THREE.LoopRepeat, Infinity);
+    idleAction.fadeIn(0.5); idleAction.play();
+    currentName = idleName;
+  }
+  var idleName = null, currentName = null;
+
+  var loader = new THREE.GLTFLoader();
+  loader.load(MODEL_URL, function(gltf){
+    model = gltf.scene;
+    // Encuadre: altura ~1.8 unidades, pies en el suelo
+    var box = new THREE.Box3().setFromObject(model);
+    var size = new THREE.Vector3(); box.getSize(size);
+    var s = 1.8 / (size.y || 1);
+    model.scale.setScalar(s);
+    box = new THREE.Box3().setFromObject(model);
+    model.position.y -= box.min.y;
+    model.traverse(function(o){
+      if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
+      if (o.isBone && /head/i.test(o.name) && !headBone) headBone = o;
+    });
+    scene.add(model);
+
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(model);
+      gltf.animations.forEach(function(c){ clips[c.name] = c; });
+      var idleClip = findClip(['idle','stand','breath']) || gltf.animations[0];
+      idleName = idleClip.name;
+      idleAction = mixer.clipAction(idleClip);
+      idleAction.setLoop(THREE.LoopRepeat, Infinity);
+      idleAction.play();
+      currentName = idleName;
+      bridge('onClips', Object.keys(clips).join(','));
+    }
+    document.getElementById('loading').style.display = 'none';
+    bridge('onReady', MODEL_URL);
+    applyEmotion('happy');
+  }, function(xhr){
+    if (xhr.total) loadText.textContent = 'Despertando a tu avatar 3D… ' + Math.round(xhr.loaded/xhr.total*100) + '%';
+  }, function(err){
+    loadText.textContent = 'No se pudo cargar el modelo 3D. Revisa tu conexión y reabre la app.';
+    bridge('onError', 'model-load');
+  });
+
+  // ---------- Reacciones automáticas (las decide el cerebro, no el usuario) ----------
+  var GESTURE_CLIPS = {
+    wave:      ['wave','salut','hello'],
+    nod:       ['agree','nod','yes'],
+    shake:     ['headshake','head_shake','shake','no'],
+    think:     ['think','sad_pose','sad','idle'],
+    celebrate: ['dance','celebrat','jump','run'],
+    bow:       ['bow','agree','nod']
+  };
+  function react(emotion, gesture){
+    emotionNow = emotion || 'neutral';
+    applyEmotion(emotionNow);
+    var list = GESTURE_CLIPS[(gesture||'none').toLowerCase()];
+    if (list) {
+      var clip = findClip(list);
+      if (clip) playClip(clip, gesture === 'celebrate' ? 3200 : 2100);
+    }
+  }
+  function applyEmotion(e){
+    // Sin blendshapes en este rig: la emoción se actúa con cabeza, postura y luz.
+    emotionNow = e;
+    if (e === 'excited' || e === 'happy') key.intensity = 1.25;
+    else if (e === 'sad') key.intensity = 0.85;
+    else key.intensity = 1.1;
+  }
+  function setSpeaking(v){ speaking = !!v; }
+
+  // API pública: la app Android (y la demo) llaman a esto.
+  window.Avatar3D = { react: react, setSpeaking: setSpeaking, clips: function(){ return Object.keys(clips); } };
+
+  // ---------- Bucle de render: vida idle + actuación al hablar ----------
+  var clock = new THREE.Clock();
+  (function animate(){
+    requestAnimationFrame(animate);
+    var dt = clock.getDelta(), t = clock.elapsedTime;
+    if (mixer) mixer.update(dt);
+    if (model) {
+      // Respiración y presencia: nunca una estatua
+      model.position.y = Math.sin(t * 1.5) * 0.008;
+      model.rotation.y = Math.sin(t * 0.35) * 0.06;
+    }
+    if (headBone) {
+      var rx = 0, rz = 0;
+      if (speaking) rx = Math.sin(t * 9) * 0.045;                 // cabeceo natural al hablar
+      if (emotionNow === 'sad') rx += 0.16;
+      if (emotionNow === 'thinking') rz = 0.10;
+      if (emotionNow === 'surprised') rx -= 0.06;
+      headBone.rotation.x += (rx - headBone.rotation.x) * 0.08;
+      headBone.rotation.z += (rz - headBone.rotation.z) * 0.08;
+    }
+    camera.lookAt(0, 1.25, 0);
+    renderer.render(scene, camera);
+  })();
+
+  addEventListener('resize', function(){
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // ---------- Modo demo (solo navegador): cerebro local mínimo ----------
+  if (!isApp) {
+    document.getElementById('demoUI').style.display = 'block';
+    var cap = document.getElementById('demoCap');
+    function say(r){
+      react(r.emotion, r.gesture);
+      cap.textContent = r.text;
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(r.text); u.lang='es-ES';
+        u.onstart=function(){ setSpeaking(true); };
+        u.onend=function(){ setSpeaking(false); };
+        speechSynthesis.speak(u);
+        setTimeout(function(){ setSpeaking(false); }, 1200 + r.text.length*70);
+      }
+    }
+    window.__demoSay = say;
+    function localBrain(txt){
+      var t = txt.toLowerCase();
+      if (t.indexOf('hola')!==-1) return {text:'¡Hola! Qué bueno verte. ¿En qué te ayudo hoy?', emotion:'happy', gesture:'wave'};
+      if (t.indexOf('chiste')!==-1) return {text:'¿Por qué el libro de matemáticas estaba triste? ¡Porque tenía demasiados problemas!', emotion:'excited', gesture:'celebrate'};
+      if (t.indexOf('gracias')!==-1) return {text:'¡De nada! Para eso estoy.', emotion:'happy', gesture:'nod'};
+      if (t.indexOf('triste')!==-1) return {text:'Lo siento mucho… estoy aquí contigo.', emotion:'sad', gesture:'none'};
+      if (t.indexOf('no ')===0 || t.indexOf('nunca')!==-1) return {text:'Entiendo, tienes razón en eso.', emotion:'neutral', gesture:'shake'};
+      if (t.indexOf('opinas')!==-1 || t.indexOf('piensa')!==-1) return {text:'Déjame pensarlo… creo que es una gran idea.', emotion:'thinking', gesture:'think'};
+      if (t.indexOf('sí')===0 || t.indexOf('si')===0 || t.indexOf('claro')!==-1) return {text:'¡Perfecto! Me alegra que estemos de acuerdo.', emotion:'happy', gesture:'nod'};
+      return {text:'Te escucho. En la app, con tu clave de Gemini o Groq, converso de todo y reacciono así, automáticamente.', emotion:'happy', gesture:'nod'};
+    }
+    function send(){
+      var v = document.getElementById('demoInput').value.trim();
+      if (!v) return;
+      document.getElementById('demoInput').value='';
+      say(localBrain(v));
+    }
+    document.getElementById('demoSend').onclick = send;
+    document.getElementById('demoInput').addEventListener('keydown', function(e){ if (e.key==='Enter') send(); });
+    document.getElementById('demoMic').onclick = function(){
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { cap.textContent='Este navegador no reconoce voz: escríbele abajo.'; return; }
+      var rec = new SR(); rec.lang='es-ES';
+      rec.onresult=function(e){ say(localBrain(e.results[0][0].transcript)); };
+      rec.start();
+    };
+  }
+})();
 </script>
 </body>
 </html>
