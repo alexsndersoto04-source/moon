@@ -1,0 +1,127 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Moon Avatar — app INDEPENDIENTE de AirGesture Transfer.
+// applicationId distinto => se instala como otra app, sin tocar la anterior.
+
+android {
+    namespace 'com.moon.avatar'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.moon.avatar"
+        minSdk 29
+        targetSdk 34
+        versionCode 4
+        versionName "0.4.0"
+    }
+
+    signingConfigs {
+        release {
+            def ciKeyStore = rootProject.file("ci/airgesture-ci.jks")
+            if (ciKeyStore.exists()) {
+                storeFile ciKeyStore
+                storePassword "airgesture"
+                keyAlias "airgesture"
+                keyPassword "airgesture"
+            } else {
+                storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+}
+
+// ---------------------------------------------------------------------------
+// Modelo 3D profesional empaquetado en el APK
+// ---------------------------------------------------------------------------
+// El avatar NUNCA se descarga al abrir la app (eso fallaba en el teléfono):
+// el .glb de Ready Player Me se baja una sola vez al COMPILAR, se verifica
+// (cabecera glTF y tamaño) y viaja dentro del APK junto con three.js y las
+// animaciones que ya están en assets/. Sin internet, el avatar igual aparece.
+def avatarModelFile = file("$projectDir/src/main/assets/avatar_model.glb")
+def avatarModelUrls = [
+        // Preset masculino oficial de Ready Player Me (Visage) con cara ARKit
+        "https://models.readyplayer.me/64e3055495439dfcf3f0b665.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
+        "https://models.readyplayer.me/64d61e9e17883fd73ebe5eb7.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
+        "https://models.readyplayer.me/64d62255f0367d0750492913.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
+        "https://models.readyplayer.me/64d6235e2d3bea6e4267b01d.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0",
+        "https://models.readyplayer.me/64d5d4eb651a0d350005c672.glb?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0"
+]
+
+tasks.register("downloadAvatarModel") {
+    group = "build"
+    description = "Downloads the Ready Player Me avatar .glb into assets when missing (bundled in the APK)."
+
+    doLast {
+        if (avatarModelFile.exists() && avatarModelFile.length() > 200_000L) {
+            logger.lifecycle("Avatar model already present (${avatarModelFile.length()} bytes).")
+            return
+        }
+        avatarModelFile.parentFile.mkdirs()
+        def partial = new File(avatarModelFile.parentFile, avatarModelFile.name + ".part")
+        def errors = []
+        for (String url : avatarModelUrls) {
+            for (int attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    logger.lifecycle("Downloading avatar model (attempt $attempt): $url")
+                    partial.delete()
+                    new URL(url).withInputStream { input ->
+                        partial.withOutputStream { output -> output << input }
+                    }
+                    def magic = new byte[4]
+                    partial.withInputStream { it.read(magic) }
+                    if (partial.length() < 200_000L || new String(magic, "UTF-8") != "glTF") {
+                        throw new IOException("Not a valid GLB (${partial.length()} bytes).")
+                    }
+                    if (!partial.renameTo(avatarModelFile)) {
+                        java.nio.file.Files.copy(partial.toPath(), avatarModelFile.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                        partial.delete()
+                    }
+                    logger.lifecycle("Avatar model ready: ${avatarModelFile.length()} bytes.")
+                    return
+                } catch (Exception e) {
+                    errors << "$url #$attempt -> ${e.message}"
+                    sleep(1200L * attempt)
+                }
+            }
+        }
+        throw new GradleException("Unable to download any avatar model. Details:\n  " + errors.join("\n  "))
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("downloadAvatarModel")
+}

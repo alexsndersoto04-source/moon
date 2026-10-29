@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Moon Avatar 3D</title>
+<style>
+  * { margin:0; box-sizing:border-box; font-family: system-ui, sans-serif; }
+  html,body { height:100%; overflow:hidden; background:#0d0b24; color:#f5f3ff; }
+  #scene { position:fixed; inset:0; }
+  canvas { display:block; }
+  #loading { position:fixed; inset:0; display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center; color:#b9b3e3; font-size:14px; z-index:5; text-align:center; padding:24px; }
+  .spin { width:38px; height:38px; border-radius:50%; border:3px solid #ffffff2a; border-top-color:#8b7cff; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg) } }
+  /* Controles SOLO fuera de la app (vista previa). En la app los gestos los decide el cerebro. */
+  #demoUI { display:none; position:fixed; left:0; right:0; bottom:0; padding:12px 16px 20px; z-index:6; }
+  #demoUI .cap { background:#1e1b3dee; border:1px solid #ffffff22; border-radius:18px; padding:14px; text-align:center; font-size:15px; }
+  #demoUI .row { display:flex; gap:8px; margin-top:10px; }
+  #demoUI input { flex:1; background:#1e1b3d; border:1px solid #ffffff22; color:#fff; border-radius:14px; padding:12px; }
+  #demoUI button { background:#6c5ce7; color:#fff; border:none; border-radius:14px; padding:12px 18px; font-weight:700; }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="loading"><div class="spin"></div><div id="loadText">Cargando a tu avatar 3D profesional…</div></div>
+
+<div id="demoUI">
+  <div class="cap" id="demoCap">Háblale o escríbele: él reacciona SOLO según lo que responda el cerebro.</div>
+  <div class="row">
+    <input id="demoInput" type="text" placeholder="Ej: hola, cuéntame un chiste, ¿qué opinas?">
+    <button id="demoSend">➤</button>
+    <button id="demoMic">🎤</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+(function(){
+  "use strict";
+  var params = new URLSearchParams(location.search);
+  var isApp = params.get('inapp') === '1';
+
+  // ── Modelo profesional de serie, EMPAQUETADO en la app (assets): no se
+  //    descarga al abrir, así que aparece siempre, incluso sin internet.
+  //    Ready Player Me masculino con morphs ARKit + visemas para cara y boca.
+  //    Sustituible por cualquier .glb profesional con ?model=…
+  var DEFAULT_MODEL = isApp ? 'avatar_model.glb' :
+    'https://models.readyplayer.me/64e3055495439dfcf3f0b665.glb' +
+    '?morphTargets=ARKit,Oculus%20Visemes,Eyes%20Extra&textureAtlas=1024&lod=0';
+  var MODEL_URL = params.get('model') || DEFAULT_MODEL;
+
+  // ── Animaciones motion-capture oficiales RPM, también empaquetadas
+  var ANIMS = {
+    idle:      'anim/idle.glb',
+    talking:   'anim/talking.glb',
+    celebrate: 'anim/celebrate.glb'
+  };
+
+  var loadText = document.getElementById('loadText');
+  function bridge(name, arg){
+    if (window.AvatarBridge && typeof window.AvatarBridge[name] === 'function') {
+      try { window.AvatarBridge[name](arg || ''); } catch(e){}
+    }
+  }
+  if (typeof THREE === 'undefined' || !THREE.GLTFLoader) {
+    loadText.textContent = 'No se pudo cargar el motor 3D (revisa tu conexión y reabre).';
+    bridge('onError', 'three-missing');
+    return;
+  }
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d0b24);
+  var camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 1.35, 3.6);
+
+  var renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.enabled = true;
+  document.getElementById('scene').appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xeaf0ff, 0x241c44, 1.05));
+  var key = new THREE.DirectionalLight(0xfff0dd, 1.5);
+  key.position.set(2.5, 4.5, 3.5); key.castShadow = true;
+  key.shadow.mapSize.set(1024,1024); scene.add(key);
+  var rim = new THREE.DirectionalLight(0x8b7cff, 0.9);
+  rim.position.set(-3, 2.5, -2.5); scene.add(rim);
+  var fill = new THREE.PointLight(0x7a9cff, 0.5, 15);
+  fill.position.set(-2.2, 1.6, 3); scene.add(fill);
+
+  var ground = new THREE.Mesh(
+    new THREE.CircleGeometry(2.6, 48),
+    new THREE.MeshStandardMaterial({ color:0x191536, roughness:1 })
+  );
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+  var halo = new THREE.Mesh(
+    new THREE.CircleGeometry(0.85, 48),
+    new THREE.MeshBasicMaterial({ color:0x8b7cff, transparent:true, opacity:0.15 })
+  );
+  halo.rotation.x = -Math.PI/2; halo.position.y = 0.01; scene.add(halo);
+
+  var loader = new THREE.GLTFLoader();
+  var model = null, mixer = null;
+  var actions = {}, activeAction = null;
+  var bones = {};
+  var morphMeshes = [];           // meshes con morph targets (cara/boca)
+  var morphWanted = {};           // nombre morph -> valor deseado 0..1
+  var speaking = false, emotionNow = 'happy';
+  var gestureFx = null, gestureFxStart = 0;   // gesto procedural (nod/shake/wave/think)
+  var framesRendered = 0, readySent = false;
+
+  function loadAnim(keyName, url, loop) {
+    loader.load(url, function(gltf){
+      if (!gltf.animations || !gltf.animations.length || !mixer) return;
+      var clip = gltf.animations[0];
+      var action = mixer.clipAction(clip);
+      action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+      actions[keyName] = action;
+      if (keyName === 'idle' && !activeAction) {
+        action.play(); activeAction = action;
+      }
+      bridge('onClips', keyName);
+    }, undefined, function(){ /* anim opcional: el idle procedural cubre */ });
+  }
+  function switchTo(action, fade) {
+    if (!action || action === activeAction) return;
+    action.reset(); action.setEffectiveWeight(1); action.fadeIn(fade || 0.35); action.play();
+    if (activeAction) activeAction.fadeOut(fade || 0.35);
+    activeAction = action;
+  }
+
+  // ---------- Cara: morphs con nombres flexibles (ARKit / Oculus / RPM) ----------
+  function setMorph(names, v) {
+    for (var i=0;i<names.length;i++) morphWanted[names[i]] = v;
+  }
+  function clearMorphs() { morphWanted = {}; }
+  function applyMorphFrame(dt) {
+    var speed = Math.min(1, dt * 10);
+    morphMeshes.forEach(function(mesh){
+      var dict = mesh.morphTargetDictionary, infl = mesh.morphTargetInfluences;
+      if (!dict || !infl) return;
+      for (var name in dict) {
+        var idx = dict[name];
+        var target = morphWanted[name] || 0;
+        infl[idx] += (target - infl[idx]) * speed;
+      }
+    });
+  }
+  var EMOTION_MORPHS = {
+    happy:     [['mouthSmileLeft','mouthSmileRight'], 0.65, ['eyeSquintLeft','eyeSquintRight'], 0.3],
+    excited:   [['mouthSmileLeft','mouthSmileRight'], 0.85, ['jawOpen','mouthOpen'], 0.18],
+    sad:       [['mouthFrownLeft','mouthFrownRight'], 0.7, ['browInnerUp'], 0.7],
+    surprised: [['jawOpen','mouthOpen'], 0.45, ['eyeWideLeft','eyeWideRight','browOuterUpLeft','browOuterUpRight'], 0.6],
+    thinking:  [['mouthLeft','mouthPressLeft','mouthPressRight'], 0.35, ['browDownLeft'], 0.35],
+    shy:       [['mouthSmileLeft','mouthSmileRight'], 0.4, ['eyeSquintLeft','eyeSquintRight'], 0.35],
+    neutral:   [[], 0, [], 0]
+  };
+  function applyEmotion(e) {
+    emotionNow = e || 'neutral';
+    if (!speaking) clearMorphs();
+    var def = EMOTION_MORPHS[emotionNow] || EMOTION_MORPHS.neutral;
+    if (def[0].length) setMorph(def[0], def[1]);
+    if (def[2].length) setMorph(def[2], def[3]);
+    key.intensity = emotionNow === 'sad' ? 1.15 : (emotionNow === 'excited' ? 1.7 : 1.5);
+  }
+
+  // ---------- Carga del modelo con encuadre AUTOMÁTICO verificable ----------
+  loader.load(MODEL_URL, function(gltf){
+    model = gltf.scene;
+    scene.add(model);
+    // 1) Normalizar SOLO con medidas del propio modelo (nada de valores a ojo):
+    //    escalar a 1.75 m, centrar en X/Z y apoyar los pies en y=0.
+    model.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(model);
+    var size = new THREE.Vector3(); box.getSize(size);
+    var center = new THREE.Vector3(); box.getCenter(center);
+    var h = size.y;
+    if (isFinite(h) && h > 0.2 && h < 50) {
+      var s = 1.75 / h;
+      model.scale.setScalar(s);
+      model.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+    }
+    model.traverse(function(o){
+      if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
+      if (o.isBone) bones[o.name] = o;
+      if (o.morphTargetDictionary) morphMeshes.push(o);
+    });
+    // 2) Cámara encuadrando el cuerpo entero con margen, siempre igual
+    camera.position.set(0, 1.30, 3.55);
+    camera.lookAt(0, 0.92, 0);
+    // 3) Animaciones: primero el mixer, luego los clips externos RPM
+    mixer = new THREE.AnimationMixer(model);
+    loadAnim('idle', ANIMS.idle, true);
+    loadAnim('talking', ANIMS.talking, true);
+    loadAnim('celebrate', ANIMS.celebrate, true);
+    bridge('onDebug', 'size=' + size.x.toFixed(2) + 'x' + size.y.toFixed(2) +
+      ' morphs=' + morphMeshes.length + ' bones=' + Object.keys(bones).length);
+    document.getElementById('loading').style.display = 'none';
+    applyEmotion('happy');
+  }, function(xhr){
+    if (xhr.total) loadText.textContent = 'Cargando a tu avatar 3D profesional… ' +
+      Math.round(xhr.loaded/xhr.total*100) + '%';
+  }, function(err){
+    loadText.textContent = 'No se pudo cargar el modelo 3D. Revisa tu conexión y reabre la app.';
+    bridge('onError', 'model-load');
+  });
+
+  // ---------- Reacciones: SOLO las ordena el cerebro ----------
+  function bone(name) {
+    return bones[name] || bones['mixamorig' + name] || null;
+  }
+  function react(emotion, gesture) {
+    applyEmotion(emotion || 'neutral');
+    var g = (gesture || 'none').toLowerCase();
+    if (g === 'celebrate' && actions.celebrate) {
+      switchTo(actions.celebrate, 0.3);
+      setTimeout(function(){ if (!speaking) switchTo(actions.idle, 0.5); }, 3400);
+    } else if (g === 'nod' || g === 'shake' || g === 'wave' || g === 'think' || g === 'bow') {
+      gestureFx = g; gestureFxStart = performance.now();
+    }
+  }
+  function setSpeaking(v) {
+    speaking = !!v;
+    if (speaking) {
+      switchTo(actions.talking || actions.idle, 0.3);
+    } else {
+      switchTo(actions.idle, 0.45);
+      clearMorphs(); applyEmotion(emotionNow);
+    }
+  }
+  window.Avatar3D = { react: react, setSpeaking: setSpeaking };
+
+  // ---------- Vida procedural: parpadeo, visemas al hablar, gestos ----------
+  function procedural(t, dt) {
+    // Parpadeo cada ~3.2 s
+    var blinkPhase = t % 3.2;
+    var blink = blinkPhase < 0.12 ? 1 : 0;
+    setMorph(['eyeBlinkLeft','eyeBlinkRight','eyesClosed'], blink);
+    // Hablar: visemas/boca moviéndose con ritmo de sílabas
+    if (speaking) {
+      var open = 0.25 + Math.abs(Math.sin(t * 7.3)) * 0.55 + Math.abs(Math.sin(t * 13.7)) * 0.2;
+      setMorph(['jawOpen'], open * 0.7);
+      setMorph(['mouthOpen'], open * 0.5);
+      setMorph(['viseme_aa'], Math.max(0, Math.sin(t * 3.1)) * 0.6);
+      setMorph(['viseme_O'], Math.max(0, Math.sin(t * 2.3 + 2)) * 0.5);
+    }
+    // Gestos procedurales (cabeza/brazo), 1.6 s con envolvente suave
+    var head = bone('Head'), neck = bone('Neck');
+    var arm = bone('RightArm'), fore = bone('RightForeArm');
+    var fxP = 0, fxActive = false;
+    if (gestureFx) {
+      fxP = (performance.now() - gestureFxStart) / 1600;
+      if (fxP >= 1) gestureFx = null; else fxActive = true;
+    }
+    var env = fxActive ? Math.sin(Math.min(1, fxP) * Math.PI) : 0;
+    if (head) {
+      var rx = 0, ry = 0, rz = 0;
+      if (fxActive && gestureFx === 'nod') rx = Math.sin(fxP * Math.PI * 4) * 0.22 * env;
+      if (fxActive && gestureFx === 'bow') rx = 0.38 * env;
+      if (fxActive && gestureFx === 'shake') ry = Math.sin(fxP * Math.PI * 5) * 0.28 * env;
+      if ((fxActive && gestureFx === 'think') || emotionNow === 'thinking') rz = 0.10 * (fxActive ? env : 0.6);
+      if (speaking) rx += Math.sin(t * 8) * 0.03;
+      if (emotionNow === 'sad') rx += 0.10;
+      if (emotionNow === 'surprised') rx -= 0.05;
+      head.rotation.x += rx; head.rotation.y += ry; head.rotation.z += rz;
+    }
+    if (arm && fore && fxActive && gestureFx === 'wave') {
+      arm.rotation.z += -2.0 * env;
+      fore.rotation.z += Math.sin(fxP * Math.PI * 6) * 0.5 * env - 0.3 * env;
+    }
+    if (neck && emotionNow === 'sad') neck.rotation.x += 0.06;
+    applyMorphFrame(dt);
+  }
+
+  var clock = new THREE.Clock();
+  (function animate(){
+    requestAnimationFrame(animate);
+    var dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    if (mixer) mixer.update(dt);
+    procedural(t, dt);
+    if (model && !activeAction) {
+      model.rotation.y = Math.sin(t * 0.35) * 0.05;   // presencia si no hay clip
+    }
+    renderer.render(scene, camera);
+    if (model && !readySent && ++framesRendered > 20) {
+      readySent = true;
+      bridge('onReady', MODEL_URL);   // listo SOLO tras renderizar frames reales
+    }
+  })();
+
+  addEventListener('resize', function(){
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // ---------- Demo en navegador (mismo cerebro local de respaldo) ----------
+  if (!isApp) {
+    document.getElementById('demoUI').style.display = 'block';
+    var cap = document.getElementById('demoCap');
+    function say(r){
+      react(r.emotion, r.gesture);
+      cap.textContent = r.text;
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(r.text); u.lang = 'es-ES';
+        u.onstart = function(){ setSpeaking(true); };
+        u.onend = function(){ setSpeaking(false); };
+        speechSynthesis.speak(u);
+        setTimeout(function(){ setSpeaking(false); }, 1200 + r.text.length * 70);
+      }
+    }
+    function localBrain(txt){
+      var t = txt.toLowerCase();
+      if (t.indexOf('hola') !== -1) return {text:'¡Hola! Qué bueno verte. ¿En qué te ayudo hoy?', emotion:'happy', gesture:'wave'};
+      if (t.indexOf('chiste') !== -1) return {text:'¿Por qué el libro de matemáticas estaba triste? ¡Porque tenía demasiados problemas!', emotion:'excited', gesture:'celebrate'};
+      if (t.indexOf('gracias') !== -1) return {text:'¡De nada! Para eso estoy.', emotion:'happy', gesture:'nod'};
+      if (t.indexOf('triste') !== -1) return {text:'Lo siento mucho… estoy aquí contigo.', emotion:'sad', gesture:'none'};
+      if (t.indexOf('opinas') !== -1 || t.indexOf('piensa') !== -1) return {text:'Déjame pensarlo… creo que es una gran idea.', emotion:'thinking', gesture:'think'};
+      if (t.indexOf('adiós') !== -1 || t.indexOf('adios') !== -1) return {text:'¡Hasta luego! Aquí estaré cuando vuelvas.', emotion:'happy', gesture:'wave'};
+      if (t.indexOf('no') === 0) return {text:'Entiendo, tienes razón en eso.', emotion:'neutral', gesture:'shake'};
+      return {text:'Te escucho. En la app, con tu clave de Gemini o Groq, converso de todo y reacciono así, automáticamente.', emotion:'happy', gesture:'nod'};
+    }
+    function send(){
+      var v = document.getElementById('demoInput').value.trim();
+      if (!v) return;
+      document.getElementById('demoInput').value = '';
+      say(localBrain(v));
+    }
+    document.getElementById('demoSend').onclick = send;
+    document.getElementById('demoInput').addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
+    document.getElementById('demoMic').onclick = function(){
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { cap.textContent = 'Este navegador no reconoce voz: escríbele abajo.'; return; }
+      var rec = new SR(); rec.lang = 'es-ES';
+      rec.onresult = function(e){ say(localBrain(e.results[0][0].transcript)); };
+      rec.start();
+    };
+  }
+})();
+</script>
+</body>
+</html>
