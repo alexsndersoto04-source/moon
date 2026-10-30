@@ -1,0 +1,121 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Moon Avatar — app INDEPENDIENTE de AirGesture Transfer.
+// applicationId distinto => se instala como otra app, sin tocar la anterior.
+
+android {
+    namespace 'com.moon.avatar'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.moon.avatar"
+        minSdk 29
+        targetSdk 34
+        versionCode 15
+        versionName "1.5.0"
+    }
+
+    signingConfigs {
+        release {
+            def ciKeyStore = rootProject.file("ci/airgesture-ci.jks")
+            if (ciKeyStore.exists()) {
+                storeFile ciKeyStore
+                storePassword "airgesture"
+                keyAlias "airgesture"
+                keyPassword "airgesture"
+            } else {
+                storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+}
+
+// ---------------------------------------------------------------------------
+// Datos 3D incrustados (sin cargar NINGÚN archivo en tiempo de ejecución)
+// ---------------------------------------------------------------------------
+// Diagnóstico tras 3 fallos en el teléfono: cada mecanismo de carga de un
+// WebView (HTTPS remoto, file:// por XHR, appassets) tiene un bloqueo
+// distinto según el dispositivo. Solución que no depende de ningún loader
+// de red: al compilar, el modelo y las animaciones .glb se convierten a
+// base64 en model-data.js y la página los PARSEA desde memoria
+// (GLTFLoader.parse). En el teléfono no se descarga ni se lee ningún .glb.
+def avatarDataDir = file("$buildDir/generated/avatarData")
+
+android {
+    sourceSets {
+        main {
+            assets.srcDir(avatarDataDir)
+        }
+    }
+}
+
+tasks.register("generateAvatarData") {
+    group = "build"
+    description = "Embeds avatar_model.glb + anim/*.glb as base64 JS for in-memory parsing."
+    inputs.file("$projectDir/src/main/assets/avatar_model.glb")
+    inputs.dir("$projectDir/src/main/assets/anim")
+    outputs.dir(avatarDataDir)
+
+    doLast {
+        avatarDataDir.mkdirs()
+        def encode = { File f ->
+            java.util.Base64.getEncoder().encodeToString(f.bytes)
+        }
+        def out = new File(avatarDataDir, "model-data.js")
+        out.withWriter("UTF-8") { w ->
+            w.write("// Generado al compilar por generateAvatarData. No editar.\n")
+            w.write("window.__MODEL_B64=\"")
+            w.write(encode(file("$projectDir/src/main/assets/avatar_model.glb")))
+            w.write("\";\nwindow.__ANIM_B64={")
+            def first = true
+            file("$projectDir/src/main/assets/anim").listFiles()
+                .findAll { it.name.endsWith(".glb") }.sort { it.name }.each { f ->
+                if (!first) w.write(",")
+                first = false
+                w.write("\"${f.name.replace('.glb', '')}\":\"")
+                w.write(encode(f))
+                w.write("\"")
+            }
+            w.write("};\n")
+        }
+        logger.lifecycle("Embedded 3D data: ${out.length()} bytes -> model-data.js")
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("generateAvatarData")
+}
+

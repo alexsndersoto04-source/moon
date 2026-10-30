@@ -22,3 +22,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "AirGestureTransfer"
 include ':app'
+
+// Moon Avatar: app independiente (applicationId com.moon.avatar).
+// Vive en avatar-app/ y NO comparte código ni APK con AirGesture Transfer.
+include ':avatar'
+project(':avatar').projectDir = file('avatar-app')
