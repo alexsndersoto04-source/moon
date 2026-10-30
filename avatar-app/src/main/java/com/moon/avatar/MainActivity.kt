@@ -10,6 +10,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.view.View
@@ -47,6 +50,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var live: LiveVoice
     private var liveOn = false
     private val avatarCaption = StringBuilder()
+    // Activacion por voz: escucha "Hey Luna" (nombre del avatar) en reposo
+    private var wakeRecognizer: SpeechRecognizer? = null
+    private var wakeListening = false
+    private var activityResumed = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var mouthFallback: Runnable? = null
     private var avatarReady = false
@@ -56,7 +63,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         fun onReady(info: String) {
             mainHandler.post {
                 avatarReady = true
-                ensureLive()
+                startWakeListening()
                 status.text = if (brain.apiKey.isBlank())
                     "Avatar 3D listo · cerebro local (pon tu clave en ⚙️)"
                 else "Avatar 3D listo · cerebro conectado (${brain.provider})"
@@ -116,7 +123,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 mainHandler.post {
                     liveOn = false
                     setSpeaking(false)
-                    status.text = reason + " · toca la pantalla para reintentar"
+                    status.text = reason
+                    startWakeListening()
                 }
             }
             override fun onSpeaking(speaking: Boolean) {
@@ -271,7 +279,92 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     override fun onResume() {
         super.onResume()
-        if (::live.isInitialized) ensureLive()
+        activityResumed = true
+        if (::live.isInitialized && !liveOn) startWakeListening()
+    }
+
+    override fun onPause() {
+        activityResumed = false
+        stopWakeListening()
+        super.onPause()
+    }
+
+    // ---------- Activacion por voz: "Hey Luna" ----------
+    private fun wakePhrases(): List<String> {
+        val n = brain.avatarName.trim().lowercase()
+        return listOf("hey $n", "oye $n", "hola $n", "eh $n", n)
+    }
+
+    private fun startWakeListening() {
+        if (!activityResumed || liveOn || wakeListening) return
+        if (brain.apiKey.isBlank() || brain.provider != "gemini") {
+            status.text = "Pon tu clave de Gemini en ⚙️ para activar por voz"
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            status.text = "Toca la pantalla para hablar en vivo"
+            return
+        }
+        status.text = "Di «Hey ${brain.avatarName}» para hablar conmigo en vivo"
+        if (wakeRecognizer == null) wakeRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        wakeListening = true
+        wakeRecognizer?.setRecognitionListener(object : RecognitionListener {
+            private fun checkForWake(texts: List<String>?) {
+                val heard = texts?.joinToString(" ")?.lowercase() ?: return
+                val hit = wakePhrases().any { phrase ->
+                    phrase.length > 2 && heard.contains(phrase)
+                }
+                if (hit) wakeUp()
+            }
+            override fun onResults(results: Bundle?) {
+                checkForWake(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
+                wakeListening = false
+                mainHandler.postDelayed({ if (!liveOn) startWakeListening() }, 350)
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                checkForWake(partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
+            }
+            override fun onError(error: Int) {
+                wakeListening = false
+                mainHandler.postDelayed({ if (!liveOn) startWakeListening() }, 900)
+            }
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        }
+        try {
+            wakeRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            wakeListening = false
+        }
+    }
+
+    private fun stopWakeListening() {
+        wakeListening = false
+        try { wakeRecognizer?.stopListening() } catch (e: Exception) { /* noop */ }
+        try { wakeRecognizer?.cancel() } catch (e: Exception) { /* noop */ }
+    }
+
+    /** Dijo la frase: a hablar en vivo directamente con la IA. */
+    private fun wakeUp() {
+        stopWakeListening()
+        if (liveOn) return
+        avatarCaption.clear()
+        status.text = "¡Te escuché! Conectando en vivo…"
+        live.start(greet = true)
     }
 
     // ---------- Ajustes: identidad, cerebro y cuerpo 3D ----------
@@ -334,7 +427,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            ensureLive()
+            startWakeListening()
         } else if (requestCode == 42) {
             Toast.makeText(this, "Sin permiso de micrófono no puede escucharte", Toast.LENGTH_LONG).show()
         }

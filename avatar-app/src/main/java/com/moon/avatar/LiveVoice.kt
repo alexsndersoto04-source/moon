@@ -76,13 +76,16 @@ class LiveVoice(
         "gemini-2.5-flash-native-audio-preview-09-2025"
     )
     @Volatile private var attemptId = 0
+    private var attempts: List<Pair<String, Int>> = emptyList()
+    @Volatile private var greetOnConnect = false
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var setupTimeout: Runnable? = null
 
     fun isRunning(): Boolean = running
 
-    fun start() {
+    fun start(greet: Boolean = false) {
         if (running) return
+        greetOnConnect = greet
         if (brain.apiKey.isBlank() || brain.provider != "gemini") {
             listener.onDisconnected("Pon tu clave de Gemini en Ajustes para el modo en vivo")
             return
@@ -99,6 +102,14 @@ class LiveVoice(
             if (found.isNotEmpty()) {
                 models = (found + models).distinct()
             }
+            // Cada modelo con los DOS formatos oficiales, primero el de la guia actual
+            val built = mutableListOf<Pair<String, Int>>()
+            for (m in models.take(4)) {
+                built.add(m to 0)
+                built.add(m to 1)
+            }
+            attempts = built
+            modelIndex = 0
             if (running) connect()
         }
     }
@@ -149,7 +160,7 @@ class LiveVoice(
         if (!running) return
         setupDone = false
         val myAttempt = ++attemptId
-        val model = models[modelIndex]
+        val (model, variant) = attempts.getOrElse(modelIndex) { models.first() to 0 }
         val url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${brain.apiKey}"
         val request = Request.Builder().url(url).build()
         // Timeout duro: si en 12 s no hay setupComplete, este intento murio.
@@ -159,10 +170,10 @@ class LiveVoice(
                 failAttempt("sin respuesta del servidor con $model")
             }
         }
-        mainHandler.postDelayed(setupTimeout!!, 12000)
+        mainHandler.postDelayed(setupTimeout!!, 9000)
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                if (myAttempt == attemptId) sendSetup(model)
+                if (myAttempt == attemptId) sendSetup(model, variant)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -189,7 +200,7 @@ class LiveVoice(
         setupTimeout?.let { mainHandler.removeCallbacks(it) }
         try { ws?.cancel() } catch (e: Exception) { /* noop */ }
         ws = null
-        if (!setupDone && modelIndex < models.lastIndex - 1) {
+        if (!setupDone && modelIndex < attempts.lastIndex) {
             modelIndex++
             connect()
         } else {
@@ -199,29 +210,38 @@ class LiveVoice(
         }
     }
 
-    private fun sendSetup(model: String) {
+    private fun sendSetup(model: String, variant: Int) {
         val voiceName = when (brain.voiceMode) {
             "orus" -> "Orus"
             "enceladus" -> "Enceladus"
             else -> "Charon"
         }
         val user = if (brain.userName.isBlank()) "" else " La persona se llama ${brain.userName}."
-        val setup = JSONObject()
-            .put("model", "models/$model")
-            .put("generationConfig", JSONObject()
+        val instruction = JSONObject()
+            .put("parts", JSONArray().put(JSONObject().put("text",
+                "Eres ${brain.avatarName}, un avatar humano que conversa EN VIVO por voz. " +
+                "Tu personalidad: ${brain.personality}$user " +
+                "Habla en español, de forma natural y breve, como en una conversación real. " +
+                "Nada de listas ni textos largos: frases cortas habladas.")))
+        val speech = JSONObject()
+            .put("voiceConfig", JSONObject()
+                .put("prebuiltVoiceConfig", JSONObject()
+                    .put("voiceName", voiceName)))
+        val setup = JSONObject().put("model", "models/$model")
+        if (variant == 0) {
+            // Formato de la guia oficial actual de Live API (sep 2026)
+            setup.put("responseModalities", JSONArray().put("AUDIO"))
+            setup.put("speechConfig", speech)
+            setup.put("systemInstruction", instruction)
+        } else {
+            // Formato clasico: todo dentro de generationConfig
+            setup.put("generationConfig", JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
-                .put("speechConfig", JSONObject()
-                    .put("voiceConfig", JSONObject()
-                        .put("prebuiltVoiceConfig", JSONObject()
-                            .put("voiceName", voiceName)))))
-            .put("systemInstruction", JSONObject()
-                .put("parts", JSONArray().put(JSONObject().put("text",
-                    "Eres ${brain.avatarName}, un avatar humano que conversa EN VIVO por voz. " +
-                    "Tu personalidad: ${brain.personality}$user " +
-                    "Habla en español, de forma natural y breve, como en una conversación real. " +
-                    "Nada de listas ni textos largos: frases cortas habladas."))))
-            .put("inputAudioTranscription", JSONObject())
-            .put("outputAudioTranscription", JSONObject())
+                .put("speechConfig", speech))
+            setup.put("systemInstruction", instruction)
+        }
+        setup.put("inputAudioTranscription", JSONObject())
+        setup.put("outputAudioTranscription", JSONObject())
         ws?.send(JSONObject().put("setup", setup).toString())
     }
 
@@ -239,6 +259,12 @@ class LiveVoice(
             startCapture()
             startPlayback()
             listener.onConnected()
+            if (greetOnConnect) {
+                greetOnConnect = false
+                ws?.send(JSONObject().put("realtimeInput", JSONObject()
+                    .put("text", "Salúdame muy breve y dime que ya me escuchas en vivo."))
+                    .toString())
+            }
             return
         }
         val content = msg.optJSONObject("serverContent") ?: return
