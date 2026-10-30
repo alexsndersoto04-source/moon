@@ -184,7 +184,7 @@ class Brain(context: Context) {
                 }
             }
             lastError = describeHttpError("Gemini", result.code, result.errorBody)
-            null to isModelUnavailable(result)
+            return null to isModelUnavailable(result)
         }
 
         val (firstReply, shouldDiscover) = tryModel(preferred)
