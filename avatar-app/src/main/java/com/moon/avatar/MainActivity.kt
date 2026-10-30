@@ -47,13 +47,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var voice: Voice
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private lateinit var live: LiveVoice
-    private var liveOn = false
-    private val avatarCaption = StringBuilder()
-    // Activacion por voz: escucha "Hey Luna" (nombre del avatar) en reposo
-    private var wakeRecognizer: SpeechRecognizer? = null
-    private var wakeListening = false
-    private var activityResumed = false
+    private var recognizer: SpeechRecognizer? = null
+    // Cola de frases: la voz empieza con la 1ª frase mientras genera el resto
+    private val sentenceQueue = ArrayDeque<String>()
+    private var sentenceSpeaking = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var mouthFallback: Runnable? = null
     private var avatarReady = false
@@ -63,7 +60,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         fun onReady(info: String) {
             mainHandler.post {
                 avatarReady = true
-                startWakeListening()
                 status.text = if (brain.apiKey.isBlank())
                     "Avatar 3D listo · cerebro local (pon tu clave en ⚙️)"
                 else "Avatar 3D listo · cerebro conectado (${brain.provider})"
@@ -112,43 +108,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         voice = Voice(brain)
         tts = TextToSpeech(this, this)
 
-        live = LiveVoice(this, brain, object : LiveVoice.Listener {
-            override fun onConnected() {
-                mainHandler.post {
-                    liveOn = true
-                    status.text = "🟢 EN VIVO · habla, te escucha en tiempo real"
-                }
-            }
-            override fun onDisconnected(reason: String) {
-                mainHandler.post {
-                    liveOn = false
-                    setSpeaking(false)
-                    status.text = reason
-                    startWakeListening()
-                }
-            }
-            override fun onSpeaking(speaking: Boolean) {
-                mainHandler.post { setSpeaking(speaking) }
-            }
-            override fun onUserText(text: String) {
-                mainHandler.post { caption.text = "Tú: $text" }
-            }
-            override fun onAvatarText(text: String) {
-                mainHandler.post {
-                    avatarCaption.append(text)
-                    caption.text = avatarCaption.toString()
-                }
-            }
-            override fun onInterrupted() {
-                mainHandler.post { status.text = "🟢 EN VIVO · lo interrumpiste, sigue hablando" }
-            }
-        })
 
+        findViewById<TextView>(R.id.micButton).setOnClickListener { startListening() }
         findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
-        // Sin botones de llamada: el en vivo arranca solo. Tocar la pantalla
-        // reintenta si se corto.
-        avatarWeb.setOnClickListener { ensureLive() }
-        caption.setOnClickListener { ensureLive() }
         findViewById<TextView>(R.id.keyboardButton).setOnClickListener {
             startActivity(Intent(this, TextChatActivity::class.java))
         }
@@ -217,32 +179,60 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         react(reply.emotion, reply.gesture)
         status.text = "${brain.avatarName} está hablando…"
 
-        // 1) Voz HUMANA generada por la IA (con tu clave de Gemini)
-        if (brain.voiceMode != "system" && brain.provider == "gemini" && brain.apiKey.isNotBlank()) {
-            val voiceName = when (brain.voiceMode) {
-                "orus" -> "Orus"
-                "enceladus" -> "Enceladus"
-                else -> "Charon"
-            }
-            voice.speak(reply.text, voiceName,
-                onStart = { mainHandler.post { setSpeaking(true) } },
-                onDone = { ok ->
-                    mainHandler.post {
-                        setSpeaking(false)
-                        if (ok) {
-                            status.text = "Te escucho · toca el micrófono"
-                        } else {
-                            // Respaldo: que al menos lo diga con la voz del sistema
-                            speakWithSystemTts(reply)
-                        }
-                    }
-                })
+        // Sin clave Gemini no hay voz humana: directo al respaldo del sistema
+        if (brain.voiceMode == "system" || brain.provider != "gemini" || brain.apiKey.isBlank()) {
+            speakWithSystemTts(reply)
             return
         }
-        speakWithSystemTts(reply)
+        // FRASE A FRASE: la primera frase suena en cuanto su audio esta listo,
+        // sin esperar a generar la respuesta hablada entera (menos retraso).
+        val voiceName = when (brain.voiceMode) {
+            "orus" -> "Orus"
+            "enceladus" -> "Enceladus"
+            else -> "Charon"
+        }
+        synchronized(sentenceQueue) {
+            sentenceQueue.clear()
+            splitSentences(reply.text).forEach { sentenceQueue.addLast(it) }
+        }
+        speakNextSentence(voiceName, reply)
     }
 
-    /** Respaldo: voz del sistema (la robótica), mejorada eligiendo la mejor voz es. */
+    private fun splitSentences(text: String): List<String> {
+        val parts = text.split(Regex("(?<=[.!?…])\\s+"))
+            .map { it.trim() }.filter { it.isNotEmpty() }
+        return if (parts.isEmpty()) listOf(text) else parts
+    }
+
+    private fun speakNextSentence(voiceName: String, fullReply: AvatarReply) {
+        val sentence: String?
+        synchronized(sentenceQueue) {
+            sentence = sentenceQueue.removeFirstOrNull()
+            if (sentence == null) sentenceSpeaking = false
+        }
+        if (sentence == null) {
+            setSpeaking(false)
+            status.text = "Te escucho · toca Hablar y dime algo"
+            return
+        }
+        sentenceSpeaking = true
+        voice.speak(sentence, voiceName,
+            onStart = { mainHandler.post { setSpeaking(true) } },
+            onDone = { ok ->
+                mainHandler.post {
+                    if (ok) {
+                        speakNextSentence(voiceName, fullReply)
+                    } else {
+                        // La voz de la IA fallo a mitad: respaldo del sistema
+                        synchronized(sentenceQueue) { sentenceQueue.clear() }
+                        sentenceSpeaking = false
+                        speakWithSystemTts(fullReply)
+                    }
+                }
+            })
+    }
+
+    /** Respaldo: voz del sistema    /** Respaldo: voz del sistema (la robótica), mejorada eligiendo la mejor voz es. */
     private fun speakWithSystemTts(reply: AvatarReply) {
         if (ttsReady) {
             tts?.speak(reply.text, TextToSpeech.QUEUE_FLUSH, null, "avatar_speech")
@@ -258,113 +248,61 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------- Modo EN VIVO automatico (sin botones) ----------
-    /** El en vivo se conecta solo al abrir y al volver a la app. */
-    private fun ensureLive() {
-        if (liveOn || (::live.isInitialized && live.isRunning())) return
-        if (brain.apiKey.isBlank() || brain.provider != "gemini") {
-            status.text = "Pon tu clave de Gemini en ⚙️ y el en vivo arranca solo"
-            return
-        }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
-            return
-        }
-        tts?.stop()
-        if (::voice.isInitialized) voice.stop()
-        avatarCaption.clear()
-        status.text = "Conectando en vivo…"
-        live.start()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        activityResumed = true
-        if (::live.isInitialized && !liveOn) startWakeListening()
-    }
-
-    override fun onPause() {
-        activityResumed = false
-        stopWakeListening()
-        super.onPause()
-    }
-
-    // ---------- Activacion por voz: "Hey Luna" ----------
-    private fun wakePhrases(): List<String> {
-        val n = brain.avatarName.trim().lowercase()
-        return listOf("hey $n", "oye $n", "hola $n", "eh $n", n)
-    }
-
-    private fun startWakeListening() {
-        if (!activityResumed || liveOn || wakeListening) return
-        if (brain.apiKey.isBlank() || brain.provider != "gemini") {
-            status.text = "Pon tu clave de Gemini en ⚙️ para activar por voz"
-            return
-        }
+    // ---------- Boton Hablar: te escucha una vez y responde por voz ----------
+    private fun startListening() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
             return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            status.text = "Toca la pantalla para hablar en vivo"
+            Toast.makeText(this, "Este teléfono no tiene reconocimiento de voz: usa el botón Texto", Toast.LENGTH_LONG).show()
             return
         }
-        status.text = "Di «Hey ${brain.avatarName}» para hablar conmigo en vivo"
-        if (wakeRecognizer == null) wakeRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        wakeListening = true
-        wakeRecognizer?.setRecognitionListener(object : RecognitionListener {
-            private fun checkForWake(texts: List<String>?) {
-                val heard = texts?.joinToString(" ")?.lowercase() ?: return
-                val hit = wakePhrases().any { phrase ->
-                    phrase.length > 2 && heard.contains(phrase)
-                }
-                if (hit) wakeUp()
-            }
+        tts?.stop()
+        if (::voice.isInitialized) voice.stop()
+        synchronized(sentenceQueue) { sentenceQueue.clear() }
+        setSpeaking(false)
+
+        if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onResults(results: Bundle?) {
-                checkForWake(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
-                wakeListening = false
-                mainHandler.postDelayed({ if (!liveOn) startWakeListening() }, 350)
-            }
-            override fun onPartialResults(partialResults: Bundle?) {
-                checkForWake(partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull().orEmpty()
+                if (text.isNotBlank()) hear(text)
+                else status.text = "No te escuché · toca Hablar e intenta otra vez"
             }
             override fun onError(error: Int) {
-                wakeListening = false
-                mainHandler.postDelayed({ if (!liveOn) startWakeListening() }, 900)
+                status.text = "No te escuché · toca Hablar e intenta otra vez"
             }
-            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onReadyForSpeech(params: Bundle?) {
+                status.text = "Escuchando… habla ahora 🎤"
+            }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         }
         try {
-            wakeRecognizer?.startListening(intent)
+            recognizer?.startListening(intent)
         } catch (e: Exception) {
-            wakeListening = false
+            Toast.makeText(this, "No pude abrir el micrófono", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun stopWakeListening() {
-        wakeListening = false
-        try { wakeRecognizer?.stopListening() } catch (e: Exception) { /* noop */ }
-        try { wakeRecognizer?.cancel() } catch (e: Exception) { /* noop */ }
-    }
-
-    /** Dijo la frase: a hablar en vivo directamente con la IA. */
-    private fun wakeUp() {
-        stopWakeListening()
-        if (liveOn) return
-        avatarCaption.clear()
-        status.text = "¡Te escuché! Conectando en vivo…"
-        live.start(greet = true)
+    /** Dijiste algo (botón Hablar): el cerebro piensa y el avatar lo actúa por voz. */
+    private fun hear(text: String) {
+        caption.text = "Tú: $text"
+        react(Emotion.THINKING, Gesture.THINK)
+        status.text = "${brain.avatarName} está pensando…"
+        brain.think(text) { reply ->
+            mainHandler.post { say(reply) }
+        }
     }
 
     // ---------- Ajustes: identidad, cerebro y cuerpo 3D ----------
@@ -427,7 +365,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 42 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            startWakeListening()
+            startListening()
         } else if (requestCode == 42) {
             Toast.makeText(this, "Sin permiso de micrófono no puede escucharte", Toast.LENGTH_LONG).show()
         }
@@ -437,7 +375,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (::voice.isInitialized) voice.stop()
         tts?.stop()
         tts?.shutdown()
-        if (::live.isInitialized) live.stop()
+        try { recognizer?.destroy() } catch (e: Exception) { /* noop */ }
         avatarWeb.destroy()
         super.onDestroy()
     }

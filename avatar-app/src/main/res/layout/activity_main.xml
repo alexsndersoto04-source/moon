@@ -88,6 +88,21 @@
 
 
             <TextView
+                android:id="@+id/micButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_mic_button"
+                android:gravity="center"
+                android:paddingStart="22dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="22dp"
+                android:paddingBottom="14dp"
+                android:text="🎤 Hablar"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/keyboardButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
