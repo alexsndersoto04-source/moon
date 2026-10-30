@@ -69,10 +69,10 @@ class LiveVoice(
     // Modelos Live: primero los que la PROPIA clave diga (bidiGenerateContent),
     // luego los nombres oficiales vigentes como respaldo.
     @Volatile private var models: List<String> = listOf(
-        "gemini-3.8-live",
-        "gemini-3.1-flash-live-preview",
         "gemini-2.5-flash-native-audio-latest",
         "gemini-2.5-flash-native-audio-preview-12-2025",
+        "gemini-3.1-flash-live-preview",
+        "gemini-3.8-live",
         "gemini-2.5-flash-native-audio-preview-09-2025"
     )
     @Volatile private var attemptId = 0
@@ -104,7 +104,7 @@ class LiveVoice(
             }
             // Cada modelo con los DOS formatos oficiales, primero el de la guia actual
             val built = mutableListOf<Pair<String, Int>>()
-            for (m in models.take(4)) {
+            for (m in models.take(6)) {
                 built.add(m to 0)
                 built.add(m to 1)
             }
@@ -133,11 +133,25 @@ class LiveVoice(
                 if (!methods.contains("bidiGenerateContent")) continue
                 val id = m.optString("name").removePrefix("models/")
                 if (id.isBlank()) continue
+                // SOLO modelos que pueden RESPONDER EN AUDIO en vivo.
+                // Fuera transcribe (solo transcribe), tts, image, embeddings:
+                // esos aparecen en bidiGenerateContent y cerraban con 1007.
+                val lower = id.lowercase()
+                if (listOf("transcribe", "tts", "image", "embed", "robotics",
+                        "computer-use", "deep-research", "audio-preview").any { lower.contains(it) }
+                    && !lower.contains("native-audio")) continue
+                val isAudioLive = lower.contains("native-audio") ||
+                    lower.contains("flash-live") ||
+                    lower == "gemini-3.8-live" ||
+                    (lower.contains("-live") && (lower.contains("flash") || lower.contains("3.")))
+                if (!isAudioLive) continue
                 val rank = when {
-                    id.contains("native-audio") -> 0
-                    id.contains("flash-live") || id.contains("-live") -> 1
-                    id.contains("live") -> 2
-                    else -> 3
+                    lower.contains("native-audio") && lower.contains("latest") -> 0
+                    lower.contains("native-audio") -> 1
+                    lower.contains("3.1-flash-live") -> 2
+                    lower.contains("flash-live") -> 3
+                    lower.contains("-live") -> 4
+                    else -> 5
                 }
                 ranked.add(rank to id)
             }
