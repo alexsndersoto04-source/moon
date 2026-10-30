@@ -232,7 +232,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             })
     }
 
-    /** Respaldo: voz del sistema    /** Respaldo: voz del sistema (la robótica), mejorada eligiendo la mejor voz es. */
+    /** Respaldo: voz del sistema (la robótica), mejorada eligiendo la mejor voz es. */
     private fun speakWithSystemTts(reply: AvatarReply) {
         if (ttsReady) {
             tts?.speak(reply.text, TextToSpeech.QUEUE_FLUSH, null, "avatar_speech")
