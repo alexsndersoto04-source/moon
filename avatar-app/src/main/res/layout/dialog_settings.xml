@@ -65,7 +65,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Gemini: aistudio.google.com → «Get API key». Groq: console.groq.com → «API Keys». Sin clave, el avatar usa su cerebro local básico."
+            android:text="Esta app acepta claves de Google AI Studio (Gemini) o Groq; una clave de ChatGPT/OpenAI, OpenRouter u otro proveedor no sirve aquí. Gemini: aistudio.google.com → Get API key. Groq: console.groq.com → API Keys. No compartas tu clave."
             android:textSize="12sp" />
 
         <TextView
@@ -81,7 +81,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Las voces «humanas» las genera la IA con tu clave de Gemini y suenan a persona real. La del sistema es la robótica de siempre (respaldo)."
+            android:text="La voz IA de Gemini requiere otra petición a internet y puede tardar más. «Voz del teléfono» es local y suele empezar antes; la calidad depende de la voz española instalada en tu Android."
             android:textSize="12sp" />
 
         <TextView

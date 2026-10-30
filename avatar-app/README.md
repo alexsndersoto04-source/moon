@@ -14,17 +14,22 @@ negar, pensar, reverencia). Le hablas por voz y te responde **actuando**.
 ## El cerebro
 
 Flujo: 🎤 tu voz → texto (SpeechRecognizer de Android) → 🧠 IA en la nube →
-JSON `{"text", "emotion", "gesture"}` → 🗣️ el avatar lo dice con voz
-(TextToSpeech en español), expresión y gesto a la vez.
+respuesta conversacional + emoción/gesto → 🗣️ voz del teléfono o voz Gemini.
 
-- Proveedores: **Gemini** (`gemini-2.0-flash`) o **Groq**
-  (`llama-3.3-70b-versatile`). Ambos con nivel gratuito.
+- Proveedores compatibles en esta versión: **Gemini** (modelo Flash elegido
+  automáticamente) y **Groq** (`llama-3.3-70b-versatile`). Una API key no es
+  universal: una clave de OpenAI/ChatGPT, OpenRouter u otro proveedor no funciona
+  si no eliges un conector compatible.
 - La API key se pega una vez en ⚙️ Ajustes y se guarda **solo en el teléfono**.
-  Nunca va en el código ni en GitHub.
-- Sin clave o sin conexión: cerebro local de respaldo con respuestas y
-  gestos básicos — el avatar nunca se queda mudo.
-- Memoria: las últimas conversaciones y tus datos viven en el teléfono
-  (SharedPreferences privadas). Botón «Borrar memoria» en Ajustes.
+  Nunca va en el código ni en GitHub; no la compartas por chat.
+- Sin clave o si la API rechaza la petición, el avatar usa respuestas locales
+  básicas y muestra el motivo. Eso no es la IA en la nube.
+- Memoria: las últimas conversaciones viven en el teléfono (SharedPreferences
+  privadas). Botón «Borrar memoria» en Ajustes.
+- La respuesta pide al modelo varias frases completas y naturales. La voz
+  generada por Gemini es una **segunda petición a internet**; para empezar a oír
+  antes, en Ajustes elige «Sistema del teléfono (rápida, local)». La voz española
+  disponible depende de Android y se puede descargar desde sus ajustes.
 
 ### Sacar tu clave gratuita (2 minutos)
 

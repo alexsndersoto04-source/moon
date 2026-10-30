@@ -47,12 +47,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var voice: Voice
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var ttsInitialized = false
     private var recognizer: SpeechRecognizer? = null
-    // Cola de frases: la voz empieza con la 1ª frase mientras genera el resto
-    private val sentenceQueue = ArrayDeque<String>()
-    private var sentenceSpeaking = false
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var mouthFallback: Runnable? = null
+    private var interactionId = 0
+    private var pendingSystemReply: AvatarReply? = null
     private var avatarReady = false
 
     inner class AvatarBridge {
@@ -112,6 +111,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         findViewById<TextView>(R.id.micButton).setOnClickListener { startListening() }
         findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
         findViewById<TextView>(R.id.keyboardButton).setOnClickListener {
+            interactionId++
+            pendingSystemReply = null
+            tts?.stop()
+            if (::voice.isInitialized) voice.stop()
             startActivity(Intent(this, TextChatActivity::class.java))
         }
         status.text = "Despertando a tu avatar 3D…"
@@ -143,113 +146,110 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     // ---------- Voz del avatar (TTS) ----------
     override fun onInit(statusCode: Int) {
-        if (statusCode == TextToSpeech.SUCCESS) {
-            val result = tts?.setLanguage(Locale("es", "ES"))
-            ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
-                result != TextToSpeech.LANG_NOT_SUPPORTED
-            // Mejor voz disponible en español (las de red suenan menos robóticas)
-            try {
-                val spanishVoices = tts?.voices?.filter {
-                    it.locale.language == "es"
-                }?.sortedByDescending { v -> (if (v.isNetworkConnectionRequired) 2 else 0) + v.quality } ?: emptyList()
-                spanishVoices.firstOrNull()?.let { tts?.voice = it }
-            } catch (e: Exception) { /* sin selección: voz por defecto */ }
-            tts?.setPitch(0.85f)
-            tts?.setSpeechRate(0.97f)
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {
-                    mainHandler.post { setSpeaking(true) }
+        ttsInitialized = true
+        if (statusCode != TextToSpeech.SUCCESS) {
+            ttsReady = false
+            if (pendingSystemReply != null) {
+                pendingSystemReply = null
+                status.text = "No se pudo iniciar la voz del teléfono"
+            }
+            return
+        }
+        val result = tts?.setLanguage(Locale("es", "ES"))
+        ttsReady = result != null && result >= TextToSpeech.LANG_AVAILABLE
+        // Preferir la voz española de mayor calidad que ya esté disponible.
+        try {
+            val spanishVoices = tts?.voices?.filter { it.locale.language == "es" }
+                ?.sortedWith(compareBy<android.speech.tts.Voice> { it.isNetworkConnectionRequired }
+                    .thenByDescending { it.quality }) ?: emptyList()
+            spanishVoices.firstOrNull()?.let { tts?.voice = it }
+        } catch (e: Exception) { /* usar la voz predeterminada */ }
+        tts?.setPitch(0.92f)
+        tts?.setSpeechRate(1.0f)
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                mainHandler.post { setSpeaking(true) }
+            }
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post {
+                    setSpeaking(false)
+                    status.text = "Te escucho · toca el micrófono"
                 }
-                override fun onDone(utteranceId: String?) {
-                    mainHandler.post {
-                        setSpeaking(false)
-                        status.text = "Te escucho · toca el micrófono"
-                    }
+            }
+            @Deprecated("deprecated in API level 21")
+            override fun onError(utteranceId: String?) {
+                mainHandler.post {
+                    setSpeaking(false)
+                    status.text = "No se pudo reproducir la voz del teléfono"
                 }
-                @Deprecated("deprecated in API level 21")
-                override fun onError(utteranceId: String?) {
-                    mainHandler.post { setSpeaking(false) }
-                }
-            })
+            }
+        })
+        pendingSystemReply?.let { reply ->
+            pendingSystemReply = null
+            if (ttsReady) speakWithSystemTts(reply)
+            else status.text = "No hay una voz española instalada en el teléfono"
         }
     }
 
-    private fun say(reply: AvatarReply) {
+    private fun say(reply: AvatarReply, thisInteraction: Int) {
+        if (thisInteraction != interactionId) return
         caption.text = reply.text
         react(reply.emotion, reply.gesture)
-        status.text = "${brain.avatarName} está hablando…"
+        status.text = "${brain.avatarName} está preparando la voz…"
 
-        // Sin clave Gemini no hay voz humana: directo al respaldo del sistema
-        if (brain.voiceMode == "system" || brain.provider != "gemini" || brain.apiKey.isBlank()) {
+        // La voz del teléfono es local. La voz Gemini necesita una petición extra
+        // a la red, así que se usa una sola generación para toda la respuesta.
+        if (brain.lastError.isNotBlank() || brain.voiceMode == "system" ||
+            brain.provider != "gemini" || brain.apiKey.isBlank()) {
             speakWithSystemTts(reply)
             return
         }
-        // FRASE A FRASE: la primera frase suena en cuanto su audio esta listo,
-        // sin esperar a generar la respuesta hablada entera (menos retraso).
         val voiceName = when (brain.voiceMode) {
             "orus" -> "Orus"
             "enceladus" -> "Enceladus"
             else -> "Charon"
         }
-        synchronized(sentenceQueue) {
-            sentenceQueue.clear()
-            splitSentences(reply.text).forEach { sentenceQueue.addLast(it) }
-        }
-        speakNextSentence(voiceName, reply)
-    }
-
-    private fun splitSentences(text: String): List<String> {
-        val parts = text.split(Regex("(?<=[.!?…])\\s+"))
-            .map { it.trim() }.filter { it.isNotEmpty() }
-        return if (parts.isEmpty()) listOf(text) else parts
-    }
-
-    private fun speakNextSentence(voiceName: String, fullReply: AvatarReply) {
-        val sentence: String?
-        synchronized(sentenceQueue) {
-            sentence = sentenceQueue.removeFirstOrNull()
-            if (sentence == null) sentenceSpeaking = false
-        }
-        if (sentence == null) {
-            setSpeaking(false)
-            status.text = "Te escucho · toca Hablar y dime algo"
-            return
-        }
-        sentenceSpeaking = true
-        voice.speak(sentence, voiceName,
-            onStart = { mainHandler.post { setSpeaking(true) } },
+        voice.speak(reply.text, voiceName,
+            onStart = { mainHandler.post {
+                if (thisInteraction == interactionId) setSpeaking(true)
+            } },
             onDone = { ok ->
                 mainHandler.post {
+                    if (thisInteraction != interactionId || isFinishing) return@post
                     if (ok) {
-                        speakNextSentence(voiceName, fullReply)
+                        setSpeaking(false)
+                        status.text = "Te escucho · toca el micrófono"
                     } else {
-                        // La voz de la IA fallo a mitad: respaldo del sistema
-                        synchronized(sentenceQueue) { sentenceQueue.clear() }
-                        sentenceSpeaking = false
-                        speakWithSystemTts(fullReply)
+                        setSpeaking(false)
+                        status.text = "La voz IA no respondió; usaré la voz del teléfono"
+                        speakWithSystemTts(reply)
                     }
                 }
             })
     }
 
-    /** Respaldo: voz del sistema (la robótica), mejorada eligiendo la mejor voz es. */
+    /** Respaldo local: evita otra llamada a la IA si falla Gemini TTS. */
     private fun speakWithSystemTts(reply: AvatarReply) {
-        if (ttsReady) {
-            tts?.speak(reply.text, TextToSpeech.QUEUE_FLUSH, null, "avatar_speech")
-        } else {
-            setSpeaking(true)
-            mouthFallback?.let { mainHandler.removeCallbacks(it) }
-            val durationMs = (1200L + reply.text.length * 55L).coerceAtMost(12000L)
-            mouthFallback = Runnable {
-                setSpeaking(false)
-                status.text = "Te escucho · toca el micrófono"
-            }
-            mainHandler.postDelayed(mouthFallback!!, durationMs)
+        if (!ttsInitialized) {
+            pendingSystemReply = reply
+            status.text = "Preparando la voz del teléfono…"
+            return
         }
+        if (!ttsReady) {
+            pendingSystemReply = null
+            status.text = "No hay una voz española instalada en el teléfono"
+            return
+        }
+        pendingSystemReply = null
+        status.text = "Hablando con la voz del teléfono…"
+        tts?.speak(reply.text, TextToSpeech.QUEUE_FLUSH, null, "avatar_speech")
     }
 
     // ---------- Boton Hablar: te escucha una vez y responde por voz ----------
     private fun startListening() {
+        // Una interacción nueva invalida respuestas anteriores que aún estén en red.
+        interactionId++
+        pendingSystemReply = null
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 42)
             return
@@ -260,7 +260,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         tts?.stop()
         if (::voice.isInitialized) voice.stop()
-        synchronized(sentenceQueue) { sentenceQueue.clear() }
         setSpeaking(false)
 
         if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this)
@@ -297,11 +296,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     /** Dijiste algo (botón Hablar): el cerebro piensa y el avatar lo actúa por voz. */
     private fun hear(text: String) {
+        val thisInteraction = ++interactionId
         caption.text = "Tú: $text"
         react(Emotion.THINKING, Gesture.THINK)
         status.text = "${brain.avatarName} está pensando…"
         brain.think(text) { reply ->
-            mainHandler.post { say(reply) }
+            mainHandler.post {
+                if (thisInteraction == interactionId && !isFinishing) say(reply, thisInteraction)
+            }
         }
     }
 
@@ -327,8 +329,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         providerSpinner.setSelection(if (brain.provider == "groq") 1 else 0)
 
         voiceSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
-            listOf("Humana IA · Charon (masculina, recomendada)", "Humana IA · Orus (masculina firme)",
-                "Humana IA · Enceladus (masculina suave)", "Sistema del teléfono (robótica)"))
+            listOf("Gemini · Charon (natural, requiere internet)", "Gemini · Orus (firme)",
+                "Gemini · Enceladus (suave)", "Sistema del teléfono (rápida, local)"))
         voiceSpinner.setSelection(when (brain.voiceMode) {
             "orus" -> 1; "enceladus" -> 2; "system" -> 3; else -> 0 })
 
@@ -351,8 +353,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 status.text = if (brain.apiKey.isBlank())
                     "Cerebro local · añade tu clave para la IA completa"
                 else "Cerebro conectado (${brain.provider}) · háblale 🎤"
-                say(AvatarReply("¡Listo! Así soy ahora. ¿Te gusta?",
-                    Emotion.HAPPY, Gesture.NOD))
+                val reply = AvatarReply("¡Listo! Así soy ahora. ¿Te gusta?",
+                    Emotion.HAPPY, Gesture.NOD)
+                say(reply, ++interactionId)
             }
             .setNeutralButton("Borrar memoria") { _, _ ->
                 brain.forgetAll()
@@ -372,6 +375,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        interactionId++
         if (::voice.isInitialized) voice.stop()
         tts?.stop()
         tts?.shutdown()

@@ -59,8 +59,16 @@ class Brain(context: Context) {
         set(v) = prefs.edit().putString("user_name", v).apply()
 
     var personality: String
-        get() = prefs.getString("personality",
-            "Eres cercana, alegre y curiosa. Hablas en español, con frases cortas y naturales, como una persona de verdad. Te gusta ayudar y conversar.") ?: ""
+        get() {
+            val oldDefault = "Eres cercana, alegre y curiosa. Hablas en español, con frases cortas y naturales, como una persona de verdad. Te gusta ayudar y conversar."
+            val currentDefault = "Eres cercana, alegre y curiosa. Hablas en español latino de forma natural, cálida y conversacional. Explicas con claridad y no respondes con fragmentos."
+            val saved = prefs.getString("personality", null)
+            if (saved == oldDefault) {
+                prefs.edit().putString("personality", currentDefault).apply()
+                return currentDefault
+            }
+            return saved ?: currentDefault
+        }
         set(v) = prefs.edit().putString("personality", v).apply()
 
     // ---------- Voz ----------
@@ -90,6 +98,7 @@ class Brain(context: Context) {
 
     // ---------- Pensar ----------
     fun think(userText: String, callback: (AvatarReply) -> Unit) {
+        lastError = ""
         remember("user", userText)
         val key = apiKey
         if (key.isBlank()) {
@@ -102,6 +111,7 @@ class Brain(context: Context) {
             val reply = try {
                 if (provider == "groq") askGroq(key, userText) else askGemini(key, userText)
             } catch (e: Exception) {
+                lastError = e.message?.take(140) ?: "Error inesperado al consultar la IA"
                 null
             } ?: localBrain(userText, sinConexion = true)
             remember("model", reply.text)
@@ -112,14 +122,15 @@ class Brain(context: Context) {
     private fun systemPrompt(): String {
         val user = if (userName.isBlank()) "la persona que te habla" else userName
         return """
-            Eres $avatarName, un avatar humano que vive dentro de una app de teléfono.
+            Eres $avatarName, un avatar cercano que conversa en español latino natural.
             Tu personalidad: $personality
-            Estás hablando con $user.
-            Responde SIEMPRE solo con un JSON válido, sin texto fuera del JSON:
-            {"text": "tu respuesta hablada, breve (1-3 frases)", "emotion": "happy|sad|surprised|thinking|excited|shy|neutral", "gesture": "wave|nod|shake|think|celebrate|bow|none"}
-            Elige emotion y gesture según lo que digas: saluda con wave, afirma con nod,
-            niega con shake, duda con think, celebra con celebrate.
-            Habla como persona, nunca digas que eres un modelo de lenguaje ni menciones el JSON.
+            Estás hablando con $user. Usa el historial para mantener el hilo y recordar lo que ya dijeron.
+            Contesta directamente a lo que te preguntaron, con ideas completas, claras y coherentes; nunca respondas con palabras sueltas o frases cortadas.
+            Normalmente responde con 2 a 4 frases naturales (aproximadamente 35 a 80 palabras). Si la pregunta es sencilla, puedes ser breve sin sonar seca; si pide explicación, desarrolla la idea. No rellenes con frases genéricas ni termines siempre con una pregunta.
+            Sé cálida, espontánea y conversacional. No inventes datos ni afirmes que hiciste acciones que no puedes hacer.
+            Devuelve exclusivamente un JSON válido, sin Markdown ni texto fuera del JSON:
+            {"text": "respuesta hablada completa", "emotion": "happy|sad|surprised|thinking|excited|shy|neutral", "gesture": "wave|nod|shake|think|celebrate|bow|none"}
+            Elige emotion y gesture de forma natural según el contenido. Nunca menciones el JSON ni digas que eres un modelo de lenguaje.
         """.trimIndent()
     }
 
@@ -136,31 +147,70 @@ class Brain(context: Context) {
             .put("system_instruction", JSONObject().put("parts",
                 JSONArray().put(JSONObject().put("text", systemPrompt()))))
             .put("contents", contents)
-            .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 300))
-        // Nada de adivinar nombres: primero preguntar a Google que modelos
-        // tiene ESTA clave/proyecto y usar los que de verdad existan.
-        val discovered = discoverGeminiModels(key)
-        val models = (discovered + listOf("gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite")).distinct()
-        for (model in models) {
+            .put("generationConfig", JSONObject()
+                .put("temperature", 0.8)
+                .put("maxOutputTokens", 500)
+                .put("responseMimeType", "application/json"))
+
+        // Usa primero el último modelo que funcionó. Antes se consultaba la lista
+        // de modelos en CADA mensaje, añadiendo una llamada de red innecesaria.
+        val preferred = prefs.getString("gemini_model", "gemini-2.5-flash")
+            ?.takeIf { it.isNotBlank() } ?: "gemini-2.5-flash"
+        val attempted = linkedSetOf<String>()
+        fun tryModel(model: String): Pair<AvatarReply?, Boolean> {
+            if (!attempted.add(model)) return null to true
             val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
             val result = postJson(url, body, null, "x-goog-api-key" to key)
-            if (result.text != null) {
-                try {
-                    val text = JSONObject(result.text).getJSONArray("candidates").getJSONObject(0)
-                        .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
-                    lastError = ""
-                    return parseReply(text)
+            val response = result.text
+            if (response != null) {
+                return try {
+                    val parts = JSONObject(response).optJSONArray("candidates")
+                        ?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+                    val text = (0 until (parts?.length() ?: 0))
+                        .mapNotNull { index -> parts?.optJSONObject(index)?.optString("text") }
+                        .firstOrNull { it.isNotBlank() }
+                    if (text.isNullOrBlank()) {
+                        lastError = "Gemini devolvió una respuesta sin texto ($model)"
+                        null to true
+                    } else {
+                        val reply = parseReply(text)
+                        prefs.edit().putString("gemini_model", model).apply()
+                        lastError = ""
+                        reply to false
+                    }
                 } catch (e: Exception) {
-                    lastError = "Respuesta rara de Gemini ($model)"
-                    continue
+                    lastError = "No pude interpretar la respuesta de Gemini ($model)"
+                    null to true
                 }
             }
             lastError = describeHttpError("Gemini", result.code, result.errorBody)
-            // Clave mala o sin permisos: no tiene sentido probar mas modelos.
-            if (result.code == 400 && result.errorBody?.contains("API_KEY_INVALID") == true) break
-            if (result.code == 401 || result.code == 403) break
+            null to isModelUnavailable(result)
+        }
+
+        val (firstReply, shouldDiscover) = tryModel(preferred)
+        if (firstReply != null) return firstReply
+        if (!shouldDiscover) return null
+
+        // Solo si el modelo guardado ya no existe, se consulta una vez la lista
+        // y se prueban como máximo tres alternativas. Nunca se recorre toda la lista.
+        val fallbackModels = (discoverGeminiModels(key) + listOf(
+            "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"
+        )).distinct().filterNot { it in attempted }.take(3)
+        for (model in fallbackModels) {
+            val (reply, canTryAnother) = tryModel(model)
+            if (reply != null) return reply
+            if (!canTryAnother) break
         }
         return null
+    }
+
+    private fun isModelUnavailable(result: HttpResult): Boolean {
+        if (result.code == 404) return true
+        if (result.code != 400) return false
+        val error = result.errorBody.orEmpty().lowercase()
+        return error.contains("model") && listOf(
+            "not found", "does not exist", "not supported", "unsupported", "not available"
+        ).any { it in error }
     }
 
     /** Lista real de modelos generateContent que la clave puede usar (o vacio). */
@@ -197,8 +247,10 @@ class Brain(context: Context) {
     }
 
     private fun getJson(url: URL, vararg headers: Pair<String, String>): HttpResult {
+        var connection: HttpURLConnection? = null
         return try {
             val conn = url.openConnection() as HttpURLConnection
+            connection = conn
             conn.requestMethod = "GET"
             conn.connectTimeout = 15000
             conn.readTimeout = 30000
@@ -206,10 +258,11 @@ class Brain(context: Context) {
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-            conn.disconnect()
             if (code in 200..299) HttpResult(code, text, null) else HttpResult(code, null, text)
         } catch (e: Exception) {
             HttpResult(-1, null, e.message)
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -228,22 +281,36 @@ class Brain(context: Context) {
             .put("model", "llama-3.3-70b-versatile")
             .put("messages", messages)
             .put("temperature", 0.8)
-            .put("max_tokens", 300)
+            .put("max_tokens", 500)
+            .put("response_format", JSONObject().put("type", "json_object"))
         val result = postJson(url, body, "Bearer $key")
         val raw = result.text ?: run {
             lastError = describeHttpError("Groq", result.code, result.errorBody)
             return null
         }
-        val text = JSONObject(raw).getJSONArray("choices").getJSONObject(0)
-            .getJSONObject("message").getString("content")
-        return parseReply(text)
+        return try {
+            val text = JSONObject(raw).getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").getString("content")
+            if (text.isBlank()) {
+                lastError = "Groq devolvió una respuesta vacía"
+                null
+            } else {
+                lastError = ""
+                parseReply(text)
+            }
+        } catch (e: Exception) {
+            lastError = "Groq devolvió una respuesta que no pude interpretar"
+            null
+        }
     }
 
     private data class HttpResult(val code: Int, val text: String?, val errorBody: String?)
 
     private fun postJson(url: URL, body: JSONObject, auth: String?, vararg headers: Pair<String, String>): HttpResult {
+        var connection: HttpURLConnection? = null
         return try {
             val conn = url.openConnection() as HttpURLConnection
+            connection = conn
             conn.requestMethod = "POST"
             conn.connectTimeout = 15000
             conn.readTimeout = 30000
@@ -255,10 +322,11 @@ class Brain(context: Context) {
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-            conn.disconnect()
             if (code in 200..299) HttpResult(code, text, null) else HttpResult(code, null, text)
         } catch (e: Exception) {
             HttpResult(-1, null, e.message)
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -280,17 +348,44 @@ class Brain(context: Context) {
     }
 
     private fun parseReply(raw: String): AvatarReply {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
+        val cleaned = raw.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
         if (start >= 0 && end > start) {
+            val jsonText = cleaned.substring(start, end + 1)
             try {
-                val j = JSONObject(raw.substring(start, end + 1))
-                val text = j.optString("text").ifBlank { raw }
-                return AvatarReply(text, parseEmotion(j.optString("emotion")),
-                    parseGesture(j.optString("gesture")))
-            } catch (e: Exception) { /* cae a texto plano */ }
+                val j = JSONObject(jsonText)
+                val text = j.optString("text").takeUnless {
+                    it.isBlank() || it.equals("null", ignoreCase = true)
+                }
+                if (text != null) {
+                    return AvatarReply(text.trim(), parseEmotion(j.optString("emotion")),
+                        parseGesture(j.optString("gesture")))
+                }
+            } catch (e: Exception) {
+                // Algunas respuestas añaden una coma o formato inválido; abajo
+                // se intenta rescatar el campo hablado, no leer "text" en voz alta.
+            }
+
+            val textMatch = Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"", RegexOption.IGNORE_CASE)
+                .find(jsonText)
+            if (textMatch != null) {
+                val decoded = try {
+                    JSONArray("[\"${textMatch.groupValues[1]}\"]").getString(0)
+                } catch (e: Exception) {
+                    textMatch.groupValues[1].replace("\\\\\"", "\"")
+                }
+                if (decoded.isNotBlank()) return AvatarReply(decoded.trim())
+            }
+            return AvatarReply(
+                "No pude interpretar la respuesta de la IA. Inténtalo otra vez.",
+                Emotion.THINKING, Gesture.THINK)
         }
-        return AvatarReply(raw.trim())
+        return AvatarReply(cleaned)
     }
 
     private fun parseEmotion(s: String): Emotion = when (s.lowercase()) {
