@@ -377,6 +377,18 @@ main {
   gap: 0.25rem;
 }
 
+.centrado { text-align: center; }
+
+.qr { margin: 1.25rem 0; }
+.qr svg { display: block; }
+
+.url-grande {
+  font-size: 1.35rem;
+  font-weight: 650;
+  word-break: break-all;
+  margin: 1rem 0;
+}
+
 .resultado { margin: 2.15rem 0; max-width: 43rem; }
 .resultado .titulo { font-size: 1.18rem; font-weight: 570; }
 .resultado .url {
