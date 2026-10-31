@@ -19,6 +19,7 @@ _VALORES = {
     "zona": "mired",
     "puerto_http": 8080,
     "puerto_dns": 5353,
+    "puerto_smtp": 2525,
     "dns_upstream": "8.8.8.8",
     "ip_auto": True,
     "ip_manual": "",

@@ -1,12 +1,14 @@
 <section class="portada">
-  <h1>🌐 {{nombre_red}}</h1>
-  <p class="subtitulo">Tu internet independiente — funciona sin internet, solo con tu Redmi 9C</p>
+  <span class="etiqueta">Tu internet independiente</span>
+  <h1>{{nombre_red}}</h1>
+  <p class="subtitulo">Tu propio internet: busca, escribe, conversa y comparte
+     dentro de tu red local — sin depender de nadie.</p>
   <form class="buscador-hero" action="/buscar/" method="get">
     <input type="search" name="q" placeholder="Busca en tu red…" autocomplete="off">
     <button type="submit">Buscar</button>
   </form>
-  <p class="meta">Conectado en modo <strong>{{modo}}</strong> · servidor en
-    <strong>http://{{ip}}:{{puerto}}</strong> · zona <strong>*.{{zona}}</strong></p>
+  <p class="meta">Modo <strong>{{modo}}</strong> · <strong>http://{{ip}}:{{puerto}}</strong>
+     · zona <strong>*.{{zona}}</strong></p>
 </section>
 
 <section class="rejilla">
@@ -14,12 +16,12 @@
 </section>
 
 <section class="panel">
-  <h2>📡 Cómo conectarte</h2>
+  <h2>Cómo conectarte</h2>
   <ol>
-    <li>Activa el <strong>hotspot</strong> de este teléfono.</li>
-    <li>Conecta tu computadora u otro teléfono a la red Wi-Fi del hotspot.</li>
+    <li>Activa el <strong>hotspot</strong> de este teléfono (o conecta todo a la misma red Wi-Fi).</li>
+    <li>Conecta tu computadora u otro teléfono a esa red.</li>
     <li>Abre <strong>http://{{ip}}:{{puerto}}</strong> en el navegador.</li>
-    <li>Opcional: agrega las líneas de <code>hosts.txt</code> a tu archivo hosts
-      para usar nombres como <code>http://wiki.{{zona}}:{{puerto}}</code>.</li>
+    <li>Opcional: agrega las líneas de <code>hosts.txt</code> al archivo hosts de tus
+      computadoras para usar direcciones como <code>http://wiki.{{zona}}:{{puerto}}</code>.</li>
   </ol>
 </section>

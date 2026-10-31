@@ -81,5 +81,37 @@ def esquema():
         );
         CREATE INDEX IF NOT EXISTS idx_tokens_token ON tokens(token);
         CREATE INDEX IF NOT EXISTS idx_tokens_doc ON tokens(documento_id);
+        CREATE TABLE IF NOT EXISTS chat_mensajes (
+            id INTEGER PRIMARY KEY,
+            sala TEXT NOT NULL DEFAULT 'general',
+            nick TEXT NOT NULL,
+            texto TEXT NOT NULL,
+            creado_en TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_sala ON chat_mensajes(sala, id);
+        CREATE TABLE IF NOT EXISTS correo_mensajes (
+            id INTEGER PRIMARY KEY,
+            para TEXT NOT NULL,
+            de TEXT NOT NULL,
+            asunto TEXT NOT NULL DEFAULT '(sin asunto)',
+            cuerpo TEXT NOT NULL,
+            creado_en TEXT DEFAULT (datetime('now')),
+            leido INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_correo_para ON correo_mensajes(para, id);
+        CREATE TABLE IF NOT EXISTS foro_hilos (
+            id INTEGER PRIMARY KEY,
+            categoria TEXT NOT NULL DEFAULT 'General',
+            titulo TEXT NOT NULL,
+            autor TEXT NOT NULL,
+            creado_en TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS foro_posts (
+            id INTEGER PRIMARY KEY,
+            hilo_id INTEGER NOT NULL REFERENCES foro_hilos(id) ON DELETE CASCADE,
+            autor TEXT NOT NULL,
+            cuerpo TEXT NOT NULL,
+            creado_en TEXT DEFAULT (datetime('now'))
+        );
         """
     )

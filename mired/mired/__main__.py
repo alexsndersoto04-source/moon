@@ -12,7 +12,7 @@ import sys
 from . import config, netinfo
 from .core import db
 from .core.http import Aplicacion
-from .services import buscar, dns, portal, wiki
+from .services import buscar, chat, correo, dns, foro, portal, wiki
 
 
 def construir_aplicacion():
@@ -21,10 +21,16 @@ def construir_aplicacion():
     portal.registrar(app)
     wiki.registrar(app, "/wiki")
     buscar.registrar(app, "/buscar")
-    # Hosts virtuales: wiki.mired → /wiki, buscar.mired → /buscar
+    chat.registrar(app, "/chat")
+    correo.registrar(app, "/correo")
+    foro.registrar(app, "/foro")
+    # Hosts virtuales: wiki.mired → /wiki, buscar.mired → /buscar, etc.
     zona = conf["zona"]
     app.vhost("wiki." + zona, "/wiki")
     app.vhost("buscar." + zona, "/buscar")
+    app.vhost("chat." + zona, "/chat")
+    app.vhost("correo." + zona, "/correo")
+    app.vhost("foro." + zona, "/foro")
     app.vhost("inicio." + zona, "/")
     return app
 
@@ -48,6 +54,14 @@ def iniciar(conf):
     except OSError as exc:
         estado_dns = "no disponible (%s)" % exc
 
+    servidor_smtp = None
+    try:
+        servidor_smtp = correo.ServidorSMTP(conf.get("puerto_smtp", 2525))
+        servidor_smtp.iniciar()
+        estado_smtp = "activo en tcp/%d" % conf.get("puerto_smtp", 2525)
+    except OSError as exc:
+        estado_smtp = "no disponible (%s)" % exc
+
     # Rastreo inicial del buscador en segundo plano
     buscar.rastreo_en_segundo_plano("http://127.0.0.1:%d" % conf["puerto_http"])
 
@@ -60,7 +74,14 @@ def iniciar(conf):
         ip, conf["puerto_http"], zona, conf["puerto_http"]))
     print("  Buscador  http://%s:%d/buscar/ (o http://buscar.%s:%d/)" % (
         ip, conf["puerto_http"], zona, conf["puerto_http"]))
+    print("  Chat      http://%s:%d/chat/   (o http://chat.%s:%d/)" % (
+        ip, conf["puerto_http"], zona, conf["puerto_http"]))
+    print("  Correo    http://%s:%d/correo/ (o http://correo.%s:%d/)" % (
+        ip, conf["puerto_http"], zona, conf["puerto_http"]))
+    print("  Foro      http://%s:%d/foro/   (o http://foro.%s:%d/)" % (
+        ip, conf["puerto_http"], zona, conf["puerto_http"]))
     print("  DNS       %s  →  *.%s" % (estado_dns, zona))
+    print("  SMTP      %s  →  *@%s" % (estado_smtp, zona))
     print("  ─────────────────────────────────────────────")
     print("  Conecta otros dispositivos al hotspot y abre la URL del portal.")
     print("  Pulsa Ctrl+C para detener. (En el teléfono: ./detener.sh)")

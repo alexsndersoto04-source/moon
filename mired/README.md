@@ -89,19 +89,33 @@ herramientas que aceptan puertos de DNS personalizados.
 
 ---
 
-## 5. Qué incluye la Fase 1
+## 5. Qué incluye MiRed
 
-| Servicio  | Qué es                                               | URL            |
-|-----------|------------------------------------------------------|----------------|
-| **Portal**   | Página de inicio con todo tu internet             | `/`            |
-| **Buscador** | Tu "Google" local: rastrea e indexa tu red        | `/buscar/`     |
-| **Wiki**     | Enciclopedia con Markdown e historial de ediciones | `/wiki/`       |
-| **Estado**   | Salud del sistema (RAM, tiempo activo, índice)    | `/estado/`     |
-| **Ayuda**    | Instrucciones de conexión y DNS                   | `/ayuda/`      |
-| **DNS**      | Resuelve `*.mired` hacia tu teléfono (UDP 5353)   | —              |
+| Servicio   | Qué es                                                | URL            |
+|------------|-------------------------------------------------------|----------------|
+| **Portal**    | Página de inicio con todo tu internet              | `/`            |
+| **Buscador**  | Tu "Google" local: rastrea e indexa tu red         | `/buscar/`     |
+| **Wiki**      | Enciclopedia con Markdown e historial de ediciones  | `/wiki/`       |
+| **Chat**      | Conversaciones en tiempo real por salas             | `/chat/`       |
+| **Correo**    | Correo interno `@tu-zona` con webmail y servidor SMTP (puerto 2525) | `/correo/` |
+| **Foro**      | Hilos de conversación por categorías                | `/foro/`       |
+| **Estado**    | Salud del sistema (RAM, tiempo activo, índice)     | `/estado/`     |
+| **Ayuda**     | Instrucciones de conexión y DNS                    | `/ayuda/`      |
+| **DNS**       | Resuelve `*.mired` hacia tu teléfono (UDP 5353)    | —              |
+| **SMTP**      | Clientes de correo externos pueden enviar al puerto 2525 | —       |
 
 La wiki viene con artículos iniciales: [[Qué_es_MiRed]],
 [[Cómo_conectar_tus_dispositivos]], [[Guía_de_edición]]…
+
+**Diseño**: interfaz minimalista y sobria — tipografía cuidada, espacio en
+blanco, sin adornos innecesarios, a la altura de las buenas webs del
+internet real.
+
+**Sobre el correo**: solo se entrega correo interno entre direcciones
+`@tu-zona` (tu internet no hace de reley a internet — eso llegaría en la
+Fase 4 con configuración explícita). No hay contraseñas todavía: tu red
+es de confianza. Un cliente de correo (Thunderbird, K-9 Mail…) puede
+enviar a tu servidor SMTP en `IP:2525` sin autenticación.
 
 ## 6. Estructura del proyecto
 
@@ -141,8 +155,8 @@ contraseñas y HTTPS con certificados propios llegan en la Fase 4.
 
 ## 8. Hoja de ruta
 
-- ✅ **Fase 1 — Núcleo**: portal, buscador, wiki, DNS *(esta versión)*
-- ⬜ **Fase 2 — Comunicación**: chat, correo `@mired`, foro
+- ✅ **Fase 1 — Núcleo**: portal, buscador, wiki, DNS
+- ✅ **Fase 2 — Comunicación**: chat, correo `@mired` con webmail y SMTP, foro
 - ⬜ **Fase 3 — Archivos y medios**: nube de archivos, streaming, Wikipedia offline (Kiwix)
 - ⬜ **Fase 4 — Seguridad**: usuarios y contraseñas, HTTPS con CA propia, acceso remoto
 - ⬜ **Fase 5 — Extras**: juegos multijugador, API pública, automatizaciones
