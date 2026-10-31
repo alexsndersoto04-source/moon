@@ -25,10 +25,28 @@ _TIPOS = {
 }
 
 
+def _icono(nombre):
+    """Iconos de línea minimalistas (SVG 24×24, trazo 1.5)."""
+    trazos = {
+        "buscar": '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',
+        "wiki": ('<path d="M2 4.5h5.5A3.5 3.5 0 0 1 11 8v12a2.5 2.5 0 0 0-2.5-2.5H2z"/>'
+                 '<path d="M22 4.5h-5.5A3.5 3.5 0 0 0 13 8v12a2.5 2.5 0 0 1 2.5-2.5H22z"/>'),
+        "chat": '<path d="M21 14.5a2 2 0 0 1-2 2H8l-4 3.5v-15a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>',
+        "correo": '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+        "foro": '<path d="M10.5 8.5H21M10.5 12.5H18M10.5 16.5H15"/><rect x="3" y="5.5" width="4.5" height="13" rx="1.2"/>',
+        "estado": '<path d="M3 12.5h4l2.8-8 4.4 15 2.8-7h4"/>',
+        "ayuda": ('<circle cx="12" cy="12" r="9"/>'
+                  '<path d="M9.6 9.6a2.5 2.5 0 1 1 3.3 2.4c-.8.3-1.3 1-1.3 1.9v.3"/>'
+                  '<circle cx="11.9" cy="17" r="0.6" fill="currentColor" stroke="none"/>'),
+    }
+    return ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" '
+            'stroke-linecap="round" stroke-linejoin="round">%s</svg>' % trazos.get(nombre, ""))
+
+
 def _tarjeta(ruta, nombre, descripcion, icono, estado="activo"):
     return renderizar("tarjeta.html", {
         "ruta": ruta, "nombre": nombre, "descripcion": descripcion,
-        "icono": icono, "estado": estado,
+        "icono": _icono(icono), "estado": estado,
     }, usar_base=False)
 
 
@@ -36,14 +54,15 @@ def inicio(peticion):
     conf = config.cargar()
     ip = netinfo.ip_local()
     tarjetas = "".join([
-        _tarjeta("/buscar/", "Buscador", "Busca en todas las páginas de tu red", "🔍"),
-        _tarjeta("/wiki/", "Wiki", "Tu enciclopedia personal con historial", "📚"),
-        _tarjeta("/estado/", "Estado", "Salud de tu internet independiente", "📊"),
-        _tarjeta("/ayuda/", "Ayuda", "Cómo conectar dispositivos y usar DNS", "🛟"),
-        _tarjeta("#", "Chat", "Mensajería en tiempo real (Fase 2)", "💬", "proximamente"),
-        _tarjeta("#", "Correo", "Tu propio correo @%s (Fase 2)" % conf["zona"], "📧", "proximamente"),
-        _tarjeta("#", "Nube", "Archivos y compartición (Fase 3)", "🗂️", "proximamente"),
-        _tarjeta("#", "Streaming", "Tu YouTube/Spotify local (Fase 3)", "🎬", "proximamente"),
+        _tarjeta("/buscar/", "Buscador", "Busca en todas las páginas de tu red", "buscar"),
+        _tarjeta("/wiki/", "Wiki", "Tu enciclopedia personal con historial", "wiki"),
+        _tarjeta("/chat/", "Chat", "Conversaciones en tiempo real por salas", "chat"),
+        _tarjeta("/correo/", "Correo", "Tu correo interno @%s con webmail" % conf["zona"], "correo"),
+        _tarjeta("/foro/", "Foro", "Hilos de conversación con categorías", "foro"),
+        _tarjeta("/estado/", "Estado", "Salud de tu internet independiente", "estado"),
+        _tarjeta("/ayuda/", "Ayuda", "Cómo conectar dispositivos y usar DNS", "ayuda"),
+        _tarjeta("#", "Nube", "Archivos y compartición (Fase 3)", "estado", "proximamente"),
+        _tarjeta("#", "Streaming", "Tu biblioteca multimedia local (Fase 3)", "estado", "proximamente"),
     ])
     return html(renderizar("portal.html", {
         "titulo": conf["nombre"],
@@ -124,9 +143,9 @@ def estatico(peticion, ruta):
 
 def favicon(peticion):
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-           '<rect width="64" height="64" rx="14" fill="#0f172a"/>'
-           '<circle cx="32" cy="32" r="18" fill="#38bdf8"/>'
-           '<circle cx="40" cy="26" r="14" fill="#0f172a"/></svg>')
+           '<rect width="64" height="64" rx="14" fill="#ffffff"/>'
+           '<circle cx="32" cy="32" r="17" fill="none" stroke="#171717" stroke-width="5"/>'
+           '<circle cx="32" cy="32" r="5" fill="#3b5bdb"/></svg>')
     return Respuesta(svg, tipo="image/svg+xml")
 
 

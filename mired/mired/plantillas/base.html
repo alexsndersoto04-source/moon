@@ -9,11 +9,14 @@
 </head>
 <body>
   <header class="barra">
-    <a class="marca" href="/">🌐 MiRed</a>
+    <a class="marca" href="/"><span class="marca-punto"></span>MiRed</a>
     <nav>
       <a href="/">Inicio</a>
       <a href="/buscar/">Buscador</a>
       <a href="/wiki/">Wiki</a>
+      <a href="/chat/">Chat</a>
+      <a href="/correo/">Correo</a>
+      <a href="/foro/">Foro</a>
       <a href="/estado/">Estado</a>
       <a href="/ayuda/">Ayuda</a>
     </nav>
@@ -22,14 +25,7 @@
 {{contenido}}
   </main>
   <footer class="pie">
-    <span>MiRed · tu internet independiente · <span id="reloj"></span></span>
+    MiRed — tu internet independiente · hecho para tu propia red
   </footer>
-  <script>
-    (function () {
-      var el = document.getElementById('reloj');
-      function tick() { el.textContent = new Date().toLocaleString('es'); }
-      tick(); setInterval(tick, 1000);
-    })();
-  </script>
 </body>
 </html>

@@ -1,0 +1,21 @@
+<section class="panel">
+  <h1>Redactar</h1>
+  <form class="formulario" method="post" action="/correo/enviar">
+    <label>De
+      <input name="de" value="{{cuenta}}" required>
+    </label>
+    <label>Para (varios separados por coma — solo direcciones @mired)
+      <input name="para" placeholder="amigo@mired" required>
+    </label>
+    <label>Asunto
+      <input name="asunto" placeholder="(sin asunto)">
+    </label>
+    <label>Mensaje
+      <textarea name="cuerpo" rows="12" required></textarea>
+    </label>
+    <div class="acciones">
+      <button class="boton" type="submit">Enviar</button>
+      <a class="boton secundario" href="/correo/?cuenta={{cuenta}}">Cancelar</a>
+    </div>
+  </form>
+</section>
