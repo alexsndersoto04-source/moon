@@ -1,0 +1,8 @@
+# Datos generados en el teléfono (bases de datos, logs, PID)
+data/
+*.db
+*.log
+*.pid
+hosts.txt
+__pycache__/
+*.pyc

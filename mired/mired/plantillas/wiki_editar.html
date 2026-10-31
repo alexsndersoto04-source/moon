@@ -1,0 +1,20 @@
+<section class="panel">
+  <h1>Editar: {{titulo_pagina}}</h1>
+  {{aviso}}
+  <form method="post" action="/wiki/guardar" class="formulario">
+    <label>Título
+      <input name="titulo" value="{{titulo_pagina}}" required>
+    </label>
+    <label>Cuerpo (Markdown)
+      <textarea name="cuerpo" rows="18" placeholder="# Título&#10;Escribe aquí…">{{cuerpo_pagina}}</textarea>
+    </label>
+    <label>Tu nombre (editor)
+      <input name="editor" value="{{editor}}" placeholder="anonimo">
+    </label>
+    <input type="hidden" name="slug" value="{{slug}}">
+    <div class="acciones">
+      <button class="boton" type="submit">Guardar</button>
+      <a class="boton secundario" href="/wiki/pagina/{{slug}}">Cancelar</a>
+    </div>
+  </form>
+</section>
