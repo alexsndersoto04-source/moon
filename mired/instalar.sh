@@ -43,7 +43,7 @@ PUERTO=$(python3 -c "import json; print(json.load(open('config.json')).get('puer
 {
   echo "# Agrega estas líneas al archivo hosts de tus computadoras"
   echo "# (Windows: C:\\Windows\\System32\\drivers\\etc\\hosts · Linux/macOS: /etc/hosts)"
-  echo "$IP inicio.$ZONA buscar.$ZONA wiki.$ZONA chat.$ZONA correo.$ZONA foro.$ZONA $ZONA"
+  echo "$IP inicio.$ZONA buscar.$ZONA wiki.$ZONA chat.$ZONA correo.$ZONA foro.$ZONA nube.$ZONA streaming.$ZONA $ZONA"
 } > hosts.txt
 cat hosts.txt
 

@@ -99,6 +99,8 @@ herramientas que aceptan puertos de DNS personalizados.
 | **Chat**      | Conversaciones en tiempo real por salas             | `/chat/`       |
 | **Correo**    | Correo interno `@tu-zona` con webmail y servidor SMTP (puerto 2525) | `/correo/` |
 | **Foro**      | Hilos de conversación por categorías                | `/foro/`       |
+| **Nube**      | Carpetas, subida de archivos, descarga y borrado    | `/nube/`       |
+| **Streaming** | Biblioteca de música y vídeos con reproductor       | `/streaming/`  |
 | **Estado**    | Salud del sistema (RAM, tiempo activo, índice)     | `/estado/`     |
 | **Ayuda**     | Instrucciones de conexión y DNS                    | `/ayuda/`      |
 | **DNS**       | Resuelve `*.mired` hacia tu teléfono (UDP 5353)    | —              |
@@ -157,6 +159,13 @@ contraseñas y HTTPS con certificados propios llegan en la Fase 4.
 
 - ✅ **Fase 1 — Núcleo**: portal, buscador, wiki, DNS
 - ✅ **Fase 2 — Comunicación**: chat, correo `@mired` con webmail y SMTP, foro
-- ⬜ **Fase 3 — Archivos y medios**: nube de archivos, streaming, Wikipedia offline (Kiwix)
+- ✅ **Fase 3 — Archivos y medios**: nube de archivos y streaming con reproductor
 - ⬜ **Fase 4 — Seguridad**: usuarios y contraseñas, HTTPS con CA propia, acceso remoto
 - ⬜ **Fase 5 — Extras**: juegos multijugador, API pública, automatizaciones
+
+### Nube y streaming
+
+- La nube guarda todo en `data/archivos/` — crea carpetas, sube archivos
+  (el límite lo pones tú en `config.json`) y comparte con el enlace de descarga.
+- La música y los vídeos se organizan solos en `musica/` y `videos/`;
+  el reproductor permite adelantar/retrasar (soporte HTTP Range).
