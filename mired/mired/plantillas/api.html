@@ -1,0 +1,23 @@
+<section class="panel">
+  <h1>API</h1>
+  <p class="meta">Que cualquier dispositivo desarrolle sobre tu internet.
+     Respuestas JSON bajo <code>/api/v1/</code>.</p>
+
+  <h2>Autenticación</h2>
+  <p class="meta">Las lecturas son abiertas (si tu red es privada, valen también
+     la sesión o la clave). Las escrituras exigen el header
+     <code>X-Mired-Clave</code> — la ves en <a href="/ajustes/">Ajustes</a>.</p>
+
+  <h2>Endpoints</h2>
+  <ul class="lista">
+{{endpoints}}
+  </ul>
+
+  <h2>Ejemplo</h2>
+  <div class="contenido">
+    <pre><code>curl http://IP:8080/api/v1/estado
+curl -X POST http://IP:8080/api/v1/chat \
+  -H "X-Mired-Clave: TU_CLAVE" \
+  -d "sala=general&nick=bot&texto=Hola desde la API"</code></pre>
+  </div>
+</section>

@@ -136,3 +136,8 @@ def token_interno():
     """Token para que el rastreador del buscador (dentro del propio
     servidor) atraviese el control de acceso sin sesión de usuario."""
     return hmac.new(secreto(), b"interno", hashlib.sha256).hexdigest()[:32]
+
+
+def token_api():
+    """Clave-API estable para automatizaciones externas."""
+    return hmac.new(secreto(), b"api", hashlib.sha256).hexdigest()[:32]
