@@ -29,6 +29,26 @@ chmod +x *.sh
 ./instalar.sh
 ```
 
+> **¿Git te pide "Username for github.com"?** Eso pasa porque el repositorio
+> es **privado** y `git clone` sin sesión no puede leerlo. Soluciones:
+>
+> 1. **Sin cuenta (recomendada):** descarga el ZIP/tarball del proyecto con
+>    tu navegador (en GitHub: *Code → Download ZIP*; o pide el enlace de
+>    descarga directa al asistente), llévalo a Termux y extráelo:
+>
+>    ```bash
+>    # si descargaste con el navegador del teléfono:
+>    pkg install -y unzip && termux-setup-storage
+>    cd ~/storage/downloads && unzip moon-main.zip -d ~/
+>    ```
+>
+> 2. **Hacer el repositorio público** (GitHub → Settings → Danger Zone →
+>    Change visibility), para que `git clone` funcione sin login siempre.
+>
+> 3. **Clonar con tu sesión de GitHub**: crea un *Personal Access Token* en
+>    GitHub → Settings → Developer settings y úsalo como contraseña de git
+>    (nunca lo compartas en chats).
+
 > Si no quieres git, también puedes descargar el ZIP del repositorio,
 > copiarlo al teléfono y descomprimirlo con `termux-setup-storage` +
 > `unzip`.
