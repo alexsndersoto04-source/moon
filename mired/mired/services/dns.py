@@ -60,6 +60,14 @@ class ServidorDNS:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("0.0.0.0", self.puerto))
+        # mDNS: unirse al grupo multicast para responder nombres
+        # *.zona.local sin configurar nada en los dispositivos.
+        try:
+            grupo = socket.inet_aton("224.0.0.251") + socket.inet_aton("0.0.0.0")
+            self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, grupo)
+            self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+        except OSError:
+            pass
         self._activo = True
         self._hilo = threading.Thread(target=self._bucle, daemon=True,
                                      name="mired-dns")
@@ -81,15 +89,23 @@ class ServidorDNS:
             except OSError:
                 break
             try:
-                respuesta = self._responder(datos)
+                es_mdns = cliente[1] == 5353
+                respuesta = self._responder(datos, es_mdns)
                 if respuesta:
                     self._sock.sendto(respuesta, cliente)
+                    if es_mdns:  # mDNS: la respuesta se difunde al grupo
+                        try:
+                            self._sock.sendto(respuesta, ("224.0.0.251", 5353))
+                        except OSError:
+                            pass
             except Exception:
                 continue
 
-    def _responder(self, consulta):
+    def _responder(self, consulta, es_mdns=False):
         if len(consulta) < 12:
             return None
+        if consulta[2] & 0x80:      # es una respuesta (p. ej. la propia
+            return None             # difusión mDNS): ignorarla
         identidad = consulta[:2]
         try:
             nombre, fin_pregunta = _leer_nombre(consulta, 12)
@@ -101,21 +117,30 @@ class ServidorDNS:
         pregunta = consulta[12:fin_pregunta + 4]
 
         nombre_bajo = nombre.lower().rstrip(".")
+        local = nombre_bajo.endswith(".local")
+        if local:
+            # wiki.mired.local → wiki.mired  (mDNS pide la zona .local)
+            nombre_bajo = nombre_bajo[:-len(".local")].rstrip(".")
         en_zona = (nombre_bajo == self.zona or
                    nombre_bajo.endswith("." + self.zona))
 
         if en_zona:
-            return self._respuesta_local(identidad, pregunta, nombre, tipo, clase)
+            return self._respuesta_local(identidad, pregunta, nombre,
+                                         tipo, clase, es_mdns)
+        if local:
+            return None  # otros nombres .local no son nuestros
 
         # Fuera de zona → reenviar al upstream (si falla, rechazar)
         return self._reenviar(consulta) or self._rechazo(identidad, pregunta)
 
-    def _respuesta_local(self, identidad, pregunta, nombre, tipo, clase):
-        cabecera = identidad + struct.pack("!HHHHH", 0x8180, 1, 0, 0, 0)
+    def _respuesta_local(self, identidad, pregunta, nombre, tipo, clase,
+                         es_mdns=False):
+        banderas = 0x8400 if es_mdns else 0x8180  # mDNS: QR+AA
+        cabecera = identidad + struct.pack("!HHHHH", banderas, 1, 0, 0, 0)
         if tipo == TIPO_A and clase == CLASE_IN:
             ip = socket.inet_aton(self.ip_destino)
             respuesta = (b"\xc0\x0c" + struct.pack("!HHIH", TIPO_A, CLASE_IN, 60, 4) + ip)
-            cabecera = identidad + struct.pack("!HHHHH", 0x8180, 1, 1, 0, 0)
+            cabecera = identidad + struct.pack("!HHHHH", banderas, 1, 1, 0, 0)
             return cabecera + pregunta + respuesta
         # AAAA u otros tipos dentro de la zona: sin registros (NODATA)
         return cabecera + pregunta

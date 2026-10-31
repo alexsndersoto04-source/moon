@@ -12,7 +12,7 @@ fi
 command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock || true
 
 mkdir -p data
-nohup python3 -m mired > data/mired.log 2>&1 &
+nohup python3 -u -m mired > data/mired.log 2>&1 &
 echo $! > data/mired.pid
 
 # Esperar a que el portal responda
