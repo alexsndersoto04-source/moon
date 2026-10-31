@@ -12,7 +12,8 @@ import sys
 from . import config, netinfo
 from .core import db
 from .core.http import Aplicacion
-from .services import archivos, buscar, chat, correo, dns, foro, medios, portal, wiki
+from .services import (ajustes, archivos, buscar, chat, certificados, correo,
+                       dns, foro, medios, portal, sesion, wiki)
 
 
 def construir_aplicacion():
@@ -26,6 +27,8 @@ def construir_aplicacion():
     foro.registrar(app, "/foro")
     archivos.registrar(app, "/nube")
     medios.registrar(app, "/streaming")
+    sesion.registrar(app, "/sesion")
+    ajustes.registrar(app, "/ajustes")
     # Hosts virtuales: wiki.mired → /wiki, buscar.mired → /buscar, etc.
     zona = conf["zona"]
     app.vhost("wiki." + zona, "/wiki")
@@ -47,6 +50,16 @@ def iniciar(conf):
     ip = conf["ip_manual"] if not conf.get("ip_auto", True) and conf.get("ip_manual") else netinfo.ip_local()
     app = construir_aplicacion()
     servidor = app.servir_para_siempre("0.0.0.0", conf["puerto_http"])
+
+    estado_https = "deshabilitado"
+    if conf.get("https", True):
+        par = certificados.preparar()
+        if par:
+            app.servir_para_siempre("0.0.0.0", conf.get("puerto_https", 8443), tls=par)
+            estado_https = "activo en https://%s:%d (CA en /sesion/ca.crt)" % (
+                ip, conf.get("puerto_https", 8443))
+        else:
+            estado_https = "no disponible (instala openssl: pkg install openssl)"
 
     servidor_dns = None
     try:
@@ -90,6 +103,9 @@ def iniciar(conf):
         ip, conf["puerto_http"], zona, conf["puerto_http"]))
     print("  DNS       %s  →  *.%s" % (estado_dns, zona))
     print("  SMTP      %s  →  *@%s" % (estado_smtp, zona))
+    print("  HTTPS     %s" % estado_https)
+    print("  Acceso    %s" % ("abierto (sin cuenta)" if conf.get("acceso_abierto", True)
+                             else "privado (con cuenta — crea la tuya en /sesion/)"))
     print("  ─────────────────────────────────────────────")
     print("  Conecta otros dispositivos al hotspot y abre la URL del portal.")
     print("  Pulsa Ctrl+C para detener. (En el teléfono: ./detener.sh)")

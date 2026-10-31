@@ -22,8 +22,8 @@ echo "▸ Actualizando paquetes…"
 pkg update -y || true
 
 echo ""
-echo "▸ Instalando Python…"
-pkg install -y python
+echo "▸ Instalando Python y openssl (para HTTPS)…"
+pkg install -y python openssl
 
 # Opcional: termux-api para termux-wake-lock (mantiene el teléfono despierto)
 if ! command -v termux-wake-lock >/dev/null 2>&1; then

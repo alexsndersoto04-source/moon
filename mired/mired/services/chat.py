@@ -30,7 +30,7 @@ def listar_salas():
 
 def enviar(sala, nick, texto):
     sala = (sala or "general").strip().lower()[:40] or "general"
-    nick = (nick or "anonimo").strip()[:30] or "anonimo"
+    nick = (nick or "").strip()[:30] or "anonimo"
     texto = texto.strip()[:LIMITE_TEXTO]
     if not texto:
         return None
@@ -80,7 +80,10 @@ def api_mensajes(peticion):
 
 def api_enviar(peticion):
     form = peticion.form()
-    mid = enviar(form.get("sala", "general"), form.get("nick", ""), form.get("texto", ""))
+    nick = form.get("nick", "")
+    if not nick and peticion.usuario:
+        nick = peticion.usuario["usuario"]
+    mid = enviar(form.get("sala", "general"), nick, form.get("texto", ""))
     return json_resp({"ok": mid is not None, "id": mid})
 
 

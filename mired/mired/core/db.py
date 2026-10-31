@@ -113,5 +113,13 @@ def esquema():
             cuerpo TEXT NOT NULL,
             creado_en TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY,
+            usuario TEXT UNIQUE NOT NULL,
+            hash TEXT NOT NULL,
+            sal TEXT NOT NULL,
+            es_admin INTEGER NOT NULL DEFAULT 0,
+            creado_en TEXT DEFAULT (datetime('now'))
+        );
         """
     )

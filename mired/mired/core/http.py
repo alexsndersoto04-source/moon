@@ -19,6 +19,8 @@ class Peticion:
         self.cuerpo = cuerpo                # bytes
         self.cliente = cliente              # IP del cliente
         self.host = host.lower().split(":")[0]
+        self.usuario = None                 # dict del usuario autenticado (o None)
+        self.es_tls = False
         self._form = None
 
     def form(self):
@@ -119,6 +121,8 @@ class _Manejador(BaseHTTPRequestHandler):
         self.send_response(respuesta.estado)
         for clave, valor in respuesta.cabeceras.items():
             self.send_header(clave, valor)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
         if respuesta.stream is not None:
             self.send_header("Content-Length", str(respuesta.largo))
             self.end_headers()
@@ -169,29 +173,86 @@ class Aplicacion:
         self._prefijos_vhost[host.lower()] = prefijo.rstrip("/")
 
     def despachar(self, peticion):
+        self._resolver_sesion(peticion)
         ruta = peticion.ruta
         for host, prefijo in self._prefijos_vhost.items():
             if peticion.host == host or peticion.host == host.split(".", 1)[-1]:
                 if not (ruta == prefijo or ruta.startswith(prefijo + "/")):
                     ruta = prefijo + (ruta if ruta.startswith("/") else "/" + ruta)
                 break
+        if not self._acceso_permitido(peticion, ruta):
+            from urllib.parse import quote
+            return redirigir("/sesion/?volver=" + quote(peticion.ruta))
         funcion, kwargs = self.enrutador.resolver(peticion.metodo, ruta)
         if funcion is None:
             return no_encontrado("No existe: " + ruta)
         resultado = funcion(peticion, **kwargs)
-        if isinstance(resultado, Respuesta):
-            return resultado
-        return html(str(resultado))
+        if not isinstance(resultado, Respuesta):
+            resultado = html(str(resultado))
+        return self._rellenar_sesion(resultado, peticion)
 
-    def servir(self, ip, puerto):
+    # -- sesiones y control de acceso ----------------------------------
+
+    def _resolver_sesion(self, peticion):
+        from http.cookies import SimpleCookie
+        from . import auth
+        crudo = peticion.cabeceras.get("Cookie", "")
+        if not crudo:
+            return
+        try:
+            galleta = SimpleCookie()
+            galleta.load(crudo)
+            morsel = galleta.get(auth.NOMBRE_COOKIE)
+            if morsel:
+                peticion.usuario = auth.usuario_de_token(morsel.value)
+        except Exception:
+            peticion.usuario = None
+
+    def _acceso_permitido(self, peticion, ruta):
+        from .. import config
+        from . import auth
+        import hmac as _hmac
+        token_interno = peticion.cabeceras.get("X-Mired-Interno", "")
+        if token_interno and _hmac.compare_digest(token_interno, auth.token_interno()):
+            return True  # el propio servidor (rastreador del buscador)
+        if config.cargar().get("acceso_abierto", True):
+            return True
+        if ruta.startswith(("/sesion", "/static")) or ruta == "/favicon.svg":
+            return True
+        return peticion.usuario is not None
+
+    def _rellenar_sesion(self, respuesta, peticion):
+        if not respuesta.cabeceras.get("Content-Type", "").startswith("text/html"):
+            return respuesta
+        from .template import escapar
+        u = peticion.usuario
+        if u:
+            nav = ('<a href="/ajustes/">Ajustes</a>'
+                   '<span class="chip-usuario">%s</span>'
+                   '<a href="/sesion/salir">Salir</a>' % escapar(u["usuario"]))
+            nombre_js = escapar(u["usuario"])
+        else:
+            nav = '<a href="/sesion/">Entrar</a>'
+            nombre_js = ""
+        respuesta.cuerpo = (respuesta.cuerpo
+                            .replace(b"{{usuario_nav}}", nav.encode("utf-8"))
+                            .replace(b"{{usuario_js}}", nombre_js.encode("utf-8")))
+        return respuesta
+
+    def servir(self, ip, puerto, tls=None):
         servidor = ThreadingHTTPServer((ip, puerto), _Manejador)
         servidor.app = self
         servidor.daemon_threads = True
+        if tls:
+            import ssl
+            contexto = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            contexto.load_cert_chain(tls[0], tls[1])
+            servidor.socket = contexto.wrap_socket(servidor.socket, server_side=True)
         self._httpd = servidor
         return servidor
 
-    def servir_para_siempre(self, ip, puerto):
-        servidor = self.servir(ip, puerto)
+    def servir_para_siempre(self, ip, puerto, tls=None):
+        servidor = self.servir(ip, puerto, tls=tls)
         hilo = threading.Thread(target=servidor.serve_forever, daemon=True)
         hilo.start()
         return servidor

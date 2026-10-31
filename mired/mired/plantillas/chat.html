@@ -21,7 +21,7 @@
 
 <script>
 (function () {
-  var nick = localStorage.getItem('mired_nick') || 'anonimo';
+  var nick = localStorage.getItem('mired_nick') || window.MIRED_USUARIO || 'anonimo';
   document.getElementById('nick').value = nick;
   window.sala = {{sala_json}};
   window.desde = 0;

@@ -14,6 +14,7 @@ from urllib.parse import urljoin, urlsplit
 
 from .. import config
 from ..core import db
+from ..core.auth import token_interno as _token_interno
 from ..core.http import html, json, redirigir
 from ..core.template import escapar, renderizar
 from ..core.markdown import texto_plano
@@ -119,7 +120,9 @@ def rastrear(base_url, max_paginas=None):
             continue
         visitadas.add(url)
         try:
-            with urllib.request.urlopen(url, timeout=5) as respuesta:
+            peticion_http = urllib.request.Request(
+                url, headers={"X-Mired-Interno": _token_interno()})
+            with urllib.request.urlopen(peticion_http, timeout=5) as respuesta:
                 if respuesta.status != 200:
                     continue
                 tipo = respuesta.headers.get("Content-Type", "")
