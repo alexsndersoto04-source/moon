@@ -13,7 +13,8 @@ from . import config, netinfo
 from .core import db
 from .core.http import Aplicacion
 from .services import (ajustes, api, archivos, buscar, chat, certificados,
-                       correo, dns, foro, juegos, medios, portal, sesion, wiki)
+                       conectar, correo, dns, foro, juegos, medios, portal,
+                       sesion, wiki)
 
 
 def construir_aplicacion():
@@ -29,6 +30,7 @@ def construir_aplicacion():
     medios.registrar(app, "/streaming")
     juegos.registrar(app, "/juegos")
     api.registrar(app, "/api")
+    conectar.registrar(app, "/conectar")
     sesion.registrar(app, "/sesion")
     ajustes.registrar(app, "/ajustes")
     # Hosts virtuales: wiki.mired → /wiki, buscar.mired → /buscar, etc.
