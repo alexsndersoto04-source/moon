@@ -1,4 +1,4 @@
-<section class="panel panel-sesion">
+<section class="panel">
   <h1>Entrar</h1>
   {{aviso}}
   <form class="formulario" method="post" action="/sesion/entrar">
@@ -12,13 +12,11 @@
     <button class="boton" type="submit">Entrar</button>
   </form>
 
-  <hr>
-
   <h2>Crear cuenta</h2>
   <p class="meta">Las cuentas viven solo en tu red.{{primera_cuenta_txt}}</p>
   <form class="formulario" method="post" action="/sesion/registro">
     <input type="hidden" name="volver" value="{{volver}}">
-    <label>Usuario (3-24 letras, números o guion bajo)
+    <label>Usuario (3–24 letras, números o guion bajo)
       <input name="usuario" required maxlength="24" autocomplete="username">
     </label>
     <label>Contraseña (mínimo 6 caracteres)

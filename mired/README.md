@@ -101,6 +101,8 @@ herramientas que aceptan puertos de DNS personalizados.
 | **Foro**      | Hilos de conversación por categorías                | `/foro/`       |
 | **Nube**      | Carpetas, subida de archivos, descarga y borrado    | `/nube/`       |
 | **Streaming** | Biblioteca de música y vídeos con reproductor       | `/streaming/`  |
+| **Juegos**    | Ta-Te-Ti multijugador en tiempo real               | `/juegos/`     |
+| **API**       | JSON para desarrollar sobre tu internet            | `/api/`        |
 | **Estado**    | Salud del sistema (RAM, tiempo activo, índice)     | `/estado/`     |
 | **Ayuda**     | Instrucciones de conexión y DNS                    | `/ayuda/`      |
 | **Sesión**    | Cuentas con contraseña y sesiones firmadas         | `/sesion/`     |
@@ -165,7 +167,8 @@ contraseñas y HTTPS con certificados propios llegan en la Fase 4.
 - ✅ **Fase 3 — Archivos y medios**: nube de archivos y streaming con reproductor
 - ✅ **Fase 4 — Seguridad**: cuentas con contraseña, sesiones firmadas, panel de
   administración y HTTPS con tu propia autoridad certificadora
-- ⬜ **Fase 5 — Extras**: juegos multijugador, API pública, automatizaciones
+- ✅ **Fase 5 — Extras**: Ta-Te-Ti multijugador en tiempo real, API pública JSON
+  con clave para automatizaciones
 
 ### Nube y streaming
 

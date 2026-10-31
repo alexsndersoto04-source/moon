@@ -1,27 +1,13 @@
 <section class="portada">
-  <span class="etiqueta">Tu internet independiente</span>
   <h1>{{nombre_red}}</h1>
   <p class="subtitulo">Tu propio internet: busca, escribe, conversa y comparte
-     dentro de tu red local — sin depender de nadie.</p>
+     dentro de tu red, sin depender de nadie.</p>
   <form class="buscador-hero" action="/buscar/" method="get">
     <input type="search" name="q" placeholder="Busca en tu red…" autocomplete="off">
     <button type="submit">Buscar</button>
   </form>
-  <p class="meta">Modo <strong>{{modo}}</strong> · <strong>http://{{ip}}:{{puerto}}</strong>
-     · zona <strong>*.{{zona}}</strong></p>
 </section>
 
 <section class="rejilla">
 {{tarjetas}}
-</section>
-
-<section class="panel">
-  <h2>Cómo conectarte</h2>
-  <ol>
-    <li>Activa el <strong>hotspot</strong> de este teléfono (o conecta todo a la misma red Wi-Fi).</li>
-    <li>Conecta tu computadora u otro teléfono a esa red.</li>
-    <li>Abre <strong>http://{{ip}}:{{puerto}}</strong> en el navegador.</li>
-    <li>Opcional: agrega las líneas de <code>hosts.txt</code> al archivo hosts de tus
-      computadoras para usar direcciones como <code>http://wiki.{{zona}}:{{puerto}}</code>.</li>
-  </ol>
 </section>

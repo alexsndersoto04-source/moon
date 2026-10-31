@@ -9,9 +9,8 @@
 </head>
 <body>
   <header class="barra">
-    <a class="marca" href="/"><span class="marca-punto"></span>MiRed</a>
+    <a class="marca" href="/">MiRed</a>
     <nav>
-      <a href="/">Inicio</a>
       <a href="/buscar/">Buscador</a>
       <a href="/wiki/">Wiki</a>
       <a href="/chat/">Chat</a>
@@ -19,16 +18,19 @@
       <a href="/foro/">Foro</a>
       <a href="/nube/">Nube</a>
       <a href="/streaming/">Streaming</a>
-      <a href="/estado/">Estado</a>
-      <a href="/ayuda/">Ayuda</a>
-      {{usuario_nav}}
+      <a href="/juegos/">Juegos</a>
+      <span class="nav-cuenta">{{usuario_nav}}</span>
     </nav>
   </header>
   <main>
 {{contenido}}
   </main>
   <footer class="pie">
-    MiRed — tu internet independiente · hecho para tu propia red
+    <a href="/api/">API</a> ·
+    <a href="/estado/">Estado</a> ·
+    <a href="/ayuda/">Ayuda</a>
+    <br><br>
+    MiRed — tu internet independiente
   </footer>
   <script>window.MIRED_USUARIO = "{{usuario_js}}";</script>
 </body>

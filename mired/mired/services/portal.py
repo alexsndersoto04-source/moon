@@ -63,8 +63,8 @@ def inicio(peticion):
         _tarjeta("/foro/", "Foro", "Hilos de conversación con categorías", "foro"),
         _tarjeta("/nube/", "Nube", "Sube, organiza y comparte tus archivos", "nube"),
         _tarjeta("/streaming/", "Streaming", "Tu biblioteca de música y vídeos", "streaming"),
-        _tarjeta("/estado/", "Estado", "Salud de tu internet independiente", "estado"),
-        _tarjeta("/ayuda/", "Ayuda", "Cómo conectar dispositivos y usar DNS", "ayuda"),
+        _tarjeta("/juegos/", "Juegos", "Ta-Te-Ti multijugador en tiempo real", "streaming"),
+        _tarjeta("/api/", "API", "Desarrolla sobre tu propio internet", "estado"),
     ])
     return html(renderizar("portal.html", {
         "titulo": conf["nombre"],

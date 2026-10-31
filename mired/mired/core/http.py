@@ -217,8 +217,8 @@ class Aplicacion:
             return True  # el propio servidor (rastreador del buscador)
         if config.cargar().get("acceso_abierto", True):
             return True
-        if ruta.startswith(("/sesion", "/static")) or ruta == "/favicon.svg":
-            return True
+        if ruta.startswith(("/sesion", "/static", "/api")) or ruta == "/favicon.svg":
+            return True  # la API autentica con su propia clave o sesión
         return peticion.usuario is not None
 
     def _rellenar_sesion(self, respuesta, peticion):
@@ -227,8 +227,7 @@ class Aplicacion:
         from .template import escapar
         u = peticion.usuario
         if u:
-            nav = ('<a href="/ajustes/">Ajustes</a>'
-                   '<span class="chip-usuario">%s</span>'
+            nav = ('<a class="usuario" href="/ajustes/">%s</a>'
                    '<a href="/sesion/salir">Salir</a>' % escapar(u["usuario"]))
             nombre_js = escapar(u["usuario"])
         else:

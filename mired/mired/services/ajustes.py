@@ -57,6 +57,7 @@ def vista_ajustes(peticion):
         "acceso": "Abierto" if abierto else "Privado (con cuenta)",
         "accion_acceso": "Cerrar acceso (pedir cuenta)" if abierto else "Abrir acceso (sin cuenta)",
         "valor_acceso": "0" if abierto else "1",
+        "clave_api": escapar(auth.token_api()),
         "aviso": "<p class='aviso-ok'>Cambios guardados.</p>"
                  if peticion.arg("ok") else "",
     }))

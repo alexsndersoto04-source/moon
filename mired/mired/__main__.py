@@ -12,8 +12,8 @@ import sys
 from . import config, netinfo
 from .core import db
 from .core.http import Aplicacion
-from .services import (ajustes, archivos, buscar, chat, certificados, correo,
-                       dns, foro, medios, portal, sesion, wiki)
+from .services import (ajustes, api, archivos, buscar, chat, certificados,
+                       correo, dns, foro, juegos, medios, portal, sesion, wiki)
 
 
 def construir_aplicacion():
@@ -27,6 +27,8 @@ def construir_aplicacion():
     foro.registrar(app, "/foro")
     archivos.registrar(app, "/nube")
     medios.registrar(app, "/streaming")
+    juegos.registrar(app, "/juegos")
+    api.registrar(app, "/api")
     sesion.registrar(app, "/sesion")
     ajustes.registrar(app, "/ajustes")
     # Hosts virtuales: wiki.mired → /wiki, buscar.mired → /buscar, etc.
@@ -38,6 +40,8 @@ def construir_aplicacion():
     app.vhost("foro." + zona, "/foro")
     app.vhost("nube." + zona, "/nube")
     app.vhost("streaming." + zona, "/streaming")
+    app.vhost("juegos." + zona, "/juegos")
+    app.vhost("api." + zona, "/api")
     app.vhost("inicio." + zona, "/")
     return app
 

@@ -121,5 +121,16 @@ def esquema():
             es_admin INTEGER NOT NULL DEFAULT 0,
             creado_en TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS juego_partidas (
+            id INTEGER PRIMARY KEY,
+            tablero TEXT NOT NULL DEFAULT '.........',
+            turno TEXT NOT NULL DEFAULT 'X',
+            jugador_x TEXT NOT NULL,
+            jugador_o TEXT,
+            estado TEXT NOT NULL DEFAULT 'esperando',
+            linea TEXT NOT NULL DEFAULT '',
+            version INTEGER NOT NULL DEFAULT 0,
+            creado_en TEXT DEFAULT (datetime('now'))
+        );
         """
     )
