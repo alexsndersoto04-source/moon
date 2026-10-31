@@ -1,16 +1,40 @@
 <section class="panel">
   <h1>Ayuda</h1>
 
+  <h2>¿Esto es un internet de verdad?</h2>
+  <p class="meta">Sí. Es una red real corriendo en tu teléfono: protocolos
+     estándar de internet (TCP/IP), servidor DNS, servidor de correo SMTP,
+     web con HTTPS y certificados verificables. Los datos viven en tu
+     teléfono y funciona aunque el router esté desconectado del mundo.
+     Lo único que no podemos hacer sin root es lo que Android se reserva:
+     el DNS automático (puerto 53) y el puerto 80 — por eso se escriben
+     direcciones con <code>:{{puerto}}</code>. El internet global también
+     usa direcciones; lo que las oculta es una capa de comodidad que
+     Android solo da a las grandes empresas.</p>
+
   <h2>Conectar un dispositivo</h2>
   <ol>
-    <li>Activa el hotspot del teléfono (Ajustes → Conexión → Punto de acceso).</li>
+    <li>Activa el hotspot del teléfono (Ajustes → Conexión → Punto de acceso)
+        o conecta todo al mismo router.</li>
     <li>Conecta el otro dispositivo a esa red Wi-Fi.</li>
     <li>Abre <strong>http://{{ip}}:{{puerto}}</strong> en su navegador.</li>
   </ol>
 
-  <h2>Usar nombres bonitos (wiki.mired, buscar.mired…)</h2>
-  <p>En una computadora, edita el archivo hosts y agrega las líneas del
-     archivo <code>hosts.txt</code> que genera el instalador:</p>
+  <h2>Nombres sin escribir la IP (mDNS)</h2>
+  <p>En Android, iPhone, Windows y Mac modernos puedes usar nombres
+     directamente, sin configurar nada:</p>
+  <ul>
+    <li><code>http://wiki.{{zona}}.local:{{puerto}}/</code></li>
+    <li><code>http://chat.{{zona}}.local:{{puerto}}/</code></li>
+    <li><code>http://correo.{{zona}}.local:{{puerto}}/</code>
+        …y así con buscar, foro, nube, streaming, juegos, api.</li>
+  </ul>
+  <p class="meta">Funciona igual que descubrir una impresora en red
+     (protocolo mDNS/Bonjour). Si tu dispositivo no los resuelve, usa la IP.</p>
+
+  <h2>En una computadora: nombres cortos con hosts</h2>
+  <p>Edita el archivo hosts y agrega las líneas del archivo
+     <code>hosts.txt</code> que genera el instalador:</p>
   <ul>
     <li><strong>Windows:</strong> <code>C:\Windows\System32\drivers\etc\hosts</code> (como administrador)</li>
     <li><strong>GNU/Linux y macOS:</strong> <code>/etc/hosts</code></li>
@@ -18,11 +42,18 @@
   <p>Después podrás entrar a <code>http://wiki.{{zona}}:{{puerto}}</code> y
      <code>http://buscar.{{zona}}:{{puerto}}</code>.</p>
 
+  <h2>MiRed como aplicación</h2>
+  <p>En el navegador del teléfono o tablet: menú ⋮ →
+     <strong>Instalar aplicación</strong> (o «Añadir a pantalla de inicio»).
+     MiRed queda como un icono en tu pantalla y se abre a pantalla completa,
+     como una app.</p>
+
   <h2>DNS local (avanzado)</h2>
   <p>MiRed escucha consultas DNS en <strong>UDP {{puerto_dns}}</strong> y resuelve
-     todo <code>*.{{zona}}</code> hacia {{ip}}. No se usa el puerto 53 porque
-     Android lo requiere para root; puedes apuntar herramientas que acepten
-     puertos personalizados a <code>{{ip}}:{{puerto_dns}}</code>.</p>
+     todo <code>*.{{zona}}</code> (y <code>*.{{zona}}.local</code> por mDNS)
+     hacia {{ip}}. No se usa el puerto 53 porque Android lo requiere para
+     root; puedes apuntar herramientas que acepten puertos personalizados a
+     <code>{{ip}}:{{puerto_dns}}</code>.</p>
 
   <h2>Problemas frecuentes</h2>
   <ul>
@@ -30,6 +61,9 @@
         (lo hace <code>iniciar.sh</code> si está instalado Termux:API).</li>
     <li><strong>No carga en el otro dispositivo:</strong> verifica que ambos estén
         en la misma red y que la IP mostrada arriba sea la correcta.</li>
+    <li><strong>El candado verde de HTTPS:</strong> instala el certificado de
+        <a href="/sesion/ca.crt">mired-ca.crt</a> en cada dispositivo y abre
+        <code>https://{{ip}}:{{puerto_https}}</code>.</li>
     <li><strong>Reiniciar todo:</strong> <code>./detener.sh && ./iniciar.sh</code>.</li>
   </ul>
 </section>

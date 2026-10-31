@@ -147,6 +147,7 @@ def ayuda(peticion):
         "ip": ip,
         "puerto": conf["puerto_http"],
         "puerto_dns": conf["puerto_dns"],
+        "puerto_https": conf.get("puerto_https", 8443),
         "zona": conf["zona"],
     }))
 
