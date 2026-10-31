@@ -103,8 +103,11 @@ herramientas que aceptan puertos de DNS personalizados.
 | **Streaming** | Biblioteca de música y vídeos con reproductor       | `/streaming/`  |
 | **Estado**    | Salud del sistema (RAM, tiempo activo, índice)     | `/estado/`     |
 | **Ayuda**     | Instrucciones de conexión y DNS                    | `/ayuda/`      |
+| **Sesión**    | Cuentas con contraseña y sesiones firmadas         | `/sesion/`     |
+| **Ajustes**   | Panel de administración (usuarios y acceso)        | `/ajustes/`    |
 | **DNS**       | Resuelve `*.mired` hacia tu teléfono (UDP 5353)    | —              |
 | **SMTP**      | Clientes de correo externos pueden enviar al puerto 2525 | —       |
+| **HTTPS**     | Certificados con tu propia CA (puerto 8443)        | `/sesion/ca.crt` |
 
 La wiki viene con artículos iniciales: [[Qué_es_MiRed]],
 [[Cómo_conectar_tus_dispositivos]], [[Guía_de_edición]]…
@@ -160,7 +163,8 @@ contraseñas y HTTPS con certificados propios llegan en la Fase 4.
 - ✅ **Fase 1 — Núcleo**: portal, buscador, wiki, DNS
 - ✅ **Fase 2 — Comunicación**: chat, correo `@mired` con webmail y SMTP, foro
 - ✅ **Fase 3 — Archivos y medios**: nube de archivos y streaming con reproductor
-- ⬜ **Fase 4 — Seguridad**: usuarios y contraseñas, HTTPS con CA propia, acceso remoto
+- ✅ **Fase 4 — Seguridad**: cuentas con contraseña, sesiones firmadas, panel de
+  administración y HTTPS con tu propia autoridad certificadora
 - ⬜ **Fase 5 — Extras**: juegos multijugador, API pública, automatizaciones
 
 ### Nube y streaming
@@ -169,3 +173,17 @@ contraseñas y HTTPS con certificados propios llegan en la Fase 4.
   (el límite lo pones tú en `config.json`) y comparte con el enlace de descarga.
 - La música y los vídeos se organizan solos en `musica/` y `videos/`;
   el reproductor permite adelantar/retrasar (soporte HTTP Range).
+
+### Seguridad (Fase 4)
+
+- **Cuentas**: regístrate en `/sesion/`. La primera cuenta es la
+  administradora. Contraseñas con PBKDF2-HMAC-SHA256 (200 000 iteraciones)
+  y sesiones con cookies firmadas (HMAC-SHA256, HttpOnly, SameSite).
+- **Modo de acceso**: por defecto MiRed es **privado** (pide cuenta). Puedes
+  abrirlo desde `/ajustes/` si prefieres la red libre.
+- **HTTPS**: el servidor escucha también en `https://…:8443` con un
+  certificado firmado por **tu propia autoridad certificadora**. Descarga la
+  CA en `/sesion/ca.crt`, instálala en cada dispositivo (Ajustes → Seguridad →
+  Instalar certificado) y el candado saldrá verde.
+- **Panel de administración** (`/ajustes/`): usuarios, permisos de admin y
+  modo de acceso.

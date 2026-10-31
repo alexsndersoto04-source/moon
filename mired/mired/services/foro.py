@@ -99,14 +99,20 @@ def vista_hilo(peticion, hilo_id):
 
 def vista_nuevo(peticion):
     form = peticion.form()
+    autor = form.get("autor", "")
+    if not autor and peticion.usuario:
+        autor = peticion.usuario["usuario"]
     hilo_id = crear_hilo(form.get("categoria", "General"), form.get("titulo", ""),
-                         form.get("autor", ""), form.get("cuerpo", ""))
+                         autor, form.get("cuerpo", ""))
     return redirigir("/foro/hilo/%d" % hilo_id)
 
 
 def vista_responder(peticion):
     form = peticion.form()
-    responder(form.get("hilo_id", "0"), form.get("autor", ""), form.get("cuerpo", ""))
+    autor = form.get("autor", "")
+    if not autor and peticion.usuario:
+        autor = peticion.usuario["usuario"]
+    responder(form.get("hilo_id", "0"), autor, form.get("cuerpo", ""))
     return redirigir("/foro/hilo/%s" % form.get("hilo_id", "0"))
 
 

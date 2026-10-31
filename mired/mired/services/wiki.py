@@ -205,8 +205,11 @@ def pagina_editar(peticion, slug):
 
 def pagina_guardar(peticion):
     form = peticion.form()
+    editor = form.get("editor", "")
+    if not editor and peticion.usuario:
+        editor = peticion.usuario["usuario"]
     slug = guardar(form.get("titulo", ""), form.get("cuerpo", ""),
-                   editor=form.get("editor", "") or "anonimo")
+                   editor=editor or "anonimo")
     return redirigir("/wiki/pagina/" + slug)
 
 

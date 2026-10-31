@@ -1,0 +1,29 @@
+<section class="panel panel-sesion">
+  <h1>Entrar</h1>
+  {{aviso}}
+  <form class="formulario" method="post" action="/sesion/entrar">
+    <input type="hidden" name="volver" value="{{volver}}">
+    <label>Usuario
+      <input name="usuario" required maxlength="24" autocomplete="username">
+    </label>
+    <label>Contraseña
+      <input name="clave" type="password" required autocomplete="current-password">
+    </label>
+    <button class="boton" type="submit">Entrar</button>
+  </form>
+
+  <hr>
+
+  <h2>Crear cuenta</h2>
+  <p class="meta">Las cuentas viven solo en tu red.{{primera_cuenta_txt}}</p>
+  <form class="formulario" method="post" action="/sesion/registro">
+    <input type="hidden" name="volver" value="{{volver}}">
+    <label>Usuario (3-24 letras, números o guion bajo)
+      <input name="usuario" required maxlength="24" autocomplete="username">
+    </label>
+    <label>Contraseña (mínimo 6 caracteres)
+      <input name="clave" type="password" required minlength="6" autocomplete="new-password">
+    </label>
+    <button class="boton secundario" type="submit">Crear cuenta</button>
+  </form>
+</section>
