@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{titulo}} · MiRed</title>
+  <link rel="stylesheet" href="/static/estilo.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="barra">
+    <a class="marca" href="/">🌐 MiRed</a>
+    <nav>
+      <a href="/">Inicio</a>
+      <a href="/buscar/">Buscador</a>
+      <a href="/wiki/">Wiki</a>
+      <a href="/estado/">Estado</a>
+      <a href="/ayuda/">Ayuda</a>
+    </nav>
+  </header>
+  <main>
+{{contenido}}
+  </main>
+  <footer class="pie">
+    <span>MiRed · tu internet independiente · <span id="reloj"></span></span>
+  </footer>
+  <script>
+    (function () {
+      var el = document.getElementById('reloj');
+      function tick() { el.textContent = new Date().toLocaleString('es'); }
+      tick(); setInterval(tick, 1000);
+    })();
+  </script>
+</body>
+</html>
