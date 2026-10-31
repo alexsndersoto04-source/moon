@@ -35,6 +35,8 @@ def _icono(nombre):
         "correo": '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
         "foro": '<path d="M10.5 8.5H21M10.5 12.5H18M10.5 16.5H15"/><rect x="3" y="5.5" width="4.5" height="13" rx="1.2"/>',
         "estado": '<path d="M3 12.5h4l2.8-8 4.4 15 2.8-7h4"/>',
+        "nube": '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+        "streaming": '<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/>',
         "ayuda": ('<circle cx="12" cy="12" r="9"/>'
                   '<path d="M9.6 9.6a2.5 2.5 0 1 1 3.3 2.4c-.8.3-1.3 1-1.3 1.9v.3"/>'
                   '<circle cx="11.9" cy="17" r="0.6" fill="currentColor" stroke="none"/>'),
@@ -59,10 +61,10 @@ def inicio(peticion):
         _tarjeta("/chat/", "Chat", "Conversaciones en tiempo real por salas", "chat"),
         _tarjeta("/correo/", "Correo", "Tu correo interno @%s con webmail" % conf["zona"], "correo"),
         _tarjeta("/foro/", "Foro", "Hilos de conversación con categorías", "foro"),
+        _tarjeta("/nube/", "Nube", "Sube, organiza y comparte tus archivos", "nube"),
+        _tarjeta("/streaming/", "Streaming", "Tu biblioteca de música y vídeos", "streaming"),
         _tarjeta("/estado/", "Estado", "Salud de tu internet independiente", "estado"),
         _tarjeta("/ayuda/", "Ayuda", "Cómo conectar dispositivos y usar DNS", "ayuda"),
-        _tarjeta("#", "Nube", "Archivos y compartición (Fase 3)", "estado", "proximamente"),
-        _tarjeta("#", "Streaming", "Tu biblioteca multimedia local (Fase 3)", "estado", "proximamente"),
     ])
     return html(renderizar("portal.html", {
         "titulo": conf["nombre"],
@@ -92,6 +94,7 @@ def estado(peticion):
         "ip": netinfo.ip_local(),
         "puerto_http": conf["puerto_http"],
         "puerto_dns": conf["puerto_dns"],
+        "puerto_smtp": conf.get("puerto_smtp", 2525),
         "uptime_segundos": int(time.time() - _INICIO),
         "memoria_total_mb": mem.get("MemTotal"),
         "memoria_disponible_mb": mem.get("MemAvailable"),
@@ -102,6 +105,20 @@ def estado(peticion):
         return json(datos)
     minutos, segundos = divmod(datos["uptime_segundos"], 60)
     horas, minutos = divmod(minutos, 60)
+    import os
+    from . import archivos as _arch
+    cuenta_archivos = 0
+    bytes_totales = 0
+    cuenta_medios = 0
+    for _raiz, _dirs, ficheros in os.walk(_arch.BASE):
+        for nombre in ficheros:
+            cuenta_archivos += 1
+            try:
+                bytes_totales += os.path.getsize(os.path.join(_raiz, nombre))
+            except OSError:
+                pass
+            if _arch.es_audio(nombre) or _arch.es_video(nombre):
+                cuenta_medios += 1
     filas = "".join(
         "<tr><td>%s</td><td>%s</td></tr>" % (escapar(k), escapar(v))
         for k, v in [
@@ -110,11 +127,14 @@ def estado(peticion):
             ("IP del servidor", datos["ip"]),
             ("Puerto HTTP", datos["puerto_http"]),
             ("Puerto DNS (UDP)", datos["puerto_dns"]),
+            ("Puerto SMTP", datos["puerto_smtp"]),
             ("Modo de red", datos["modo"]),
             ("Tiempo activo", "%dh %dm %ds" % (horas, minutos, segundos)),
             ("Memoria total", "%s MB" % datos["memoria_total_mb"]),
             ("Memoria disponible", "%s MB" % datos["memoria_disponible_mb"]),
             ("Páginas indexadas", datos["buscador"]["documentos"]),
+            ("Archivos en la nube", "%d (%s)" % (cuenta_archivos, _arch.tamano_humano(bytes_totales))),
+            ("Medios (música/vídeo)", cuenta_medios),
         ])
     return html(renderizar("estado.html", {"titulo": "Estado", "filas": filas}))
 

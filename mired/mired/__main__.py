@@ -12,7 +12,7 @@ import sys
 from . import config, netinfo
 from .core import db
 from .core.http import Aplicacion
-from .services import buscar, chat, correo, dns, foro, portal, wiki
+from .services import archivos, buscar, chat, correo, dns, foro, medios, portal, wiki
 
 
 def construir_aplicacion():
@@ -24,6 +24,8 @@ def construir_aplicacion():
     chat.registrar(app, "/chat")
     correo.registrar(app, "/correo")
     foro.registrar(app, "/foro")
+    archivos.registrar(app, "/nube")
+    medios.registrar(app, "/streaming")
     # Hosts virtuales: wiki.mired → /wiki, buscar.mired → /buscar, etc.
     zona = conf["zona"]
     app.vhost("wiki." + zona, "/wiki")
@@ -31,6 +33,8 @@ def construir_aplicacion():
     app.vhost("chat." + zona, "/chat")
     app.vhost("correo." + zona, "/correo")
     app.vhost("foro." + zona, "/foro")
+    app.vhost("nube." + zona, "/nube")
+    app.vhost("streaming." + zona, "/streaming")
     app.vhost("inicio." + zona, "/")
     return app
 
@@ -79,6 +83,10 @@ def iniciar(conf):
     print("  Correo    http://%s:%d/correo/ (o http://correo.%s:%d/)" % (
         ip, conf["puerto_http"], zona, conf["puerto_http"]))
     print("  Foro      http://%s:%d/foro/   (o http://foro.%s:%d/)" % (
+        ip, conf["puerto_http"], zona, conf["puerto_http"]))
+    print("  Nube      http://%s:%d/nube/   (o http://nube.%s:%d/)" % (
+        ip, conf["puerto_http"], zona, conf["puerto_http"]))
+    print("  Streaming http://%s:%d/streaming/ (o http://streaming.%s:%d/)" % (
         ip, conf["puerto_http"], zona, conf["puerto_http"]))
     print("  DNS       %s  →  *.%s" % (estado_dns, zona))
     print("  SMTP      %s  →  *@%s" % (estado_smtp, zona))

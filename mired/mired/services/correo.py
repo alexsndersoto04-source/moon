@@ -73,6 +73,13 @@ class _ManejadorSMTP(socketserver.StreamRequestHandler):
     def handle(self):
         zona = config.cargar()["zona"]
         de, para, asunto = "", [], "(sin asunto)"
+        try:
+            self._bucle_smtp(zona)
+        except (ConnectionResetError, BrokenPipeError, TimeoutError, OSError):
+            pass  # el cliente se desconectó: normal en una red abierta
+
+    def _bucle_smtp(self, zona):
+        de, para, asunto = "", [], "(sin asunto)"
         self._enviar("220 mired ESMTP listo")
         while True:
             linea = self.rfile.readline()

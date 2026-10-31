@@ -33,10 +33,13 @@ class Peticion:
 
 
 class Respuesta:
-    def __init__(self, cuerpo=b"", estado=200, cabeceras=None, tipo="text/html; charset=utf-8"):
+    def __init__(self, cuerpo=b"", estado=200, cabeceras=None, tipo="text/html; charset=utf-8",
+                 stream=None, largo=0):
         if isinstance(cuerpo, str):
             cuerpo = cuerpo.encode("utf-8")
         self.cuerpo = cuerpo
+        self.stream = stream      # iterable de bytes para respuestas grandes (archivos)
+        self.largo = largo        # tamaño total cuando se usa stream
         self.estado = estado
         self.cabeceras = dict(cabeceras or {})
         self.cabeceras.setdefault("Content-Type", tipo)
@@ -97,12 +100,18 @@ class _Manejador(BaseHTTPRequestHandler):
         ruta = unquote(partes.path) or "/"
         consulta = parse_qs(partes.query)
         largo = int(self.headers.get("Content-Length") or 0)
-        cuerpo = self.rfile.read(largo) if largo else b""
+        app = self.server.app
+        if app.es_streaming(ruta):
+            cuerpo = b""   # el servicio leerá peticion.rfile directamente
+        else:
+            cuerpo = self.rfile.read(largo) if largo else b""
         peticion = Peticion(metodo, ruta, consulta, self.headers, cuerpo,
                             self.client_address[0],
                             self.headers.get("Host", ""))
+        peticion.rfile = self.rfile
+        peticion.largo_cuerpo = largo
         try:
-            respuesta = self.server.app.despachar(peticion)
+            respuesta = app.despachar(peticion)
         except Exception as exc:  # pragma: no cover - red de seguridad
             import traceback
             traceback.print_exc()
@@ -110,10 +119,17 @@ class _Manejador(BaseHTTPRequestHandler):
         self.send_response(respuesta.estado)
         for clave, valor in respuesta.cabeceras.items():
             self.send_header(clave, valor)
-        self.send_header("Content-Length", str(len(respuesta.cuerpo)))
-        self.end_headers()
-        if metodo != "HEAD":
-            self.wfile.write(respuesta.cuerpo)
+        if respuesta.stream is not None:
+            self.send_header("Content-Length", str(respuesta.largo))
+            self.end_headers()
+            if metodo != "HEAD":
+                for trozo in respuesta.stream:
+                    self.wfile.write(trozo)
+        else:
+            self.send_header("Content-Length", str(len(respuesta.cuerpo)))
+            self.end_headers()
+            if metodo != "HEAD":
+                self.wfile.write(respuesta.cuerpo)
 
     def do_GET(self):
         self._procesar("GET")
@@ -135,7 +151,15 @@ class Aplicacion:
         self.nombre = nombre
         self.enrutador = Enrutador()
         self._prefijos_vhost = {}   # host -> prefijo de ruta
+        self._streaming = []        # prefijos cuyo cuerpo se lee en streaming
         self._httpd = None
+
+    def streaming(self, *prefijos):
+        """Marca rutas cuyo cuerpo (subidas) se procesa sin cargarlo en RAM."""
+        self._streaming.extend(p.rstrip("/") for p in prefijos)
+
+    def es_streaming(self, ruta):
+        return any(ruta.startswith(p) for p in self._streaming)
 
     def vhost(self, host, prefijo):
         """Asocia un nombre de host virtual a un prefijo de ruta.
