@@ -7,8 +7,9 @@ tareas entre los demás teléfonos conectados, que suman su fuerza.
 
 ## Contenido
 
-- `web/` — la interfaz de la plataforma (estilo GitHub, tema claro):
-  Panel, Repositorios, Pipelines, Nodos, Artefactos y Consola.
+- `web/` — la interfaz de la plataforma: app móvil primero, tema claro,
+  sin bordes duros, iconos SVG. Panel, Repositorios, Pipelines, Nodos,
+  Artefactos y Consola.
   Por ahora corre con datos de ejemplo en el navegador; el núcleo real
   (Rust) se conectará a estas mismas pantallas, no se rehace la interfaz.
 
