@@ -7,9 +7,11 @@ tareas entre los demás teléfonos conectados, que suman su fuerza.
 
 ## Contenido
 
-- `web/` — la interfaz de la plataforma: app móvil primero, tema claro,
-  sin bordes duros, iconos SVG. Panel, Repositorios, Pipelines, Nodos,
-  Artefactos y Consola.
+- `web/` — la interfaz de la plataforma, construida con el sistema de
+  diseño oficial de GitHub (Primer CSS + Octicons): Inicio, Repositorios,
+  Actions, Runners, Artefactos y Consola.
+  `web/index.html` es el archivo final (autocontenido); `web/_src.html`
+  es su fuente editable (con marcadores para inyectar Primer y los iconos).
   Por ahora corre con datos de ejemplo en el navegador; el núcleo real
   (Rust) se conectará a estas mismas pantallas, no se rehace la interfaz.
 
