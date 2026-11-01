@@ -7,9 +7,10 @@ tareas entre los demás teléfonos conectados, que suman su fuerza.
 
 ## Contenido
 
-- `ui-mockup/` — maqueta visual e interactiva de la interfaz.
-  Es solo diseño/simulación para ver cómo se sentiría la app.
-  El sistema real (red P2P, workers, orquestador) todavía no está construido.
+- `web/` — la interfaz de la plataforma (estilo GitHub, tema claro):
+  Panel, Repositorios, Pipelines, Nodos, Artefactos y Consola.
+  Por ahora corre con datos de ejemplo en el navegador; el núcleo real
+  (Rust) se conectará a estas mismas pantallas, no se rehace la interfaz.
 
 ## Plan por fases
 
