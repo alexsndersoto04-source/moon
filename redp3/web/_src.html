@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="es" data-color-mode="light" data-light-theme="light" data-dark-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RedP3 — Tu infraestructura distribuida</title>
+<style>/*__PRIMER__*/</style>
+<style>
+  /* RedP3: solo pegamento sobre Primer, el CSS de github.com */
+  .octicon{display:inline-block;vertical-align:text-bottom;fill:currentColor;overflow:visible}
+  .repo-language-color{position:relative;top:1px;display:inline-block;width:12px;height:12px;border:1px solid rgba(31,35,40,.12);border-radius:50%}
+  .view{display:none}.view.active{display:block}
+  a{cursor:pointer}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* Header oscuro como el de GitHub */
+  .gh-header{display:flex;align-items:center;gap:12px;background:#010409;color:#f0f6fc;padding:0 16px;height:56px;position:relative;z-index:32}
+  .gh-logo{color:#fff;display:flex;flex:none}
+  .gh-logo:hover{color:#fff;opacity:.75}
+  .gh-icon-btn{display:flex;align-items:center;gap:2px;background:transparent;border:1px solid #3d444d;color:#f0f6fc;border-radius:6px;height:32px;min-width:32px;padding:0 6px;justify-content:center;cursor:pointer;flex:none}
+  .gh-icon-btn:hover{background:#212830}
+  .gh-search{display:flex;align-items:center;gap:8px;background:#0d1117;border:1px solid #3d444d;border-radius:6px;height:32px;padding:0 8px;width:300px;color:#9ea7b3;flex:none}
+  .gh-search input{flex:1;background:transparent;border:0;outline:0;color:#f0f6fc;font-size:14px;min-width:0}
+  .gh-search input::placeholder{color:#9ea7b3}
+  .gh-kbd{border:1px solid #3d444d;border-radius:4px;padding:0 5px;font-size:11px;color:#9ea7b3;line-height:16px;flex:none}
+  .gh-nav{display:flex;gap:2px}
+  .gh-nav a{color:#f0f6fc;font-weight:600;font-size:14px;padding:6px 8px;border-radius:6px;white-space:nowrap}
+  .gh-nav a:hover{color:#fff;background:rgba(255,255,255,.08);text-decoration:none}
+  .gh-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .gh-bell{position:relative}
+  .gh-dot{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:#1f6feb;border:1px solid #010409}
+  @media(max-width:1011px){.gh-nav{display:none}.gh-search{flex:1;width:auto}}
+
+  .avatar-init{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:600;background:linear-gradient(135deg,#8250df,#0969da);flex:none}
+  .avatar-init.sq{border-radius:6px}
+  .feed-av{width:40px;height:40px;border-radius:6px;background:var(--bgColor-success-emphasis);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+
+  .file-grid{display:grid;grid-template-columns:minmax(160px,1.2fr) 2fr auto;gap:16px;align-items:center;width:100%}
+  @media(max-width:767px){.file-grid{grid-template-columns:1fr auto}.file-grid .fg-msg{display:none}}
+  .run-grid{display:grid;grid-template-columns:auto 1fr auto;gap:12px;width:100%;align-items:start}
+  .click-row{cursor:pointer}
+  .click-row:hover{background:var(--bgColor-muted)}
+
+  .log-viewer{background:var(--bgColor-inset);border-radius:6px;padding:8px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;counter-reset:logline;overflow:auto;max-height:300px}
+  .log-line{display:flex;counter-increment:logline}
+  .log-line::before{content:counter(logline);flex:0 0 44px;text-align:right;padding-right:14px;color:var(--fgColor-muted);-webkit-user-select:none;user-select:none}
+  .log-line span{white-space:pre-wrap;word-break:break-all}
+  .log-tall{max-height:440px}
+  .step-logs{display:none;margin:0 16px 12px}
+  .step.open .step-logs{display:block}
+  .step.open .step-chev .octicon{transform:rotate(180deg)}
+  .step-chev .octicon{transition:transform .15s}
+  .step-head{cursor:pointer}
+  .step-head:hover{background:var(--bgColor-muted)}
+
+  .gh-spinner{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid rgba(191,135,0,.3);border-top-color:#bf8700;animation:ghrot .7s linear infinite;vertical-align:text-bottom;flex:none}
+  @keyframes ghrot{to{transform:rotate(360deg)}}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none}
+  .langbar{display:flex;height:8px;border-radius:6px;overflow:hidden}
+  .langbar span{display:block;height:100%}
+  .cpu-bar{width:110px;vertical-align:middle}
+  .menu-item[aria-current="true"]{font-weight:600}
+  .pair-code{font-size:26px;letter-spacing:5px}
+  .gh-toast{position:fixed;right:18px;bottom:18px;background:#1f2328;color:#fff;padding:12px 18px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);transform:translateY(90px);opacity:0;transition:all .3s ease;z-index:60;max-width:92vw}
+  .gh-toast.show{transform:translateY(0);opacity:1}
+  .order-1{order:1}.order-2{order:2}.order-3{order:3}
+  @media(min-width:768px){.order-md-1{order:1}.order-md-2{order:2}}
+  @media(max-width:767px){.hide-sm{display:none!important}}
+  .log-viewer .c-dim{color:var(--fgColor-muted)}
+  .log-viewer .c-ok{color:var(--fgColor-success);font-weight:600}
+  .log-viewer .c-blue{color:var(--fgColor-accent)}
+  .log-viewer .c-cmd{color:var(--fgColor-default);font-weight:700}
+  .log-viewer .c-warn{color:var(--fgColor-attention)}
+</style>
+</head>
+<body>
+
+<header class="gh-header">
+  <button class="gh-icon-btn" aria-label="Menú global" onclick="go('home')"><span data-oct="three-bars"></span></button>
+  <a class="gh-logo" onclick="go('home')" aria-label="Inicio de RedP3"><span data-oct="mark-github" data-octs="32"></span></a>
+  <div class="gh-search">
+    <span data-oct="search"></span>
+    <input id="ghSearch" placeholder="Escribe / para buscar" onkeydown="if(event.key==='Enter')toast('El buscador global llega con el núcleo real')">
+    <span class="gh-kbd">/</span>
+  </div>
+  <nav class="gh-nav">
+    <a onclick="go('home')">Inicio</a>
+    <a onclick="go('repos')">Repositorios</a>
+    <a onclick="go('actions')">Actions</a>
+    <a onclick="go('runners')">Runners</a>
+    <a onclick="go('artifacts')">Artefactos</a>
+    <a onclick="go('console')">Consola</a>
+  </nav>
+  <div class="gh-right">
+    <button class="gh-icon-btn" onclick="toast('Crear nuevo… llega con el núcleo real')"><span data-oct="plus"></span><span data-oct="triangle-down" data-octs="10"></span></button>
+    <button class="gh-icon-btn gh-bell" onclick="toast('Sin notificaciones nuevas')"><span data-oct="bell"></span><span class="gh-dot"></span></button>
+    <span class="avatar-init" style="width:32px;height:32px;font-size:13px" title="alex">A</span>
+  </div>
+</header>
+
+<main>
+  <!-- ================= INICIO ================= -->
+  <section class="view" id="view-home">
+    <div class="container-xl px-3 px-md-4 mt-4">
+      <div class="d-flex flex-wrap gutter">
+        <aside class="col-12 col-md-3 order-2 order-md-1 pr-md-4 mt-4 mt-md-0">
+          <div class="d-flex flex-items-center mb-3">
+            <span class="avatar-init" style="width:32px;height:32px;font-size:13px">A</span>
+            <span class="text-bold ml-2">alex</span>
+            <span class="Label ml-2">Comandante</span>
+          </div>
+          <div class="border-bottom pb-3 mb-3">
+            <div class="f6 color-fg-muted" id="homeFleetSum"></div>
+          </div>
+          <h2 class="f5 mb-2">Repositorios principales</h2>
+          <ul class="list-style-none mb-3" id="homeSideRepos"></ul>
+          <h2 class="f5 mb-2">Actividad reciente</h2>
+          <div class="f6 color-fg-muted" id="homeSideAct"></div>
+        </aside>
+        <div class="col-12 col-md-6 order-1 order-md-2">
+          <div class="d-flex flex-items-center border-bottom pb-2">
+            <h2 class="f4 flex-auto">Actividad de tu flota</h2>
+            <button class="btn btn-sm" onclick="startRun('titan-engine')"><span data-oct="play"></span> Nuevo workflow</button>
+          </div>
+          <div id="homeFeed"></div>
+        </div>
+        <aside class="col-12 col-md-3 order-3 pl-md-4 mt-4 mt-md-0">
+          <div class="Box p-3 mb-3">
+            <h3 class="f6 text-uppercase color-fg-muted mb-2">Runners en línea</h3>
+            <div id="homeFleet"></div>
+            <a class="d-block mt-2 f6" onclick="go('runners')">Gestionar runners</a>
+          </div>
+          <div class="Box p-3">
+            <h3 class="f6 text-uppercase color-fg-muted mb-2">Artefactos recientes</h3>
+            <div id="homeArts"></div>
+            <a class="d-block mt-2 f6" onclick="go('artifacts')">Ver todos</a>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= REPOSITORIOS ================= -->
+  <section class="view" id="view-repos">
+    <div class="container-xl px-3 px-md-4 mt-4">
+      <div class="d-flex flex-items-center flex-wrap">
+        <span class="avatar-init" style="width:48px;height:48px;font-size:19px">A</span>
+        <div class="ml-3">
+          <div class="f3 lh-condensed">alex</div>
+          <div class="color-fg-muted f6">Comandante de la flota · Caracas</div>
+        </div>
+        <button class="btn btn-primary ml-auto" onclick="toast('Crear repositorio llega con el núcleo real')"><span data-oct="repo"></span> Nuevo</button>
+      </div>
+      <nav class="UnderlineNav mt-3" aria-label="Perfil">
+        <ul class="UnderlineNav-body list-style-none">
+          <li class="d-flex"><a class="UnderlineNav-item" onclick="go('home')"><span data-oct="book"></span> Resumen</a></li>
+          <li class="d-flex"><a class="UnderlineNav-item" aria-current="page"><span data-oct="repo"></span> Repositorios <span class="Counter" id="repoCount">3</span></a></li>
+          <li class="d-flex"><a class="UnderlineNav-item" onclick="go('actions')"><span data-oct="play"></span> Actions</a></li>
+          <li class="d-flex"><a class="UnderlineNav-item" onclick="go('runners')"><span data-oct="server"></span> Runners</a></li>
+        </ul>
+      </nav>
+      <div class="d-flex flex-wrap mt-3" style="gap:8px">
+        <input class="form-control flex-auto" id="repoSearch" placeholder="Encuentra un repositorio…" oninput="renderRepos()">
+        <button class="btn" onclick="toast('Filtros llegan con el núcleo real')">Tipo <span data-oct="triangle-down" data-octs="10"></span></button>
+        <button class="btn" onclick="toast('Filtros llegan con el núcleo real')">Lenguaje <span data-oct="triangle-down" data-octs="10"></span></button>
+      </div>
+      <ul class="list-style-none" id="repoList"></ul>
+    </div>
+  </section>
+
+  <!-- ================= REPO ================= -->
+  <section class="view" id="view-repo"><div id="repoContent"></div></section>
+
+  <!-- ================= ACTIONS ================= -->
+  <section class="view" id="view-actions">
+    <div class="container-xl px-3 px-md-4 mt-4">
+      <div class="d-flex flex-wrap gutter">
+        <aside class="col-12 col-md-3 pr-md-4 mb-3">
+          <h3 class="f5 mb-2">Workflows</h3>
+          <nav class="menu" id="wfMenu"></nav>
+          <p class="f6 color-fg-muted mt-3">Mostrando ejecuciones de todos tus repositorios. Cada trabajo corre en los teléfonos de tu flota, no en servidores ajenos.</p>
+        </aside>
+        <div class="col-12 col-md-9">
+          <div class="d-flex flex-items-center flex-wrap mb-3">
+            <h2 class="f4 flex-auto">Ejecuciones de workflows</h2>
+            <button class="btn btn-primary" onclick="startRun('titan-engine')"><span data-oct="play"></span> Ejecutar workflow</button>
+          </div>
+          <div class="Box" id="runsBox"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RUN ================= -->
+  <section class="view" id="view-run"><div id="runContent"></div></section>
+
+  <!-- ================= RUNNERS ================= -->
+  <section class="view" id="view-runners">
+    <div class="container-xl px-3 px-md-4 mt-4">
+      <div class="Subhead">
+        <h2 class="Subhead-heading">Runners</h2>
+        <div class="Subhead-actions"><button class="btn btn-primary" onclick="togglePair()"><span data-oct="plus"></span> Nuevo runner</button></div>
+        <div class="Subhead-description">Tus teléfonos son los runners de esta plataforma: reciben los trabajos de Actions firmados por el comandante y los ejecutan con su propia CPU. Cada teléfono que se suma, suma fuerza.</div>
+      </div>
+      <div class="Box p-3 mb-3" id="pairBox" style="display:none">
+        <h3 class="f5 mb-2">Emparejar un teléfono como runner</h3>
+        <ol class="ml-4 mb-3 color-fg-muted">
+          <li>Abre RedP3 en el otro teléfono.</li>
+          <li>Toca <b>«Unirme a una flota»</b>.</li>
+          <li>Ingresa este código de registro de un solo uso:</li>
+        </ol>
+        <div class="log-viewer" style="max-height:none"><div class="log-line"><span class="pair-code text-bold" id="pairCode">000 000</span></div></div>
+        <div class="f6 color-fg-muted mt-2" id="pairMsg">Esperando a que el runner se registre…</div>
+      </div>
+      <div class="Box">
+        <div class="Box-header"><span data-oct="server"></span> <span class="text-bold">Runners en esta flota</span> <span class="Counter ml-1" id="runnersCount">5</span></div>
+        <div id="runnersBox"></div>
+      </div>
+      <div class="Box p-3 mt-3 d-flex flex-items-start">
+        <span class="color-fg-success mt-1"><span data-oct="shield" data-octs="24"></span></span>
+        <div class="ml-3">
+          <b>Solo tu flota obedece.</b>
+          <div class="color-fg-muted f6">Cada trabajo va firmado con la clave Ed25519 del comandante y viaja por un canal cifrado dentro de tu red local. Un extraño en tu misma WiFi no puede registrar runners ni enviar órdenes.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARTEFACTOS ================= -->
+  <section class="view" id="view-artifacts">
+    <div class="container-xl px-3 px-md-4 mt-4">
+      <div class="Subhead">
+        <h2 class="Subhead-heading">Artefactos</h2>
+        <div class="Subhead-description">Binarios producidos por tu flota en las ejecuciones de Actions, verificados por hash SHA-256 y firmados al publicarse.</div>
+      </div>
+      <div class="Box" id="artsBox"></div>
+    </div>
+  </section>
+
+  <!-- ================= CONSOLA ================= -->
+  <section class="view" id="view-console">
+    <div class="container-xl px-3 px-md-4 mt-4">
+      <div class="Subhead">
+        <h2 class="Subhead-heading">Consola del comandante</h2>
+        <div class="Subhead-description">Órdenes directas a la flota, como en una terminal. Escribe <span class="mono">ayuda</span> para ver los comandos.</div>
+      </div>
+      <div class="Box">
+        <div class="Box-header"><span data-oct="terminal"></span> <span class="text-bold">redp3</span> <span class="color-fg-muted">— Galaxy A54 · canal cifrado con la flota</span></div>
+        <div class="p-3">
+          <div class="log-viewer log-tall" id="consoleLog"></div>
+          <form class="input-group mt-3" onsubmit="return sendCmd(event)">
+            <input class="form-control mono" id="cmdInput" autocomplete="off" placeholder="redp3$ escribe un comando… ( build · nodos · repos · estado · ayuda )">
+            <span class="input-group-button"><button class="btn btn-primary" type="submit">Ejecutar</button></span>
+          </form>
+          <div class="mt-2">
+            <button class="btn btn-sm mono" onclick="execCmd('build')">build</button>
+            <button class="btn btn-sm mono" onclick="execCmd('nodos')">nodos</button>
+            <button class="btn btn-sm mono" onclick="execCmd('repos')">repos</button>
+            <button class="btn btn-sm mono" onclick="execCmd('estado')">estado</button>
+            <button class="btn btn-sm mono" onclick="execCmd('limpiar')">limpiar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="container-xl px-3 px-md-4 mt-5">
+  <div class="d-flex flex-wrap flex-items-center border-top pt-4 pb-4 f6 color-fg-muted" style="gap:16px">
+    <span class="d-flex flex-items-center"><span data-oct="mark-github" data-octs="24"></span><span class="ml-2">© 2026 RedP3 · Tu nube es tu bolsillo</span></span>
+    <nav class="ml-auto d-flex flex-wrap" style="gap:16px">
+      <a class="Link--muted" onclick="toast('Página informativa — llega con el núcleo real')">Términos</a>
+      <a class="Link--muted" onclick="toast('Tu código no sale de tu red. Ese es el punto.')">Privacidad</a>
+      <a class="Link--muted" onclick="go('runners')">Seguridad</a>
+      <a class="Link--muted" onclick="go('home')">Estado de la flota</a>
+    </nav>
+  </div>
+</footer>
+
+<div class="gh-toast" id="toast"></div>
+
+<script>
+const OCT = /*__ICONS__*/;
+const $  = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nowT = () => new Date().toLocaleTimeString('es-VE',{hour12:false});
+const fmtDur = ms => { const s=ms/1000; return s<60 ? s.toFixed(1)+'s' : Math.floor(s/60)+'m '+String(Math.floor(s%60)).padStart(2,'0')+'s'; };
+function oct(name, size=16, cls=''){ const i=OCT[name]; if(!i) return ''; return `<svg class="octicon ${cls}" width="${size}" height="${size}" viewBox="${i[0]}" version="1.1" aria-hidden="true">${i[1]}</svg>`; }
+function hydrateIcons(root=document){ root.querySelectorAll('[data-oct]').forEach(el=>{ el.innerHTML = oct(el.dataset.oct, +(el.dataset.octs||16)); el.removeAttribute('data-oct'); }); }
+function avatarA(size=32, fs=13){ return `<span class="avatar-init" style="width:${size}px;height:${size}px;font-size:${fs}px">A</span>`; }
+function stIcon(status, size=16){
+  if(status==='success') return oct('check-circle-fill', size, 'color-fg-success');
+  if(status==='failure') return oct('x-circle-fill', size, 'color-fg-danger');
+  if(status==='cached')  return oct('zap', size, 'color-fg-attention');
+  if(status==='running') return '<span class="gh-spinner"></span>';
+  if(status==='skipped') return oct('circle-slash', size, 'color-fg-muted');
+  return oct('clock', size, 'color-fg-muted');
+}
+function cpuBar(n){
+  const cls = n.cpu>=85?'color-bg-danger-emphasis':(n.cpu>=60?'color-bg-attention-emphasis':'color-bg-accent-emphasis');
+  return `<span class="Progress Progress--small cpu-bar"><span class="Progress-item ${cls}" data-cpu="${n.id}" style="width:${n.cpu}%"></span></span>`;
+}
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),3300); }
+
+/* ---------------- Datos ---------------- */
+let nodes = [
+  {id:'cmd',  name:'Galaxy A54',    role:'Comandante', meta:'Android 14 · arm64', labels:['self-hosted','arm64','comandante'], cores:8, ram:8, cpu:14, batt:86, temp:33, state:'online', tasks:342, seen:'ahora',    ip:'192.168.1.10', fp:'SHA256:k7Q2…9fTx'},
+  {id:'rn12', name:'Redmi Note 12', role:'Worker',     meta:'Android 13 · arm64', labels:['self-hosted','arm64','android'],   cores:8, ram:6, cpu:9,  batt:64, temp:31, state:'online', tasks:289, seen:'ahora',    ip:'192.168.1.11', fp:'SHA256:m2Ab…41Zq'},
+  {id:'mg54', name:'Moto G54',      role:'Worker',     meta:'Android 14 · arm64', labels:['self-hosted','arm64','android'],   cores:8, ram:8, cpu:11, batt:92, temp:30, state:'online', tasks:401, seen:'ahora',    ip:'192.168.1.12', fp:'SHA256:x9Lp…77Kd'},
+  {id:'tab',  name:'Galaxy Tab A8', role:'Worker',     meta:'Android 12 · arm64', labels:['self-hosted','arm64','tablet'],    cores:8, ram:4, cpu:6,  batt:47, temp:29, state:'online', tasks:156, seen:'ahora',    ip:'192.168.1.13', fp:'SHA256:d4Rs…03Mn'},
+  {id:'s10',  name:'Galaxy S10',    role:'Worker',     meta:'Android 11 · arm64', labels:['self-hosted','arm64','android'],   cores:8, ram:8, cpu:0,  batt:0,  temp:0,  state:'offline',tasks:98,  seen:'hace 9 h', ip:'—',            fp:'SHA256:h8Uw…52Bv'},
+];
+const NEW_POOL = [{name:'Poco X5'},{name:'Infinix Hot 40'}];
+const nodeById = id => nodes.find(n=>n.id===id);
+
+let repos = [
+  {name:'titan-engine', desc:'Motor y compilador del lenguaje Titan (.tn → binario nativo)', lang:'C++', langColor:'#f34b7d', vis:'Privado', branch:'main', updated:'hace 12 min', commit:'c81d2f0', commitMsg:'Añade paso de enlace nativo al pipeline', stars:12, forks:1, watchers:3,
+   langs:[['C++','#f34b7d',58],['Titan','#8250df',24],['YAML','#cb171e',10],['Shell','#89e051',8]],
+   files:[
+     {t:'d', n:'src',        m:'Mueve el parser a su propio módulo',        w:'hace 2 h'},
+     {t:'d', n:'include',    m:'Cabeceras públicas del runtime',            w:'hace 2 días'},
+     {t:'d', n:'tests',      m:'Casos del enlazador',                       w:'ayer'},
+     {t:'f', n:'build.yaml', m:'Añade paso de enlace nativo al pipeline',   w:'hace 12 min'},
+     {t:'f', n:'main.tn',    m:'Punto de entrada del runtime',              w:'hace 5 h'},
+     {t:'f', n:'motor.cpp',  m:'Optimizaciones del bucle principal (-O3)',  w:'hace 1 h'},
+     {t:'f', n:'red.cpp',    m:'Transporte entre nodos',                    w:'hace 3 días'},
+     {t:'f', n:'interfaz.cpp',m:'Puente con la capa Android',               w:'ayer'},
+     {t:'f', n:'README.md',  m:'Documenta el pipeline distribuido',         w:'hace 12 min'},
+   ]},
+  {name:'redp3-core', desc:'Núcleo de red P2P y orquestador — descubrimiento, cifrado y reparto de tareas', lang:'Rust', langColor:'#dea584', vis:'Privado', branch:'main', updated:'hace 3 h', commit:'41aa90d', commitMsg:'Handshake Noise entre nodos', stars:7, forks:0, watchers:2,
+   langs:[['Rust','#dea584',84],['Markdown','#59636e',16]],
+   files:[
+     {t:'d', n:'src',          m:'Handshake Noise entre nodos',   w:'hace 3 h'},
+     {t:'f', n:'Cargo.toml',   m:'Dependencias del núcleo',       w:'ayer'},
+     {t:'f', n:'protocolo.md', m:'Formato de mensajes v1',        w:'hace 2 días'},
+     {t:'f', n:'README.md',    m:'Arquitectura en 4 capas',       w:'hace 2 días'},
+   ]},
+  {name:'moon-app', desc:'App Android principal — se construye con la flota', lang:'Kotlin', langColor:'#A97BFF', vis:'Público', branch:'main', updated:'ayer', commit:'77c10be', commitMsg:'APK release desde la flota', stars:21, forks:2, watchers:4,
+   langs:[['Kotlin','#A97BFF',71],['Java','#b07219',18],['Gradle','#02303a',11]],
+   files:[
+     {t:'d', n:'app',              m:'APK release desde la flota',  w:'ayer'},
+     {t:'f', n:'build.gradle',     m:'Configuración de build',      w:'hace 1 semana'},
+     {t:'f', n:'settings.gradle',  m:'Módulos del proyecto',        w:'hace 1 semana'},
+     {t:'f', n:'README.md',        m:'Notas del proyecto',          w:'hace 3 días'},
+   ]},
+];
+
+let runs = [
+  {id:47, wf:'Build Pipeline', repo:'titan-engine', branch:'main',       commit:'c81d2f0', msg:'Añade paso de enlace nativo al pipeline', status:'success', dur:'1m 04s', nodes:4, when:'hace 12 min'},
+  {id:46, wf:'Build Pipeline', repo:'titan-engine', branch:'main',       commit:'9be77a1', msg:'Ajusta flags de optimización -O3',           status:'failure', dur:'0m 38s', nodes:3, when:'hace 1 h'},
+  {id:45, wf:'Tests',          repo:'redp3-core',   branch:'dev',        commit:'41aa90d', msg:'Handshake Noise entre nodos',                status:'success', dur:'2m 41s', nodes:2, when:'hace 3 h'},
+  {id:44, wf:'Build Pipeline', repo:'moon-app',     branch:'main',       commit:'77c10be', msg:'APK release desde la flota',                  status:'success', dur:'3m 19s', nodes:4, when:'ayer'},
+  {id:43, wf:'Build Pipeline', repo:'titan-engine', branch:'feat/cache', commit:'02f5d66', msg:'Caché por hash de contenido',                status:'success', dur:'0m 52s', nodes:4, when:'ayer'},
+];
+
+let artifacts = [
+  {name:'libnative.so',          size:'18.4 MB', sha:'9f2ce41a…b07d', run:47, repo:'titan-engine', node:'Moto G54',      when:'hace 12 min'},
+  {name:'titan-compiler-arm64',  size:'9.7 MB',  sha:'c10455fe…93aa', run:47, repo:'titan-engine', node:'Redmi Note 12', when:'hace 12 min'},
+  {name:'redp3-core-arm64',      size:'6.3 MB',  sha:'5d81a02b…f2c9', run:45, repo:'redp3-core',   node:'Galaxy Tab A8', when:'hace 3 h'},
+  {name:'app-release.apk',       size:'42.1 MB', sha:'77ab09c3…1e88', run:44, repo:'moon-app',     node:'Galaxy A54',    when:'ayer'},
+];
+
+const STEP_TEMPLATE = [
+  {key:'prep',  name:'Preparar entorno y distribuir fuentes', group:0, fixed:'cmd',
+   logs:['Run redp3 checkout main@c81d2f0','Sincronizando con la flota (delta: 3 archivos · 212 KB)…','Plan listo: 7 pasos · 4 runners disponibles']},
+  {key:'tn',    name:'titan-compiler build main.tn', group:1,
+   logs:['Run titan-compiler build main.tn -O3','Parseando 14 módulos…','Generando código intermedio…','main.o listo (1.9 MB) — enviado al comandante']},
+  {key:'motor', name:'clang++ -O3 -c motor.cpp', group:1,
+   logs:['Run clang++ -O3 -march=native -c motor.cpp -o motor.o','motor.o listo (4.2 MB) — enviado al comandante']},
+  {key:'red',   name:'clang++ -O3 -c red.cpp', group:1, cached:true,
+   logs:['Run clang++ -O3 -c red.cpp','hash 5d81a02b… encontrado en la caché distribuida','red.o reutilizado — sin recompilar']},
+  {key:'ui',    name:'clang++ -O3 -c interfaz.cpp', group:1,
+   logs:['Run clang++ -O3 -c interfaz.cpp -o interfaz.o','interfaz.o listo (2.6 MB) — enviado al comandante']},
+  {key:'link',  name:'Enlazar libnative.so', group:2,
+   logs:['Run clang++ -shared main.o motor.o red.o interfaz.o -o libnative.so','libnative.so (18.4 MB) · sha256 9f2ce41a…b07d']},
+  {key:'pack',  name:'Firmar y publicar artefactos', group:3, fixed:'cmd',
+   logs:['Verificando firmas de los runners… OK','Artefacto publicado: libnative.so (18.4 MB)']},
+];
+
+/* ---------------- Navegación ---------------- */
+let currentView = 'home';
+function go(view){
+  currentView = view;
+  ({home:renderHome, repos:renderRepos, actions:renderActions, runners:renderRunners, artifacts:renderArtifacts, console:()=>{}, repo:()=>{}, run:()=>{}})[view]();
+  $$('.view').forEach(v=>v.classList.remove('active'));
+  $('#view-'+view).classList.add('active');
+  window.scrollTo({top:0});
+  hydrateIcons($('#view-'+view));
+}
+
+/* ---------------- Inicio ---------------- */
+function renderHome(){
+  const online = nodes.filter(n=>n.state!=='offline');
+  $('#homeFleetSum').innerHTML = `<span class="status-dot mr-1" style="background:var(--bgColor-success-emphasis)"></span>Flota activa — <b class="color-fg-default">${online.length} de ${nodes.length} runners</b> en línea · ${online.reduce((a,n)=>a+n.cores,0)} núcleos · ${online.reduce((a,n)=>a+n.ram,0)} GB de RAM combinada. Sin internet: todo ocurre en tu red local.`;
+  $('#homeSideRepos').innerHTML = repos.map(r=>`
+    <li class="py-1 d-flex flex-items-center">
+      <span class="avatar-init sq" style="width:20px;height:20px;font-size:10px">A</span>
+      <a class="Link--primary text-bold ml-2 f6" onclick="openRepo('${r.name}')">alex/${r.name}</a>
+      ${(()=>{const lr=runs.find(x=>x.repo===r.name); return lr?`<span class="ml-2">${stIcon(lr.status,14)}</span>`:''})()}
+    </li>`).join('');
+  $('#homeSideAct').innerHTML = runs.slice(0,3).map(r=>`<div class="mb-2"><span class="color-fg-default">alex</span> ejecutó <a class="Link--primary" onclick="openRun(${r.id})">${esc(r.wf)} #${r.id}</a> en ${esc(r.repo)} · ${r.when}</div>`).join('');
+  $('#homeFleet').innerHTML = nodes.map(n=>`
+    <div class="d-flex flex-items-center py-1">
+      <span class="status-dot" style="background:${n.state==='offline'?'var(--borderColor-emphasis, #d1d9e0)':(n.state==='busy'?'var(--bgColor-accent-emphasis)':'var(--bgColor-success-emphasis)')}"></span>
+      <span class="ml-2 flex-auto text-truncate">${oct('device-mobile',14,'color-fg-muted')} ${esc(n.name)}</span>
+      <span class="f6 color-fg-muted">${n.state==='offline'?'offline':(n.state==='busy'?'activo':'idle')} · <span data-cpupc="${n.id}">${n.cpu}%</span></span>
+    </div>`).join('');
+  $('#homeArts').innerHTML = artifacts.slice(0,3).map(a=>`
+    <div class="d-flex flex-items-center py-1">${oct('package',14,'color-fg-muted')}<span class="ml-2 flex-auto text-truncate"><a class="Link--primary mono f6" onclick="go('artifacts')">${esc(a.name)}</a></span><span class="f6 color-fg-muted">${a.size}</span></div>`).join('');
+  $('#homeFeed').innerHTML = runs.slice(0,4).map(r=>`
+    <div class="d-flex py-4 border-bottom">
+      <span class="feed-av mr-3">${oct('workflow',20)}</span>
+      <div class="flex-auto" style="min-width:0">
+        <div class="f6"><a class="Link--primary text-bold">alex</a> <span class="color-fg-muted">lanzó un workflow en</span> <a class="Link--primary text-bold" onclick="openRepo('${r.repo}')">alex/${r.repo}</a> <span class="color-fg-muted">· ${r.when}</span></div>
+        <div class="Box mt-2 p-3 click-row" onclick="openRun(${r.id})">
+          <div class="d-flex flex-items-center">${stIcon(r.status)}<a class="Link--primary text-bold ml-2 flex-auto text-truncate">${esc(r.msg)}</a><span class="f6 color-fg-muted ml-2">${oct('stopwatch',14)} ${r.dur}</span></div>
+          <div class="f6 color-fg-muted mt-1">${esc(r.wf)} #${r.id} · rama <span class="branch-name">${esc(r.branch)}</span> · commit <span class="mono">${r.commit}</span> · ${r.nodes} runners</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+/* ---------------- Repositorios ---------------- */
+function repoListItem(r){
+  const lr = runs.find(x=>x.repo===r.name);
+  return `<li class="d-flex py-4 border-bottom">
+    <div class="flex-auto" style="min-width:0">
+      <div class="d-flex flex-items-center flex-wrap">
+        <h3 class="f4 text-normal lh-condensed"><a class="Link--primary text-bold" onclick="openRepo('${r.name}')">${r.name}</a></h3>
+        <span class="Label ml-2">${r.vis}</span>
+        ${lr?`<span class="ml-2">${stIcon(lr.status,14)}</span><a class="f6 color-fg-muted ml-1" onclick="openRun(${lr.id})">#${lr.id}</a>`:''}
+      </div>
+      <p class="color-fg-muted mt-1 mb-2 col-12 col-md-9">${esc(r.desc)}</p>
+      <div class="f6 color-fg-muted d-flex flex-wrap" style="gap:16px">
+        <span><span class="repo-language-color" style="background-color:${r.langColor}"></span> ${r.lang}</span>
+        <span>${oct('star',14)} ${r.stars}</span>
+        <span>${oct('repo-forked',14)} ${r.forks}</span>
+        <span>Actualizado ${r.updated}</span>
+      </div>
+    </div>
+    <div class="ml-3"><button class="btn btn-sm" onclick="toast('Marcado con estrella (demo)')">${oct('star',14)} Star</button></div>
+  </li>`;
+}
+function renderRepos(){
+  const q = ($('#repoSearch').value||'').toLowerCase();
+  const list = repos.filter(r=>r.name.toLowerCase().includes(q)||r.desc.toLowerCase().includes(q));
+  $('#repoList').innerHTML = list.length?list.map(repoListItem).join(''):`<li class="py-4 color-fg-muted">alex no tiene repositorios que coincidan.</li>`;
+  $('#repoCount').textContent = repos.length;
+  hydrateIcons($('#view-repos'));
+}
+
+/* ---------------- Repo ---------------- */
+let currentRepo=null, currentRepoTab='codigo';
+function openRepo(name){ currentRepo=repos.find(r=>r.name===name); currentRepoTab='codigo'; renderRepo(); go('repo'); }
+function openRepoTab(name,tab){ currentRepo=repos.find(r=>r.name===name); currentRepoTab=tab; renderRepo(); go('repo'); }
+function repoTab(t){ currentRepoTab=t; renderRepo(); window.scrollTo({top:0}); }
+function renderRepo(){
+  const r=currentRepo; if(!r) return;
+  const repoRuns=runs.filter(x=>x.repo===r.name), repoArts=artifacts.filter(a=>a.repo===r.name);
+  const tabBtn=(key,icon,label,count)=>`<li class="d-flex"><a class="UnderlineNav-item" ${currentRepoTab===key?'aria-current="page"':''} onclick="repoTab('${key}')">${oct(icon,16,'color-fg-muted')} ${label}${count!==undefined?` <span class="Counter">${count}</span>`:''}</a></li>`;
+  let body='';
+  if(currentRepoTab==='codigo'){
+    body=`
+    <div class="d-flex flex-items-center flex-wrap mt-3 mb-3" style="gap:8px">
+      <button class="btn" onclick="toast('Selector de ramas llega con el núcleo real')">${oct('git-branch',16)} <span class="text-bold">${r.branch}</span> ${oct('triangle-down',12)}</button>
+      <a class="Link--muted f6 ml-1" onclick="toast('Historial git llega con el núcleo real')">${oct('git-branch',14)} 1 rama</a>
+      <a class="Link--muted f6" onclick="toast('Etiquetas llegan con el núcleo real')">${oct('tag',14)} 0 etiquetas</a>
+      <div class="ml-auto d-flex" style="gap:8px">
+        <button class="btn hide-sm" onclick="toast('Buscador de archivos llega con el núcleo real')">Ir a un archivo</button>
+        <button class="btn" onclick="toast('Subida de archivos llega con el núcleo real')">Añadir archivo ${oct('triangle-down',12)}</button>
+        <button class="btn btn-primary" onclick="toast('clonar: redp3 clone alex/${r.name}')">${oct('code',16)} Code ${oct('triangle-down',12)}</button>
+      </div>
+    </div>
+    <div class="Box">
+      <div class="Box-header d-flex flex-items-center">
+        ${avatarA(24,10)}<span class="text-bold ml-2">alex</span>
+        <a class="Link--secondary ml-2 flex-auto text-truncate" onclick="toast('Vista de commit llega con el núcleo real')">${esc(r.commitMsg)}</a>
+        <span class="f6 color-fg-muted ml-2"><a class="Link--secondary mono" onclick="toast('Vista de commit llega con el núcleo real')">${r.commit}</a> · ${r.updated}</span>
+        <a class="Link--muted f6 ml-3 hide-sm" onclick="toast('Historial git llega con el núcleo real')">${oct('history',14)} <b>128</b> commits</a>
+      </div>
+      <div>${r.files.map(f=>`
+        <div class="Box-row click-row d-flex flex-items-center" onclick="toast('El visor de archivos llega con el núcleo real')">
+          <div class="file-grid">
+            <span class="text-truncate">${f.t==='d'?oct('file-directory-fill',16,'color-fg-accent'):oct('file',16,'color-fg-muted')} <a class="Link--primary">${esc(f.n)}</a></span>
+            <span class="fg-msg color-fg-muted text-truncate"><a class="Link--muted">${esc(f.m)}</a></span>
+            <span class="color-fg-muted text-right" style="white-space:nowrap">${esc(f.w)}</span>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gutter mt-4">
+      <div class="col-12 col-md-9 pr-md-4 order-2 order-md-1 mt-4 mt-md-0">
+        <div class="Box">
+          <div class="Box-header d-flex flex-items-center"><span class="text-bold flex-auto">${oct('book',16)} README.md</span><span class="color-fg-muted">${oct('pencil',14)}</span></div>
+          <div class="Box-body markdown-body p-4">${readmeHtml(r)}</div>
+        </div>
+      </div>
+      <aside class="col-12 col-md-3 order-1 order-md-2">
+        <h3 class="f5 mb-2">Acerca de</h3>
+        <p class="f6 color-fg-muted">${esc(r.desc)}</p>
+        <div class="f6 mt-3">
+          <div class="py-1">${oct('link',14,'color-fg-muted')} <a class="Link--primary" onclick="go('actions')">redp3.local/alex/${r.name}</a></div>
+          <div class="py-1 color-fg-muted">${oct('star',14)} <b class="color-fg-default">${r.stars}</b> estrellas</div>
+          <div class="py-1 color-fg-muted">${oct('eye',14)} <b class="color-fg-default">${r.watchers}</b> observando</div>
+          <div class="py-1 color-fg-muted">${oct('repo-forked',14)} <b class="color-fg-default">${r.forks}</b> bifurcaciones</div>
+        </div>
+        <div class="border-top mt-3 pt-3">
+          <h3 class="f5 mb-2">Lenguajes</h3>
+          <div class="langbar mb-2">${r.langs.map(l=>`<span style="background:${l[1]};width:${l[2]}%"></span>`).join('')}</div>
+          <div class="f6">${r.langs.map(l=>`<div class="py-0"><span class="repo-language-color" style="background-color:${l[1]}"></span> <b>${l[0]}</b> <span class="color-fg-muted">${l[2]}%</span></div>`).join('')}</div>
+        </div>
+        <div class="border-top mt-3 pt-3">
+          <h3 class="f5 mb-2">Artefactos</h3>
+          ${repoArts.length?repoArts.map(a=>`<div class="f6 py-1">${oct('package',14,'color-fg-muted')} <a class="Link--primary mono" onclick="go('artifacts')">${esc(a.name)}</a> <span class="color-fg-muted">${a.size}</span></div>`).join(''):'<div class="f6 color-fg-muted">Sin artefactos aún.</div>'}
+        </div>
+      </aside>
+    </div>`;
+  } else if(currentRepoTab==='actions'){
+    body=`
+    <div class="d-flex flex-items-center flex-wrap mt-3 mb-3">
+      <h3 class="f5 flex-auto">Build Pipeline <span class="branch-name ml-1">build.yaml</span></h3>
+      <button class="btn btn-primary" onclick="startRun('${r.name}')">${oct('play',16)} Ejecutar workflow</button>
+    </div>
+    <div class="Box">${repoRuns.length?repoRuns.map(runRow).join(''):'<div class="blankslate"><h3 class="blankslate-heading">Sin ejecuciones todavía</h3><p>Ejecuta el workflow y tu flota se pone a trabajar.</p></div>'}</div>`;
+  } else if(currentRepoTab==='artefactos'){
+    body=`<div class="Box mt-3">${repoArts.length?repoArts.map(artRow).join(''):'<div class="blankslate"><h3 class="blankslate-heading">Sin artefactos</h3><p>Este repositorio aún no publicó binarios.</p></div>'}</div>`;
+  } else {
+    body=`
+    <div class="Box mt-3">
+      <div class="Box-header"><span class="text-bold">${oct('key',16)} Clave de firma del comandante</span></div>
+      <div class="Box-body">
+        <div class="d-flex flex-wrap" style="gap:32px">
+          <div><div class="f6 color-fg-muted">Tipo</div><div class="text-bold">Ed25519</div></div>
+          <div><div class="f6 color-fg-muted">Huella</div><div class="mono text-bold">${nodes[0].fp}</div></div>
+          <div><div class="f6 color-fg-muted">Dispositivo</div><div class="text-bold">Galaxy A54 (este)</div></div>
+        </div>
+        <p class="f6 color-fg-muted mt-3 mb-0">Ningún runner ejecuta un trabajo sin la firma válida de esta clave. Si pierdes este teléfono, la flota entera deja de obedecer: esa es la idea.</p>
+      </div>
+    </div>
+    <div class="Box mt-3">
+      <div class="Box-header"><span class="text-bold">${oct('device-mobile',16)} Dispositivos emparejados</span> <span class="Counter ml-1">${nodes.length}</span></div>
+      <div>${nodes.map(n=>`
+        <div class="Box-row d-flex flex-items-center">
+          ${oct('device-mobile',20,'color-fg-muted')}
+          <div class="flex-auto ml-3"><div class="text-bold">${esc(n.name)} ${n.role==='Comandante'?'<span class="Label ml-1">Comandante</span>':''}</div>
+          <div class="f6 color-fg-muted mono">${n.fp} · ${n.ip}</div></div>
+          ${n.state==='offline'?'<span class="Label">Sin conexión</span>':'<span class="Label" style="color:var(--fgColor-success)">Verificado</span>'}
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+  $('#repoContent').innerHTML=`
+  <div class="container-xl px-3 px-md-4">
+    <div class="d-flex flex-items-center flex-wrap pt-3" style="gap:8px">
+      <span class="color-fg-muted">${oct('repo',16)}</span>
+      <h1 class="f4 text-normal lh-condensed"><a class="Link--primary" onclick="go('repos')">alex</a> <span class="color-fg-muted">/</span> <a class="Link--primary text-bold">${r.name}</a></h1>
+      <span class="Label">${r.vis}</span>
+      <div class="ml-auto d-flex" style="gap:8px">
+        <button class="btn btn-sm" onclick="toast('Observando este repositorio (demo)')">${oct('eye',14)} Watch <span class="Counter ml-1">${r.watchers}</span></button>
+        <button class="btn btn-sm" onclick="toast('Bifurcar llega con el núcleo real')">${oct('repo-forked',14)} Fork <span class="Counter ml-1">${r.forks}</span></button>
+        <button class="btn btn-sm" onclick="toast('Marcado con estrella (demo)')">${oct('star',14)} Star <span class="Counter ml-1">${r.stars}</span></button>
+      </div>
+    </div>
+    <nav class="UnderlineNav mt-2" aria-label="Repositorio">
+      <ul class="UnderlineNav-body list-style-none">
+        ${tabBtn('codigo','code','Código')}
+        ${tabBtn('actions','play','Actions', repoRuns.length)}
+        ${tabBtn('artefactos','package','Artefactos', repoArts.length)}
+        ${tabBtn('seguridad','shield','Seguridad')}
+      </ul>
+    </nav>
+    <div id="repoBody">${body}</div>
+  </div>`;
+  hydrateIcons($('#repoContent'));
+}
+function readmeHtml(r){
+  if(r.name!=='titan-engine') return `<h1>${r.name}</h1><p>${esc(r.desc)}</p><p>Documentación en construcción — servida desde tu propia flota RedP3.</p>`;
+  return `<h1>titan-engine</h1>
+    <p>Motor y compilador del lenguaje <strong>Titan</strong>: convierte archivos <code>.tn</code> en binarios nativos optimizados.</p>
+    <h2>Compilación distribuida</h2>
+    <p>Este repositorio se construye con <strong>RedP3</strong>: el comandante lee <code>build.yaml</code>, reparte los pasos entre los teléfonos de la flota (los <em>runners</em>) y ensambla el resultado. La receta:</p>
+    <pre><code>name: Build Pipeline
+steps:
+  - name: Compile Source
+    run: titan-compiler build main.tn
+  - name: Native Link
+    run: clang++ -O3 output.cpp -o libnative.so</code></pre>
+    <h2>Por qué es rápido</h2>
+    <ul>
+      <li><strong>Paralelo real:</strong> cada archivo se compila en un teléfono distinto, a la vez.</li>
+      <li><strong>Caché por hash:</strong> lo que no cambió no se recompila — se reutiliza de la flota.</li>
+      <li><strong>Sin nube ajena:</strong> todo ocurre en tu red local, firmado por tu comandante.</li>
+    </ul>`;
+}
+
+/* ---------------- Actions ---------------- */
+let wfFilter = 'all';
+function runRow(r){
+  return `<div class="Box-row click-row" onclick="openRun(${r.id})">
+    <div class="run-grid">
+      <span class="pt-1">${stIcon(r.status)}</span>
+      <div style="min-width:0">
+        <a class="Link--primary text-bold wb-break-word">${esc(r.msg)}</a>
+        <div class="f6 color-fg-muted mt-1">${esc(r.wf)} #${r.id} · <a class="Link--muted" onclick="event.stopPropagation();openRepo('${r.repo}')">${esc(r.repo)}</a> · commit <span class="mono">${r.commit}</span> de alex · ${r.nodes} runners</div>
+      </div>
+      <div class="text-right f6 color-fg-muted" style="white-space:nowrap">
+        <div><span class="branch-name">${oct('git-branch',12)} ${esc(r.branch)}</span></div>
+        <div class="mt-1">${oct('calendar',12)} ${r.when} · ${oct('stopwatch',12)} ${r.dur}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderActions(){
+  const wfs = ['all', ...new Set(runs.map(r=>r.wf))];
+  $('#wfMenu').innerHTML = wfs.map(w=>`<a class="menu-item" aria-current="${wfFilter===w}" onclick="wfFilter='${w}';renderActions()">${oct(w==='all'?'workflow':'play',16,'color-fg-muted')} ${w==='all'?'Todos los workflows':esc(w)} <span class="Counter ml-1">${w==='all'?runs.length:runs.filter(r=>r.wf===w).length}</span></a>`).join('');
+  const list = wfFilter==='all'?runs:runs.filter(r=>r.wf===wfFilter);
+  $('#runsBox').innerHTML = list.length?list.map(runRow).join(''):'<div class="blankslate"><h3 class="blankslate-heading">Sin ejecuciones</h3><p>Este workflow aún no se ha ejecutado.</p></div>';
+  hydrateIcons($('#view-actions'));
+}
+
+/* ---------------- Run ---------------- */
+function buildHistoricalSteps(run){
+  const assign={tn:'Moto G54',motor:'Redmi Note 12',red:'Moto G54',ui:'Galaxy Tab A8',link:'Moto G54'};
+  const durs={prep:'4s',tn:'31s',motor:'44s',red:'caché',ui:'27s',link:'9s',pack:'6s'};
+  return STEP_TEMPLATE.map(t=>{
+    const s={key:t.key,name:t.name,group:t.group,cached:!!t.cached,logs:[...t.logs],shown:[...t.logs],
+      nodeName:t.fixed==='cmd'?'Galaxy A54':assign[t.key],durLabel:durs[t.key],status:t.cached?'cached':'success'};
+    if(run.status==='failure'){
+      if(s.key==='motor'){ s.status='failure'; s.durLabel='38s'; s.shown=['Run clang++ -O3 -march=native -c motor.cpp -o motor.o','motor.cpp:212:9: error: uso de identificador no declarado «optimizar»','1 error generado.','Error: Process completed with exit code 1.']; }
+      if(['ui','link','pack'].includes(s.key)){ s.status='skipped'; s.durLabel='—'; s.shown=['Omitido: un paso anterior falló.']; s.nodeName='—'; }
+    }
+    return s;
+  });
+}
+function openRun(id){
+  const r=runs.find(x=>x.id===id)||(activeRun&&activeRun.id===id?activeRun:null);
+  if(!r) return;
+  if(!r.steps) r.steps=buildHistoricalSteps(r);
+  renderRun(r); go('run');
+}
+function runStatusLine(r){
+  if(r.status==='success') return `<span class="Label" style="color:var(--fgColor-success);font-size:12px">${oct('check',12)} Completado</span>`;
+  if(r.status==='failure') return `<span class="Label" style="color:var(--fgColor-danger);font-size:12px">${oct('x',12)} Falló</span>`;
+  return `<span class="Label" style="color:var(--fgColor-attention);font-size:12px">En curso…</span>`;
+}
+function logLines(arr){ return (arr&&arr.length?arr:['Esperando…']).map(l=>`<div class="log-line"><span>${esc(l)}</span></div>`).join(''); }
+function stepHtml(r,s){
+  return `<div class="step border-top" id="step-${r.id}-${s.key}">
+    <div class="step-head d-flex flex-items-center px-3 py-2" onclick="this.parentElement.classList.toggle('open')" style="gap:8px">
+      <span class="step-chev color-fg-muted">${oct('chevron-down',14)}</span>
+      <span data-st class="d-flex">${stIcon(s.status)}</span>
+      <span class="text-bold f6 flex-auto text-truncate">${esc(s.name)}</span>
+      <span data-nodechip>${s.nodeName&&s.nodeName!=='—'?`<span class="Label">${oct('device-mobile',12)} ${esc(s.nodeName)}</span>`:''}</span>
+      <span data-cachechip>${s.cached&&s.status==='cached'?`<span class="Label" style="color:var(--fgColor-attention)">${oct('zap',12)} caché</span>`:''}</span>
+      <span class="f6 color-fg-muted mono" data-dur style="white-space:nowrap">${s.durLabel||''}</span>
+    </div>
+    <div class="step-logs log-viewer" data-log>${logLines(s.shown)}</div>
+  </div>`;
+}
+function updateStepDom(r,s){
+  const el=document.getElementById(`step-${r.id}-${s.key}`); if(!el) return;
+  el.querySelector('[data-st]').innerHTML=stIcon(s.status);
+  el.querySelector('[data-nodechip]').innerHTML=s.nodeName?`<span class="Label">${oct('device-mobile',12)} ${esc(s.nodeName)}</span>`:'';
+  el.querySelector('[data-cachechip]').innerHTML=(s.cached&&s.status==='cached')?`<span class="Label" style="color:var(--fgColor-attention)">${oct('zap',12)} caché</span>`:'';
+  el.querySelector('[data-dur]').textContent=s.durLabel||'';
+  const log=el.querySelector('[data-log]'); log.innerHTML=logLines(s.shown); log.scrollTop=log.scrollHeight;
+  if(s.status==='running') el.classList.add('open');
+}
+function renderRun(r){
+  const used=[...new Set((r.steps||[]).map(s=>s.nodeName).filter(n=>n&&n!=='—'))];
+  const arts=artifacts.filter(a=>a.run===r.id);
+  $('#runContent').innerHTML=`
+  <div class="container-xl px-3 px-md-4 mt-4">
+    <a class="f6" onclick="go('actions')">${oct('chevron-left',14)} Todas las ejecuciones</a>
+    <div class="d-flex flex-items-start flex-wrap mt-2" style="gap:12px">
+      <div class="flex-auto" style="min-width:240px">
+        <h2 class="f3 lh-condensed wb-break-word">${esc(r.msg)}</h2>
+        <div class="color-fg-muted mt-1"><span class="text-bold color-fg-default">${esc(r.wf)} #${r.id}</span> · ejecutado por alex desde el comandante · rama <span class="branch-name">${esc(r.branch)}</span> · commit <span class="mono">${r.commit}</span></div>
+      </div>
+      <span data-runpill>${runStatusLine(r)}</span>
+      <button class="btn" onclick="startRun('${r.repo}')">${oct('sync',16)} Re-ejecutar trabajos ${oct('triangle-down',12)}</button>
+    </div>
+    <div class="d-flex flex-wrap gutter mt-4">
+      <aside class="col-12 col-md-3 pr-md-4 mb-3">
+        <div class="Box">
+          <div class="Box-header"><span class="text-bold">Trabajos</span></div>
+          <div class="Box-row d-flex flex-items-center">
+            ${stIcon(r.status==='running'?'running':r.status)}
+            <span class="text-bold ml-2 flex-auto">build-distribuido</span>
+            <span class="f6 color-fg-muted mono" data-rundur>${r.dur}</span>
+          </div>
+        </div>
+        <div class="Box mt-3">
+          <div class="Box-header"><span class="text-bold">Detalles de la ejecución</span></div>
+          <div class="Box-body f6">
+            <div class="d-flex py-1"><span class="color-fg-muted flex-auto">Workflow</span><span class="mono">build.yaml</span></div>
+            <div class="d-flex py-1"><span class="color-fg-muted flex-auto">Repositorio</span><a class="Link--primary" onclick="openRepo('${r.repo}')">${esc(r.repo)}</a></div>
+            <div class="d-flex py-1"><span class="color-fg-muted flex-auto">Runners</span><span>${used.length?used.map(esc).join(', '):'asignando…'}</span></div>
+            <div class="d-flex py-1"><span class="color-fg-muted flex-auto">Caché distribuida</span><span class="color-fg-success text-bold">activa</span></div>
+          </div>
+        </div>
+      </aside>
+      <div class="col-12 col-md-9">
+        <div class="Box">
+          <div class="Box-header d-flex flex-items-center">
+            ${stIcon(r.status==='running'?'running':r.status)}
+            <span class="text-bold ml-2">build-distribuido</span>
+            <span class="f6 color-fg-muted ml-2">${r.status==='success'?`completado en ${r.dur}`:r.status==='failure'?'falló':'ejecutándose en tu flota…'}</span>
+          </div>
+          <div id="runSteps">${(r.steps||[]).map(s=>stepHtml(r,s)).join('')}</div>
+        </div>
+        <h3 class="f5 mt-4 mb-2">Artefactos <span class="Counter">${arts.length}</span></h3>
+        <div class="Box" id="runArts">${arts.length?arts.map(artRow).join(''):'<div class="Box-body color-fg-muted f6">Los artefactos se publican al terminar la ejecución.</div>'}</div>
+      </div>
+    </div>
+  </div>`;
+  hydrateIcons($('#runContent'));
+}
+
+/* ---------------- Artefactos ---------------- */
+function artRow(a){
+  return `<div class="Box-row d-flex flex-items-center">
+    ${oct('package',20,'color-fg-muted')}
+    <div class="flex-auto ml-3" style="min-width:0">
+      <a class="Link--primary text-bold mono" onclick="toast('La descarga directa llega con el núcleo real')">${esc(a.name)}</a>
+      <div class="f6 color-fg-muted">${a.size} · sha256 <span class="mono">${a.sha}</span> · de <a class="Link--muted" onclick="openRepo('${a.repo}')">${esc(a.repo)}</a> · <a class="Link--muted" onclick="openRun(${a.run})">run #${a.run}</a> · runner ${esc(a.node)} · ${a.when}</div>
+    </div>
+    <button class="btn btn-sm" onclick="toast('La descarga directa llega con el núcleo real')">${oct('download',14)} Descargar</button>
+  </div>`;
+}
+function renderArtifacts(){ $('#artsBox').innerHTML=artifacts.map(artRow).join(''); hydrateIcons($('#view-artifacts')); }
+
+/* ---------------- Runners ---------------- */
+function runnerRow(n){
+  const off=n.state==='offline';
+  const st = off?'<span class="color-fg-muted"><span class="status-dot" style="background:#d1d9e0"></span> Desconectado</span>'
+    : n.state==='busy'?`<span class="color-fg-accent text-bold"><span class="status-dot" style="background:var(--bgColor-accent-emphasis)"></span> Activo</span>`
+    : '<span class="color-fg-success text-bold"><span class="status-dot" style="background:var(--bgColor-success-emphasis)"></span> Idle</span>';
+  return `<div class="Box-row">
+    <div class="d-flex flex-items-center flex-wrap" style="gap:8px">
+      ${oct('device-mobile',20,'color-fg-muted')}
+      <span class="text-bold f5">${esc(n.name)}</span>
+      ${n.labels.map(l=>`<span class="Label">${l}</span>`).join('')}
+      <span class="ml-auto f6">${st}</span>
+    </div>
+    <div class="f6 color-fg-muted mt-2 d-flex flex-wrap flex-items-center" style="gap:18px">
+      <span>${n.meta} · ${n.ip}</span>
+      ${off?`<span>última señal ${n.seen}</span>`:`<span class="d-flex flex-items-center" style="gap:8px">CPU ${cpuBar(n)} <span data-cpupc="${n.id}">${n.cpu}%</span></span><span>${n.cores} núcleos · ${n.ram} GB</span><span>batería ${n.batt}% · ${n.temp}°C</span><span><span data-tasks="${n.id}">${n.tasks}</span> trabajos completados</span>${n.state==='busy'?`<span class="color-fg-accent">${oct('sync',12)} ${esc(n.busyStep||'')}</span>`:''}`}
+    </div>
+  </div>`;
+}
+function renderRunners(){
+  $('#runnersBox').innerHTML=nodes.map(runnerRow).join('');
+  $('#runnersCount').textContent=nodes.length;
+  hydrateIcons($('#view-runners'));
+}
+let pairTimer=null;
+function togglePair(){
+  const box=$('#pairBox');
+  const showIt = box.style.display==='none';
+  box.style.display = showIt?'block':'none';
+  if(!showIt){ clearTimeout(pairTimer); return; }
+  $('#pairCode').textContent=Math.floor(100+Math.random()*900)+' '+Math.floor(100+Math.random()*900);
+  $('#pairMsg').textContent='Esperando a que el runner se registre…';
+  pairTimer=setTimeout(()=>{
+    const nxt=NEW_POOL.shift();
+    if(!nxt){ $('#pairMsg').textContent='No se detectan teléfonos nuevos cerca.'; return; }
+    nodes.push({id:'n'+Date.now(), name:nxt.name, role:'Worker', meta:'Android 13 · arm64', labels:['self-hosted','arm64','android'], cores:8, ram:6, cpu:7, batt:78, temp:30, state:'online', tasks:0, seen:'ahora', ip:'192.168.1.2'+nodes.length, fp:'SHA256:n3Wk…68Jd'});
+    $('#pairMsg').innerHTML=`<span class="color-fg-success text-bold">${esc(nxt.name)} registrado</span> — ya puede recibir trabajos de Actions.`;
+    clog('<span class="c-dim">['+nowT()+']</span> <span class="c-ok">Runner registrado: '+esc(nxt.name)+'</span> — clave verificada');
+    toast(nxt.name+' se unió como runner');
+    renderRunners();
+  },3200);
+}
+
+/* ---------------- Motor de ejecución (simulado por ahora) ---------------- */
+let activeRun=null, nextRunId=48, tickTimer=null, rrPointer=0;
+function pickNode(){
+  const free=nodes.filter(n=>n.state==='online'&&n.id!=='cmd');
+  if(free.length){ const n=free[rrPointer%free.length]; rrPointer++; return n; }
+  return nodes.find(n=>n.state==='online')||nodeById('cmd');
+}
+function startRun(repoName){
+  if(activeRun){ toast('Ya hay un workflow en curso'); openRun(activeRun.id); return; }
+  const repo=repos.find(r=>r.name===repoName)||repos[0];
+  const r={id:nextRunId++, wf:'Build Pipeline', repo:repo.name, branch:repo.branch, commit:repo.commit, msg:repo.commitMsg,
+    status:'running', dur:'…', nodes:0, when:'ahora',
+    steps:STEP_TEMPLATE.map(t=>({key:t.key,name:t.name,group:t.group,cached:!!t.cached,fixed:t.fixed,logs:[...t.logs],shown:[],status:'queued',nodeName:'',durLabel:''}))};
+  activeRun=r; runs.unshift(r); r._t0=Date.now();
+  clog('<span class="c-dim">['+nowT()+']</span> Workflow #'+r.id+' lanzado para <span class="c-cmd">'+esc(repo.name)+'</span> — repartiendo entre los runners…');
+  renderRun(r); go('run');
+  tickTimer=setInterval(()=>{
+    (r.steps||[]).forEach(s=>{ if(s.status==='running'){ s.durLabel=fmtDur(Date.now()-s.t0); updateStepDom(r,s); } });
+    const d=document.querySelector('[data-rundur]'); if(d&&currentView==='run') d.textContent=fmtDur(Date.now()-r._t0);
+  },220);
+  runGroup(r,0,()=>runGroup(r,1,()=>runGroup(r,2,()=>runGroup(r,3,()=>finishRun(r)))));
+}
+function runGroup(r,g,done){
+  const steps=r.steps.filter(s=>s.group===g);
+  if(!steps.length){ done&&done(); return; }
+  let remaining=steps.length;
+  steps.forEach((s,i)=>setTimeout(()=>startStep(r,s,()=>{ if(--remaining===0) done&&done(); }), i*300));
+}
+function startStep(r,s,cb){
+  const node=s.fixed==='cmd'?nodeById('cmd'):pickNode();
+  s.nodeId=node.id; s.nodeName=node.name; s.status='running'; s.t0=Date.now();
+  node.state='busy'; node.busyStep=s.name; node.cpu=70+Math.floor(Math.random()*25);
+  r.nodes=new Set(r.steps.map(x=>x.nodeId).filter(Boolean)).size;
+  pushLog(r,s,s.logs[0]);
+  clog('<span class="c-dim">['+nowT()+']</span> <span class="c-blue">→ '+esc(node.name)+'</span>: '+esc(s.name));
+  updateStepDom(r,s);
+  const dur=s.cached?700:(s.group===1?2000+Math.random()*2000:1100+Math.random()*1100);
+  s.logs.slice(1).forEach((ln,k)=>setTimeout(()=>pushLog(r,s,ln), dur*(0.35+0.28*k)));
+  setTimeout(()=>{
+    s.status=s.cached?'cached':'success';
+    s.durLabel=s.cached?'caché':fmtDur(Date.now()-s.t0);
+    node.state='online'; node.busyStep=''; node.tasks++; node.cpu=8+Math.floor(Math.random()*10);
+    if(!s.cached&&node.batt>5) node.batt-=1;
+    clog('<span class="c-dim">['+nowT()+']</span> <span class="c-ok">✓ '+esc(node.name)+'</span> '+(s.cached?'<span class="c-warn">reutilizó de caché</span>':'terminó')+': '+esc(s.name));
+    updateStepDom(r,s);
+    cb&&cb();
+  },dur);
+}
+function pushLog(r,s,line){ s.shown.push(line); updateStepDom(r,s); }
+function finishRun(r){
+  clearInterval(tickTimer);
+  r.status='success'; r.dur=fmtDur(Date.now()-r._t0); r.when='ahora mismo';
+  artifacts.unshift({name:'libnative.so', size:'18.4 MB', sha:'9f2ce41a…b07d', run:r.id, repo:r.repo, node:(r.steps.find(s=>s.key==='link')||{}).nodeName||'Moto G54', when:'ahora mismo'});
+  activeRun=null;
+  clog('<span class="c-dim">['+nowT()+']</span> <span class="c-ok">Workflow #'+r.id+' COMPLETADO en '+r.dur+'</span> — artefacto: <span class="c-cmd">libnative.so</span>');
+  toast('Workflow #'+r.id+' completado en '+r.dur);
+  if(currentView==='run') renderRun(r);
+  if(currentView==='actions') renderActions();
+  if(currentView==='home') renderHome();
+}
+
+/* ---------------- Consola ---------------- */
+function clog(html){ const el=$('#consoleLog'); if(!el) return; el.innerHTML+='<div class="log-line"><span>'+html+'</span></div>'; el.scrollTop=el.scrollHeight; }
+function sendCmd(e){ e.preventDefault(); const i=$('#cmdInput'); const c=i.value.trim(); i.value=''; if(c) execCmd(c); return false; }
+function execCmd(raw){
+  const c=raw.toLowerCase();
+  if(c==='limpiar'||c==='clear'){ $('#consoleLog').innerHTML=''; return; }
+  clog('<span class="c-cmd">redp3$ '+esc(raw)+'</span>');
+  if(c==='ayuda'||c==='help'){
+    clog('Comandos disponibles:');
+    clog('  build    ejecuta el workflow de titan-engine en la flota');
+    clog('  nodos    estado de los runners');
+    clog('  repos    tus repositorios');
+    clog('  estado   resumen de la red');
+    clog('  limpiar  borra la consola');
+  }
+  else if(c==='nodos'){ nodes.forEach(n=>clog('  <span class="c-blue">'+esc(n.name)+'</span>'+(n.role==='Comandante'?' (comandante)':'')+' — '+(n.state==='offline'?'desconectado':(n.state==='busy'?'trabajando: '+esc(n.busyStep||''):'idle · batería '+n.batt+'%')))); }
+  else if(c==='repos'){ repos.forEach(r=>clog('  <span class="c-blue">alex/'+esc(r.name)+'</span> — '+esc(r.desc))); }
+  else if(c==='estado'){ const on=nodes.filter(n=>n.state!=='offline'); clog('Red P2P: '+on.length+'/'+nodes.length+' runners · '+on.reduce((a,n)=>a+n.cores,0)+' núcleos · canal cifrado OK · todo local, sin internet'); }
+  else if(c==='build'){ startRun('titan-engine'); }
+  else clog('<span class="c-warn">comando no reconocido:</span> '+esc(raw)+' — escribe ayuda');
+}
+
+/* ---------------- Vida de la flota ---------------- */
+setInterval(()=>{
+  nodes.forEach(n=>{
+    if(n.state==='offline') return;
+    if(n.state==='busy'){ n.cpu=68+Math.floor(Math.random()*30); if(n.temp<43&&Math.random()<0.3) n.temp++; }
+    else { n.cpu=Math.max(3,Math.min(22,n.cpu+Math.floor(Math.random()*7)-3)); if(n.temp>29&&Math.random()<0.12) n.temp--; }
+    $$(`[data-cpu="${n.id}"]`).forEach(el=>{ el.style.width=n.cpu+'%'; el.className='Progress-item '+(n.cpu>=85?'color-bg-danger-emphasis':(n.cpu>=60?'color-bg-attention-emphasis':'color-bg-accent-emphasis')); });
+    $$(`[data-cpupc="${n.id}"]`).forEach(el=>el.textContent=n.cpu+'%');
+    $$(`[data-tasks="${n.id}"]`).forEach(el=>el.textContent=n.tasks);
+  });
+},1800);
+
+/* ---------------- Arranque ---------------- */
+hydrateIcons(document);
+clog('<span class="c-ok">RedP3</span> <span class="c-dim">— consola del comandante · canal cifrado establecido</span>');
+clog('<span class="c-dim">['+nowT()+']</span> Flota detectada: 4 runners en línea · escribe <span class="c-cmd">ayuda</span> o <span class="c-cmd">build</span>');
+renderHome();
+go('home');
+document.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA'){ e.preventDefault(); const s=$('#ghSearch'); if(s) s.focus(); } });
+</script>
+</body>
+</html>
