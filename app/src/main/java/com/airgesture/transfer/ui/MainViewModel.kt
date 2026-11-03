@@ -545,6 +545,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         _uiState.update { it.copy(transfer = null) }
         haptics.tick()
         _events.tryEmit(UiEvent.Received(fileName))
+        // Let the 1.2-second arrival glow finish, then reveal the new MediaStore item.
+        viewModelScope.launch {
+            delay(1_200L)
+            load(_uiState.value.kind)
+        }
     }
 
     override fun onLog(line: String) {

@@ -145,17 +145,9 @@ class SettingsActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Plays the hand-off animation in a translucent dialog.
-     *
-     * This exists so the effect can be verified in one second without a second
-     * phone and without sending anything: the same [TransferBeamView] and the
-     * same call the real transfer uses, so what is seen here is what happens.
-     */
+    /** Previews the same centered diffuse glow used by a real hand-off. */
     private fun previewEffect() {
-        val container = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(android.graphics.Color.parseColor("#22000000"))
-        }
+        val container = android.widget.FrameLayout(this)
         val beam = TransferBeamView(this)
         container.addView(
             beam,
@@ -173,10 +165,9 @@ class SettingsActivity : AppCompatActivity() {
         dialog.setCancelable(true)
         dialog.show()
 
-        // Origin in the middle of the dialog: same animation the real transfer
-        // uses, so what is previewed is exactly what happens.
-        beam.play(null, reduceMotion = false, isArrival = false, origin = android.graphics.PointF(0.5f, 0.55f))
-        container.postDelayed({ dialog.dismiss() }, 1500L)
+        // The preview uses the same centered 1.2-second glow as sending/receiving.
+        beam.play()
+        container.postDelayed({ dialog.dismiss() }, 1300L)
     }
 
     private fun loadValues() {
