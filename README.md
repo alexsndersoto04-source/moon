@@ -61,6 +61,11 @@ progreso entra deslizándose, los textos cambian con cross-fade, la previsualiza
 de la cámara aparece con un fundido y cada superficie responde al dedo. Todo
 respeta la escala de animaciones del sistema.
 
+> **Vista previa sin instalar nada:** [`docs/efecto-2.0.gif`](docs/efecto-2.0.gif)
+> (la animación completa, generada con la misma matemática) y
+> [`docs/efecto-2.0.html`](docs/efecto-2.0.html) (interactiva, con botones para
+> enviar, recibir y repetir).
+
 ---
 
 ## 1. Descargar e instalar el APK (2 minutos)

@@ -22,9 +22,11 @@ import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
 import androidx.core.graphics.ColorUtils
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -63,9 +65,9 @@ class TransferBeamView @JvmOverloads constructor(
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val sparkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
+    private val beamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
+    private val beamHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = true
         colorFilter = PorterDuffColorFilter(COLOR_ACCENT, PorterDuff.Mode.SRC_IN)
     }
     private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -100,6 +102,7 @@ class TransferBeamView @JvmOverloads constructor(
     private var ringShader: Shader? = null
     private var streakShader: Shader? = null
     private var featherShader: Shader? = null
+    private var beamTexture: Bitmap? = null
 
     private val gatherEase = PathInterpolator(0.36f, 0f, 0.2f, 1f)
     private val launchEase = PathInterpolator(0.1f, 0.72f, 0.16f, 1f)
@@ -174,15 +177,18 @@ class TransferBeamView @JvmOverloads constructor(
     private fun buildShaders() {
         if (coreShader != null) return
 
+        // A flash needs a *plateau*, not a spike: the eye barely registers a
+        // 2 px hot point, but a 30 dp ball of light reads instantly.
         coreShader = RadialGradient(
             0f, 0f, 1f,
             intArrayOf(
                 ColorUtils.setAlphaComponent(Color.WHITE, 255),
+                ColorUtils.setAlphaComponent(Color.WHITE, 245),
                 ColorUtils.setAlphaComponent(Color.WHITE, 150),
-                ColorUtils.setAlphaComponent(COLOR_ACCENT, 60),
+                ColorUtils.setAlphaComponent(COLOR_ACCENT, 95),
                 ColorUtils.setAlphaComponent(Color.WHITE, 0)
             ),
-            floatArrayOf(0f, 0.2f, 0.5f, 1f),
+            floatArrayOf(0f, 0.28f, 0.55f, 0.78f, 1f),
             Shader.TileMode.CLAMP
         )
 
@@ -284,7 +290,7 @@ class TransferBeamView @JvmOverloads constructor(
     private fun drawSparks(canvas: Canvas, t: Float) {
         val pull = gatherEase.getInterpolation((t / 0.40f).coerceIn(0f, 1f))
         if (pull >= 1f) return
-        val alpha = (175f * (1f - pull) * (1f - pull * 0.4f)).toInt().coerceIn(0, 255)
+        val alpha = (225f * (1f - pull) * (1f - pull * 0.4f)).toInt().coerceIn(0, 255)
         if (alpha <= 2) return
 
         for (i in 0 until SPARK_COUNT) {
@@ -292,7 +298,7 @@ class TransferBeamView @JvmOverloads constructor(
             val radius = reach * sparkStart[i] * (1f - pull) + 7f * density * pull
             val x = cx + cos(angle) * radius
             val y = cy + sin(angle) * radius * 0.92f
-            val size = sparkSize[i] * (5.6f - 3.4f * pull) * density
+            val size = sparkSize[i] * (6.6f - 3.8f * pull) * density
             drawGlow(canvas, streakShader, sparkPaint, size, alpha, 1f, x, y)
         }
     }
@@ -363,7 +369,15 @@ class TransferBeamView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    /** The streak that leaves the phone: elongated gradient, no drawn line. */
+    /**
+     * The streak that leaves the phone.
+     *
+     * A radial gradient squeezed into an ellipse reads as a hairline: its alpha
+     * falls off long before the ellipse ends. This uses a **capsule texture**
+     * built once (soft across, tapering along) drawn into a destination rect, so
+     * the beam has real width, a bright head and a tail that dissolves into the
+     * point of contact — with no stroke anywhere.
+     */
     private fun drawBeam(canvas: Canvas, t: Float) {
         val local = ((t - 0.34f) / 0.44f).coerceIn(0f, 1f)
         if (local <= 0f) return
@@ -371,36 +385,58 @@ class TransferBeamView @JvmOverloads constructor(
         val fade = 1f - ((t - 0.76f) / 0.24f).coerceIn(0f, 1f)
         if (fade <= 0.02f) return
 
-        val length = (70f * density) + grow * height * 0.92f
-        val halfWidth = ((7f + (1f - grow) * 11f) * density)
-        val headY = cy - length * 0.52f
-        val alpha = (205f * grow * fade).toInt().coerceIn(0, 255)
+        // The head leaves the frame on purpose: the file goes to the other
+        // phone. The cap only keeps the entry point on screen.
+        val maxLength = (cy - height * 0.10f) / 0.52f
+        val length = 70f * density + grow * minOf(height * 0.92f, maxLength.coerceAtLeast(120f * density))
+        val halfWidth = (13f + (1f - grow) * 13f) * density
+        val top = cy - length * 0.72f
+        val alpha = (245f * grow * fade).toInt().coerceIn(0, 255)
 
-        // Chromatic split: the halo leads, the white core follows.
-        drawStreak(canvas, cx, headY + 4f * density, halfWidth * 1.9f, length * 0.8f,
-            (alpha * 0.34f).toInt().coerceIn(0, 255), haloPaint)
-        drawStreak(canvas, cx, headY, halfWidth, length * 0.66f, alpha, streakPaint)
+        drawBeamLayer(canvas, top, length, halfWidth * 2.4f, (alpha * 0.6f).toInt(), beamHaloPaint)
+        drawBeamLayer(canvas, top, length, halfWidth * 1.25f, alpha, beamPaint)
+
+        // The phone keeps glowing while the beam is alive: the light has to come
+        // from somewhere.
+        drawGlow(
+            canvas, bloomShader, glowPaint,
+            halfWidth * 2.2f, (150f * grow * fade).toInt().coerceIn(0, 255), 0.9f
+        )
     }
 
-    private fun drawStreak(
+    private fun drawBeamLayer(
         canvas: Canvas,
-        x: Float,
-        y: Float,
+        top: Float,
+        length: Float,
         halfWidth: Float,
-        halfHeight: Float,
         alpha: Int,
         paint: Paint
     ) {
-        if (alpha <= 0 || halfWidth <= 0f || halfHeight <= 0f) return
-        val save = canvas.save()
-        canvas.translate(x, y)
-        canvas.scale(halfWidth, halfHeight)
-        paint.shader = streakShader
+        val texture = beamTexture ?: buildBeamTexture() ?: return
+        if (alpha <= 2) return
+        rectF.set(cx - halfWidth, top, cx + halfWidth, top + length)
         paint.alpha = alpha
-        canvas.drawCircle(0f, 0f, 1f, paint)
-        paint.shader = null
-        canvas.restoreToCount(save)
+        canvas.drawBitmap(texture, null, rectF, paint)
     }
+
+    /** White capsule: opaque centre, soft sides, bright head, vanishing tail. */
+    private fun buildBeamTexture(): Bitmap? = runCatching {
+        val w = BEAM_TEXTURE_WIDTH
+        val h = BEAM_TEXTURE_HEIGHT
+        val pixels = IntArray(w * h)
+        for (y in 0 until h) {
+            val ny = y / (h - 1f) * 2f - 1f
+            var vertical = exp(-((ny + 0.35f) * (ny + 0.35f)) / 0.9f).toFloat()
+            vertical *= (1f - ((ny + 1f) / 2f).pow(2.4f)).coerceAtLeast(0f)
+            for (x in 0 until w) {
+                val nx = x / (w - 1f) * 2f - 1f
+                val side = (1f - abs(nx).pow(3f)).coerceAtLeast(0f)
+                val a = (255f * side * vertical).toInt().coerceIn(0, 255)
+                pixels[y * w + x] = (a shl 24) or 0x00FFFFFF
+            }
+        }
+        Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
+    }.getOrNull()?.also { beamTexture = it }
 
     /** The instant of departure: hot core plus a horizontal lens flare. */
     private fun drawCore(canvas: Canvas, t: Float) {
@@ -408,7 +444,7 @@ class TransferBeamView @JvmOverloads constructor(
         val flash = exp(-(z * z)).toFloat()
         if (flash <= 0.01f) return
 
-        val radius = (11f + 44f * flash) * density
+        val radius = (13f + 52f * flash) * density
         drawGlow(canvas, coreShader, corePaint, radius, (255f * flash).toInt().coerceIn(0, 255), 1f)
         drawGlow(
             canvas, bloomShader, glowPaint,
@@ -452,6 +488,8 @@ class TransferBeamView @JvmOverloads constructor(
         const val DURATION_MS = 1050L
         const val REDUCED_DURATION_MS = 380L
         const val SPARK_COUNT = 18
+        const val BEAM_TEXTURE_WIDTH = 64
+        const val BEAM_TEXTURE_HEIGHT = 256
 
         val TWO_PI = (PI * 2.0).toFloat()
 
