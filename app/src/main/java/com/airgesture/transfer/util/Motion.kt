@@ -76,5 +76,6 @@ object Motion {
             .start()
     }
 
-    private const val TAG_PRESS = "airgesture.press"
+    /** Keyed tag (Int id-space) so it can never collide with a view's plain tag. */
+    private const val TAG_PRESS = 0x0A6E0001
 }

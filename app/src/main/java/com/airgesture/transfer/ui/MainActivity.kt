@@ -514,8 +514,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateHint() {
         val now = SystemClock.uptimeMillis()
-        if (transientMessage != null && now < transientUntilMs) {
-            Motion.crossfade(binding.hintText, transientMessage)
+        val transient = transientMessage
+        if (transient != null && now < transientUntilMs) {
+            Motion.crossfade(binding.hintText, transient)
             return
         }
         val noHandFor = if (lastHandSeenAtMs == 0L) Long.MAX_VALUE else now - lastHandSeenAtMs
