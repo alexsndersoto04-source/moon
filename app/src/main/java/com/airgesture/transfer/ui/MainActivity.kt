@@ -11,6 +11,7 @@ import android.graphics.PointF
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Size
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -36,7 +37,9 @@ import com.airgesture.transfer.databinding.ActivityMainBinding
 import com.airgesture.transfer.media.MediaEntry
 import com.airgesture.transfer.media.MediaKind
 import com.airgesture.transfer.transfer.NearbyState
+import com.airgesture.transfer.transfer.TransferProgress
 import com.airgesture.transfer.util.Haptics
+import com.airgesture.transfer.util.Motion
 import com.airgesture.transfer.util.Radios
 import com.airgesture.transfer.util.Permissions
 import com.airgesture.transfer.vision.OverlayFrame
@@ -80,6 +83,9 @@ class MainActivity : AppCompatActivity() {
     private var lastHandSeenAtMs = 0L
     private var handChipState: Boolean? = null
     private var currentState = MainUiState()
+    private var transferCardShown = false
+    private var itemsRevealed = false
+    private var lastKind: MediaKind? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -123,6 +129,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         bindTabs()
+
+        // 2.0: every tappable surface answers the finger. Returning false from
+        // the touch listener keeps the real click listeners untouched.
+        Motion.pressScale(binding.sendButton, 0.93f)
+        Motion.pressScale(binding.settingsButton, 0.90f)
+        Motion.pressScale(binding.bannerAction, 0.95f)
+        Motion.pressScale(binding.transferCancel, 0.94f)
+        Motion.pressScale(binding.permButton, 0.96f)
 
         binding.permButton.setOnClickListener { requestPermissions() }
         binding.permSettings.setOnClickListener { openAppSettings() }
@@ -337,14 +351,12 @@ class MainActivity : AppCompatActivity() {
     private fun render(state: MainUiState) {
         currentState = state
 
-        binding.tabImages.isSelected = state.kind == MediaKind.IMAGES
-        binding.tabVideos.isSelected = state.kind == MediaKind.VIDEOS
-        binding.tabPdfs.isSelected = state.kind == MediaKind.PDFS
-        binding.tabAudio.isSelected = state.kind == MediaKind.AUDIO
+        animateTabs(state)
 
         if (lastItems !== state.items) {
             lastItems = state.items
             adapter.submitList(state.items)
+            revealItems(state)
         }
 
         binding.emptyText.isVisible = state.items.isEmpty() && !state.loading
@@ -373,7 +385,8 @@ class MainActivity : AppCompatActivity() {
             binding.calibrationDone.isVisible = calibration.finished
         }
 
-        binding.statusPill.text = statusText(state)
+        val pillText = statusText(state)
+        if (state.transfer == null) Motion.crossfade(binding.statusPill, pillText) else binding.statusPill.text = pillText
         // The pill reflects the link at a glance: neutral while searching,
         // warm ink when a peer is near, green once the pipe is real.
         val pillColor = when (state.nearbyState) {
@@ -387,7 +400,7 @@ class MainActivity : AppCompatActivity() {
         updateHint()
 
         val transfer = state.transfer
-        binding.transferCard.isVisible = transfer != null
+        renderTransferCard(transfer)
         if (transfer != null) {
             binding.transferName.text = transfer.fileName
             binding.transferCancel.isVisible = transfer.outgoing
@@ -421,10 +434,88 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ------------------------------------------------------------- motion
+
+    /**
+     * Selection now travels: the chosen chip grows a hair and the rest recede,
+     * which turns an instant repaint into a movement the eye can follow.
+     */
+    private fun animateTabs(state: MainUiState) {
+        animateTab(binding.tabImages, state.kind == MediaKind.IMAGES)
+        animateTab(binding.tabVideos, state.kind == MediaKind.VIDEOS)
+        animateTab(binding.tabPdfs, state.kind == MediaKind.PDFS)
+        animateTab(binding.tabAudio, state.kind == MediaKind.AUDIO)
+    }
+
+    private fun animateTab(view: android.widget.TextView, selected: Boolean) {
+        if (view.isSelected == selected) return
+        view.isSelected = selected
+        val scale = if (selected) 1.05f else 1f
+        view.animate()
+            .scaleX(scale)
+            .scaleY(scale)
+            .alpha(if (selected) 1f else 0.88f)
+            .setDuration(220L)
+            .setInterpolator(Motion.Spring)
+            .start()
+    }
+
+    /**
+     * The progress card slides in from below and leaves the same way. It used to
+     * be a hard `isVisible` flip, which is exactly what made the screen feel
+     * rigid: state changed, nothing moved.
+     */
+    private fun renderTransferCard(transfer: TransferProgress?) {
+        val show = transfer != null
+        if (show == transferCardShown) return
+        transferCardShown = show
+        val card = binding.transferCard
+        val lift = 14f * resources.displayMetrics.density
+        card.animate().cancel()
+        if (show) {
+            card.visibility = View.VISIBLE
+            card.alpha = 0f
+            card.translationY = lift
+            card.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(260L)
+                .setInterpolator(Motion.Gentle)
+                .start()
+        } else {
+            card.animate()
+                .alpha(0f)
+                .translationY(lift)
+                .setDuration(180L)
+                .setInterpolator(Motion.Gentle)
+                .withEndAction {
+                    card.visibility = View.GONE
+                    card.translationY = 0f
+                }
+                .start()
+        }
+    }
+
+    /** A shelf that appears all at once reads as a reload; a fade reads as arrival. */
+    private fun revealItems(state: MainUiState) {
+        if (lastKind != state.kind) {
+            lastKind = state.kind
+            itemsRevealed = false
+        }
+        if (itemsRevealed || state.loading || state.items.isEmpty()) return
+        itemsRevealed = true
+        binding.filesList.alpha = 0f
+        binding.filesList.animate()
+            .alpha(1f)
+            .setDuration(300L)
+            .setInterpolator(Motion.Gentle)
+            .start()
+    }
+
     private fun updateHint() {
         val now = SystemClock.uptimeMillis()
         if (transientMessage != null && now < transientUntilMs) {
-            binding.hintText.text = transientMessage
+            Motion.crossfade(binding.hintText, transientMessage)
             return
         }
         val noHandFor = if (lastHandSeenAtMs == 0L) Long.MAX_VALUE else now - lastHandSeenAtMs
@@ -433,7 +524,7 @@ class MainActivity : AppCompatActivity() {
         // Gesture feedback always wins over the connection status: while the
         // phones are still finding each other the user must still see that the
         // hand is being read.
-        binding.hintText.text = when {
+        val hint = when {
             // The camera feed itself is the first thing to prove. If MediaPipe
             // never loaded, or no frame can be decoded, no gesture can ever work
             // and the user must be told instead of staring at a live preview.
@@ -450,6 +541,7 @@ class MainActivity : AppCompatActivity() {
             !linkReady && currentState.transfer == null -> getString(R.string.hint_no_link)
             else -> getString(R.string.hint_idle)
         }
+        Motion.crossfade(binding.hintText, hint)
     }
 
     /**
@@ -689,6 +781,14 @@ class MainActivity : AppCompatActivity() {
             provider.bindToLifecycle(this, selector, preview, analysis)
             cameraStarted = true
             binding.handOverlay.mirrorHorizontally = boundFrontCamera == true
+            // The preview used to pop in as a still frame. A short fade reads as
+            // "the camera woke up" instead of "the layout just changed".
+            binding.previewView.alpha = 0f
+            binding.previewView.animate()
+                .alpha(1f)
+                .setDuration(420L)
+                .setInterpolator(Motion.Gentle)
+                .start()
         }.onFailure { error ->
             cameraStarted = false
             showTransient(error.message ?: getString(R.string.camera_unavailable))

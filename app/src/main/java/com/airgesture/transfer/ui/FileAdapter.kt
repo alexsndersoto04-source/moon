@@ -69,17 +69,40 @@ class FileAdapter(
         fun applySelection(selected: Boolean) {
             val context = binding.root.context
             // A tiny lift tells the user which file is about to fly, without a
-            // heavy shadow or a coloured frame.
-            val target = if (selected) 1.035f else 1f
+            // heavy shadow or a coloured frame. The overshoot is what makes it
+            // feel picked up instead of merely resized.
+            val target = if (selected) 1.045f else 1f
+            val lift = if (selected) -3f * context.resources.displayMetrics.density else 0f
             if (binding.fileCard.scaleX != target) {
                 binding.fileCard.animate()
                     .scaleX(target)
                     .scaleY(target)
-                    .setDuration(180L)
-                    .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
+                    .translationY(lift)
+                    .setDuration(220L)
+                    .setInterpolator(android.view.animation.OvershootInterpolator(1.15f))
                     .start()
             }
-            binding.selectionDot.visibility = if (selected) android.view.View.VISIBLE else android.view.View.GONE
+            val dot = binding.selectionDot
+            if (selected) {
+                if (dot.visibility != android.view.View.VISIBLE) {
+                    dot.visibility = android.view.View.VISIBLE
+                    dot.scaleX = 0f
+                    dot.scaleY = 0f
+                }
+                dot.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(220L)
+                    .setInterpolator(android.view.animation.OvershootInterpolator(1.4f))
+                    .start()
+            } else if (dot.visibility == android.view.View.VISIBLE) {
+                dot.animate()
+                    .scaleX(0f)
+                    .scaleY(0f)
+                    .setDuration(140L)
+                    .withEndAction { dot.visibility = android.view.View.GONE }
+                    .start()
+            }
             binding.fileCard.strokeWidth = if (selected) dp(context, 1.6f) else dp(context, 1f)
             binding.fileCard.strokeColor = ContextCompat.getColor(
                 context,

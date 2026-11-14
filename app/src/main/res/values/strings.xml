@@ -147,4 +147,42 @@ Dispositivo: %2$s</string>
     <string name="queued_waiting">Se enviará en cuanto conecte con el otro teléfono</string>
     <string name="hint_no_link">Gesto activo · abriendo enlace con el otro teléfono (mantén la app abierta en ambos)</string>
     <string name="no_files_gesture">El gesto funciona: todavía no hay archivos en esta pestaña</string>
+
+    <!-- Compartir desde la galería del sistema -->
+    <string name="share_label">Enviar con AirGesture</string>
+    <string name="share_title">AirGesture</string>
+    <string name="share_sending_one">Enviando 1 archivo</string>
+    <string name="share_sending_many">Enviando %1$d archivos</string>
+    <string name="share_hint">Buscando el teléfono más cercano…</string>
+    <string name="share_hint_permission">Necesito Bluetooth y ubicación para encontrar el otro teléfono.</string>
+    <string name="share_hint_running">Sigue en la notificación · puedes cerrar esto</string>
+    <string name="share_nothing">No hay ningún archivo que enviar</string>
+    <string name="share_need_permissions">Falta permiso de Bluetooth o ubicación: ábrelo una vez en AirGesture y vuelve a intentarlo.</string>
+
+    <!-- Servicio de envío en segundo plano -->
+    <string name="notif_channel_name">Envíos en segundo plano</string>
+    <string name="notif_channel_desc">Progreso de los archivos que salen con AirGesture aunque la app esté cerrada.</string>
+    <string name="notif_sending_title">Enviando %1$s</string>
+    <string name="notif_sending_text">%1$d %% · sigue aunque cierres la app</string>
+    <string name="notif_sending_unknown">Preparando el archivo…</string>
+    <string name="notif_connected_title">Conectado a %1$s</string>
+    <string name="notif_queued_text">%1$d en la cola</string>
+    <string name="notif_waiting_title">Buscando el otro teléfono</string>
+    <string name="notif_waiting_text">%1$d archivo(s) en espera</string>
+    <string name="notif_idle_title">Listo</string>
+    <string name="notif_idle_text">AirGesture sigue disponible</string>
+    <string name="notif_sent_title">Enviado</string>
+    <string name="notif_sent_body">%1$s llegó al otro teléfono</string>
+    <string name="notif_received_title">Recibido</string>
+    <string name="notif_received_body">%1$s está en Descargas/AirGesture</string>
+    <string name="notif_failed_title">No se pudo enviar</string>
+    <string name="notif_permissions">Faltan permisos · abre AirGesture y concédelos</string>
+    <string name="notif_nothing_shared">No se pudo leer el archivo compartido</string>
+    <string name="notif_already_queued">Ese archivo ya se está enviando</string>
+    <string name="notif_wait_timeout">No apareció el otro teléfono · abre AirGesture</string>
+    <string name="notif_cancelled">Envío cancelado</string>
+
+    <string name="share_hint_gallery">También puedes enviar desde tu galería: abre el archivo → Compartir → AirGesture</string>
+    <string name="settings_gallery_section">Sin abrir la app</string>
+    <string name="settings_gallery_body">En tu galería o en Archivos: elige el archivo → Compartir → «Enviar con AirGesture». El envío arranca solo, sigue con la pantalla apagada y el progreso aparece en la notificación.</string>
 </resources>

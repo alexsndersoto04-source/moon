@@ -1,5 +1,7 @@
 package com.airgesture.transfer.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
@@ -8,6 +10,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.Rect
@@ -18,34 +21,36 @@ import android.view.View
 import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
 import androidx.core.graphics.ColorUtils
+import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.random.Random
 
 /**
- * Soft-surface send effect — no outlines anywhere.
+ * The 2.0 hand-off: a singularity, not a splash.
  *
- * ## Why this version looks different
- * Every previous attempt drew the crest with a **stroke**, and a stroke is a hard
- * edge: at any zoom the eye reads "line". This view never strokes anything. Each
- * ripple is a **radial gradient rendered inside a scaled circle**:
+ * The water ripples (1.6–1.7) were geometrically right and emotionally flat:
+ * concentric circles read as "decoration". This version tells the story of the
+ * file actually leaving the phone, in four beats over about a second:
  *
  * ```
- * radius 0.00 → 0.70   transparent            the still water
- * radius 0.70 → 0.84   a whisper of shadow    the trough behind the crest
- * radius 0.84 → 0.93   white, rising          the face of the wave
- * radius 0.93          white, peak            the crest
- * radius 0.93 → 1.00   falls to nothing       the far face
+ * 0.00  the ring closes          a band of light falls inward from the edges
+ * 0.00  sparks converge          18 motes spiral into the point of contact
+ * 0.10  the card is pulled in    the real thumbnail shrinks, tilts, dissolves
+ * 0.36  the flash                a hot core and a lens flare: it is gone
+ * 0.34  the beam                 an elongated streak shoots out of the phone
+ * 0.78  the wake                 the streak retracts, the shockwave dies
  * ```
  *
- * Because the falloff is continuous, there is no border to see at any size: the
- * band simply fades in and out. The same trick draws the droplets, the bloom and
- * the glass bead, and the bead's edge is feathered with a `DST_IN` mask so the
- * thumbnail dissolves into the light instead of ending in a circle.
+ * Every shape is a **radial gradient stretched by `canvas.scale`**, so nothing
+ * here is a stroked outline and nothing allocates per frame: one shader serves
+ * the ring, the beam, the sparks and the flare. That is what keeps it smooth on
+ * a Helio G35, where a `Paint` per frame is enough to lose the animation.
  *
- * The gradient is built once per play against a unit radius and reused by every
- * wave through `canvas.scale`, so this costs one shader and no per-frame
- * allocation — it stays smooth on the Helio G35.
+ * Arrival runs the same timeline backwards (the beam comes in, the ring opens,
+ * the card unfolds), so send and receive speak the same language.
  */
 class TransferBeamView @JvmOverloads constructor(
     context: Context,
@@ -55,27 +60,27 @@ class TransferBeamView @JvmOverloads constructor(
 
     private val density = resources.displayMetrics.density
 
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val bloomPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val dropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val sheetPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val beadBodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val sparkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.WHITE
+        colorFilter = PorterDuffColorFilter(COLOR_ACCENT, PorterDuff.Mode.SRC_IN)
     }
-    private val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.WHITE
-    }
-    private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         isFilterBitmap = true
         isAntiAlias = true
+    }
+    private val sheetPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
     }
     private val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
     }
 
-    private val rect = RectF()
+    private val rectF = RectF()
     private val srcRect = Rect()
 
     private var progress = 0f
@@ -86,24 +91,36 @@ class TransferBeamView @JvmOverloads constructor(
 
     private var originX = 0.5f
     private var originY = 0.58f
-    private var impactX = 0f
-    private var impactY = 0f
-    private var maxRadius = 1f
+    private var cx = 0f
+    private var cy = 0f
+    private var reach = 1f
 
-    // Unit shaders: built once, reused for every wave via canvas.scale().
-    private var crestShader: Shader? = null
+    private var coreShader: Shader? = null
     private var bloomShader: Shader? = null
-    private var dropShader: Shader? = null
+    private var ringShader: Shader? = null
+    private var streakShader: Shader? = null
     private var featherShader: Shader? = null
 
-    private val surfaceEase = PathInterpolator(0.14f, 0.66f, 0.22f, 1f)
-    private val sinkEase = PathInterpolator(0.33f, 0f, 0.2f, 1f)
+    private val gatherEase = PathInterpolator(0.36f, 0f, 0.2f, 1f)
+    private val launchEase = PathInterpolator(0.1f, 0.72f, 0.16f, 1f)
     private val fadeEase = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+
+    // Deterministic motes: a fixed layout looks intentional, a random one per
+    // frame looks like noise (and allocates).
+    private val sparkAngle = FloatArray(SPARK_COUNT)
+    private val sparkStart = FloatArray(SPARK_COUNT)
+    private val sparkSize = FloatArray(SPARK_COUNT)
 
     init {
         setWillNotDraw(false)
         visibility = GONE
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        val random = Random(20261114)
+        for (i in 0 until SPARK_COUNT) {
+            sparkAngle[i] = random.nextFloat() * TWO_PI
+            sparkStart[i] = 0.45f + random.nextFloat() * 0.55f
+            sparkSize[i] = 0.6f + random.nextFloat() * 1.2f
+        }
     }
 
     fun play(
@@ -127,11 +144,16 @@ class TransferBeamView @JvmOverloads constructor(
             interpolator = LinearInterpolator()
             addUpdateListener {
                 progress = it.animatedValue as Float
+                // On arrival the card ends up fully visible at the contact point;
+                // without this short fade the overlay would vanish mid-frame.
+                if (isArrival) {
+                    alpha = ((1f - progress) / 0.12f).coerceIn(0f, 1f)
+                }
                 invalidate()
             }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    visibility = GONE
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (progress >= 1f) visibility = GONE
                 }
             })
             start()
@@ -147,22 +169,20 @@ class TransferBeamView @JvmOverloads constructor(
         visibility = GONE
     }
 
-    private fun buildShaders() {
-        if (crestShader != null) return
+    // ---------------------------------------------------------------- shaders
 
-        // The ripple: continuous, so there is no border at any size.
-        crestShader = RadialGradient(
+    private fun buildShaders() {
+        if (coreShader != null) return
+
+        coreShader = RadialGradient(
             0f, 0f, 1f,
             intArrayOf(
-                ColorUtils.setAlphaComponent(Color.WHITE, 0),
-                ColorUtils.setAlphaComponent(Color.WHITE, 0),
-                ColorUtils.setAlphaComponent(COLOR_SHADOW, 34),
-                ColorUtils.setAlphaComponent(Color.WHITE, 96),
-                ColorUtils.setAlphaComponent(Color.WHITE, 214),
-                ColorUtils.setAlphaComponent(Color.WHITE, 120),
+                ColorUtils.setAlphaComponent(Color.WHITE, 255),
+                ColorUtils.setAlphaComponent(Color.WHITE, 150),
+                ColorUtils.setAlphaComponent(COLOR_ACCENT, 60),
                 ColorUtils.setAlphaComponent(Color.WHITE, 0)
             ),
-            floatArrayOf(0f, 0.62f, 0.78f, 0.855f, 0.925f, 0.965f, 1f),
+            floatArrayOf(0f, 0.2f, 0.5f, 1f),
             Shader.TileMode.CLAMP
         )
 
@@ -170,192 +190,159 @@ class TransferBeamView @JvmOverloads constructor(
             0f, 0f, 1f,
             intArrayOf(
                 ColorUtils.setAlphaComponent(Color.WHITE, 130),
-                ColorUtils.setAlphaComponent(Color.WHITE, 54),
-                ColorUtils.setAlphaComponent(Color.WHITE, 0)
-            ),
-            floatArrayOf(0f, 0.45f, 1f),
-            Shader.TileMode.CLAMP
-        )
-
-        dropShader = RadialGradient(
-            0f, 0f, 1f,
-            intArrayOf(
-                ColorUtils.setAlphaComponent(Color.WHITE, 235),
-                ColorUtils.setAlphaComponent(Color.WHITE, 90),
+                ColorUtils.setAlphaComponent(Color.WHITE, 34),
                 ColorUtils.setAlphaComponent(Color.WHITE, 0)
             ),
             floatArrayOf(0f, 0.42f, 1f),
             Shader.TileMode.CLAMP
         )
 
-        // Feathers the bead's edge into nothing: no circle to see.
+        // One narrow band: the ring has a face and a shadow, no outline.
+        ringShader = RadialGradient(
+            0f, 0f, 1f,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(Color.WHITE, 0),
+                ColorUtils.setAlphaComponent(Color.WHITE, 0),
+                ColorUtils.setAlphaComponent(COLOR_SHADOW, 36),
+                ColorUtils.setAlphaComponent(Color.WHITE, 190),
+                ColorUtils.setAlphaComponent(Color.WHITE, 0)
+            ),
+            floatArrayOf(0f, 0.62f, 0.775f, 0.845f, 1f),
+            Shader.TileMode.CLAMP
+        )
+
+        // The comet: hot head, long tail. Stretched into an ellipse on draw.
+        streakShader = RadialGradient(
+            0f, 0f, 1f,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(Color.WHITE, 235),
+                ColorUtils.setAlphaComponent(Color.WHITE, 110),
+                ColorUtils.setAlphaComponent(Color.WHITE, 0)
+            ),
+            floatArrayOf(0f, 0.34f, 1f),
+            Shader.TileMode.CLAMP
+        )
+
         featherShader = RadialGradient(
             0f, 0f, 1f,
             intArrayOf(Color.BLACK, Color.BLACK, Color.TRANSPARENT),
-            floatArrayOf(0f, 0.72f, 1f),
+            floatArrayOf(0f, 0.7f, 1f),
             Shader.TileMode.CLAMP
         )
     }
+
+    // ------------------------------------------------------------------ draw
 
     override fun onDraw(canvas: Canvas) {
         if (progress <= 0f) return
         buildShaders()
 
-        impactX = originX * width
-        impactY = originY * height
-        maxRadius = hypot(
-            maxOf(impactX, width - impactX).toDouble(),
-            maxOf(impactY, height - impactY).toDouble()
-        ).toFloat()
+        cx = originX * width
+        cy = originY * height
+        reach = hypot(
+            maxOf(cx, width - cx).toDouble(),
+            maxOf(cy, height - cy).toDouble()
+        ).toFloat().coerceAtLeast(1f)
 
-        val clock = if (arrival) 1f - progress else progress
+        val t = if (arrival) 1f - progress else progress
 
-        drawWaterLight(canvas, clock)
-        drawBead(canvas, clock)
-        drawRipples(canvas, clock)
-        drawDroplets(canvas, clock)
+        drawBloom(canvas, t)
+        drawRing(canvas, t)
+        drawSparks(canvas, t)
+        drawCard(canvas, t)
+        drawBeam(canvas, t)
+        drawCore(canvas, t)
     }
 
-    /**
-     * Draws a unit-1 shape filled with [shader] at the given radius.
-     *
-     * Scaling the canvas is what lets one gradient serve every wave without
-     * rebuilding it 60 times a second.
-     */
-    private fun drawSoftCircle(
-        canvas: Canvas,
-        shader: Shader?,
-        paint: Paint,
-        radius: Float,
-        alpha: Int,
-        squashY: Float = 1f
-    ) {
-        if (alpha <= 0 || radius <= 0f) return
-        val save = canvas.save()
-        canvas.translate(impactX, impactY)
-        canvas.scale(radius, radius * squashY)
-        paint.shader = shader
-        paint.alpha = alpha
-        canvas.drawCircle(0f, 0f, 1f, paint)
-        paint.shader = null
-        canvas.restoreToCount(save)
+    private fun drawBloom(canvas: Canvas, t: Float) {
+        val grow = gatherEase.getInterpolation((t / 0.45f).coerceIn(0f, 1f))
+        val fade = 1f - fadeEase.getInterpolation(((t - 0.5f) / 0.5f).coerceIn(0f, 1f))
+        val alpha = (135f * (0.4f + grow * 0.6f) * fade).toInt().coerceIn(0, 255)
+        drawGlow(canvas, bloomShader, glowPaint, reach * (0.16f + grow * 0.5f), alpha, 0.9f)
     }
 
-    /** The light that spreads over the surface before any ripple arrives. */
-    private fun drawWaterLight(canvas: Canvas, clock: Float) {
-        val grow = surfaceEase.getInterpolation((clock / 0.55f).coerceIn(0f, 1f))
-        val fade = 1f - fadeEase.getInterpolation(((clock - 0.3f) / 0.6f).coerceIn(0f, 1f))
-        val alpha = (150f * grow * fade).toInt().coerceIn(0, 255)
-        if (alpha <= 0) return
-        drawSoftCircle(canvas, bloomShader, bloomPaint, maxRadius * (0.35f + grow * 0.75f), alpha)
-    }
+    /** A band of light closing in, then a shockwave running away from the point. */
+    private fun drawRing(canvas: Canvas, t: Float) {
+        val close = (t / 0.34f).coerceIn(0f, 1f)
+        if (close < 1f) {
+            val eased = gatherEase.getInterpolation(close)
+            val radius = reach * (0.9f - 0.86f * eased) + 12f * density
+            val alpha = (210f * sin(PI * close)).toInt().coerceIn(0, 255)
+            drawGlow(canvas, ringShader, glowPaint, radius, alpha, 0.94f)
+        }
 
-    /** Six ripples, 85 ms apart, each a soft band that breathes instead of a ring. */
-    private fun drawRipples(canvas: Canvas, clock: Float) {
-        for (index in 0 until WAVE_COUNT) {
-            val start = index * WAVE_STAGGER
-            val local = ((clock - start) / WAVE_LIFE).coerceIn(0f, 1f)
-            if (local <= 0f || local >= 1f) continue
-
-            val spread = surfaceEase.getInterpolation(local)
-            val radius = (6f * density) + spread * maxRadius * 1.02f
-            val fade = (1f - local) * (1f - local)
-            val alpha = (255f * fade).toInt().coerceIn(0, 255)
-            if (alpha <= 3) continue
-
-            // Squash and wobble: the surface is not a flat geometrical plane.
-            val squash = 0.985f - 0.02f * sin(local * 7f + index)
-            drawSoftCircle(canvas, crestShader, ringPaint, radius, alpha, squash)
+        val wave = ((t - 0.28f) / 0.44f).coerceIn(0f, 1f)
+        if (wave > 0f && wave < 1f) {
+            val radius = 16f * density + launchEase.getInterpolation(wave) * reach * 1.12f
+            val fade = (1f - wave) * (1f - wave)
+            val alpha = (170f * fade).toInt().coerceIn(0, 255)
+            drawGlow(canvas, ringShader, glowPaint, radius, alpha, 0.92f)
         }
     }
 
-    /** Fine spray, each drop a feathered dot rather than a drawn circle. */
-    private fun drawDroplets(canvas: Canvas, clock: Float) {
-        val local = (clock / (WAVE_LIFE * 0.5f)).coerceIn(0f, 1f)
-        if (local <= 0.05f) return
+    /** Eighteen motes falling into the point, each a soft dot rather than a circle. */
+    private fun drawSparks(canvas: Canvas, t: Float) {
+        val pull = gatherEase.getInterpolation((t / 0.40f).coerceIn(0f, 1f))
+        if (pull >= 1f) return
+        val alpha = (175f * (1f - pull) * (1f - pull * 0.4f)).toInt().coerceIn(0, 255)
+        if (alpha <= 2) return
 
-        val life = (local - 0.05f) / 0.95f
-        val fade = (1f - life) * (1f - life)
-        if (fade <= 0.02f) return
-
-        val travel = (18f * density) + surfaceEase.getInterpolation(local) * maxRadius * 0.2f
-
-        for (i in 0 until DROPLET_COUNT) {
-            val angle = Math.toRadians(i * (360.0 / DROPLET_COUNT) + 11.0 + (i % 3) * 5.0)
-            val reach = travel * (0.68f + (i % 4) * 0.12f)
-            val x = impactX + (cos(angle) * reach).toFloat()
-            val y = impactY + (sin(angle) * reach * 0.9f).toFloat()
-            val size = ((5.2f - life * 3.2f) * density).coerceAtLeast(1.2f * density)
-
-            // Drawn around its own centre, so it needs its own transform.
-            val save = canvas.save()
-            canvas.translate(x, y)
-            canvas.scale(size, size)
-            dropPaint.shader = dropShader
-            dropPaint.alpha = (fade * 190f).toInt().coerceIn(0, 255)
-            canvas.drawCircle(0f, 0f, 1f, dropPaint)
-            dropPaint.shader = null
-            canvas.restoreToCount(save)
+        for (i in 0 until SPARK_COUNT) {
+            val angle = sparkAngle[i] + pull * 1.5f
+            val radius = reach * sparkStart[i] * (1f - pull) + 7f * density * pull
+            val x = cx + cos(angle) * radius
+            val y = cy + sin(angle) * radius * 0.92f
+            val size = sparkSize[i] * (5.6f - 3.4f * pull) * density
+            drawGlow(canvas, streakShader, sparkPaint, size, alpha, 1f, x, y)
         }
     }
 
-    /**
-     * The file as a soft glass bead: the thumbnail is masked with a feathered
-     * radial gradient, so it dissolves into the surface with no visible edge,
-     * then a glass veil and a highlight give it volume.
-     */
-    private fun drawBead(canvas: Canvas, clock: Float) {
-        val t = if (arrival) 1f - clock else clock
-        val sink = sinkEase.getInterpolation(t.coerceIn(0f, 1f))
+    /** The file itself: pulled in and dissolved, or unfolding on arrival. */
+    private fun drawCard(canvas: Canvas, t: Float) {
+        val shrink = gatherEase.getInterpolation(((t - 0.04f) / 0.34f).coerceIn(0f, 1f))
+        val scale = 1f - 0.93f * shrink
+        val fade = 1f - fadeEase.getInterpolation(((t - 0.12f) / 0.28f).coerceIn(0f, 1f))
+        val alpha = (255f * fade).toInt().coerceIn(0, 255)
+        if (alpha <= 2 || scale <= 0.02f) return
 
-        val base = (minOf(width, height) * 0.13f).coerceIn(44f * density, 74f * density)
-        val radius = if (arrival) base * (0.6f + 0.4f * sink) else base * (1f - 0.3f * sink)
+        val base = (minOf(width, height) * 0.135f).coerceIn(46f * density, 78f * density)
+        val radius = base * scale
 
-        val alpha = if (arrival) {
-            (255f * fadeEase.getInterpolation((clock / 0.45f).coerceIn(0f, 1f))).toInt()
-        } else {
-            (255f * (1f - fadeEase.getInterpolation((t / 0.55f).coerceIn(0f, 1f)))).toInt()
-        }.coerceIn(0, 255)
-        if (alpha <= 0 || radius <= 1f) return
+        val rotation = 11f * shrink * (if (arrival) -1f else 1f)
+        canvas.save()
+        canvas.rotate(rotation, cx, cy)
 
-        val cx = impactX
-        val cy = impactY
-
-        // 1. shadow / body, soft, no circumference line
-        val saveLayer = canvas.saveLayer(
-            cx - radius * 1.2f, cy - radius * 1.2f,
-            cx + radius * 1.2f, cy + radius * 1.2f, null
+        val layer = canvas.saveLayer(
+            cx - radius * 1.35f, cy - radius * 1.35f,
+            cx + radius * 1.35f, cy + radius * 1.35f, null
         )
 
-        beadBodyPaint.alpha = alpha
-        canvas.drawCircle(cx, cy, radius, beadBodyPaint)
-
         val thumb = bitmap
-        if (thumb != null) {
+        if (thumb != null && !thumb.isRecycled) {
+            rectF.set(cx - radius, cy - radius, cx + radius, cy + radius)
             val side = radius * 2f
-            rect.set(cx - radius, cy - radius, cx + radius, cy + radius)
-            val bw = thumb.width.toFloat()
-            val bh = thumb.height.toFloat()
-            val scale = maxOf(side / bw, side / bh)
-            val sw = side / scale
-            val sh = side / scale
-            val left = ((bw - sw) * 0.5f).toInt()
-            val top = ((bh - sh) * 0.5f).toInt()
-            srcRect.set(left, top, (left + sw).toInt(), (top + sh).toInt())
-            thumbPaint.alpha = alpha
-            canvas.drawBitmap(thumb, srcRect, rect, thumbPaint)
+            val ratio = maxOf(side / thumb.width.toFloat(), side / thumb.height.toFloat())
+            val sw = (side / ratio).toInt().coerceAtLeast(1)
+            val sh = (side / ratio).toInt().coerceAtLeast(1)
+            val left = ((thumb.width - sw) / 2).coerceAtLeast(0)
+            val top = ((thumb.height - sh) / 2).coerceAtLeast(0)
+            srcRect.set(left, top, left + sw, top + sh)
+            cardPaint.alpha = alpha
+            canvas.drawBitmap(thumb, srcRect, rectF, cardPaint)
         } else {
-            sheetPaint.alpha = (alpha * 0.85f).toInt().coerceIn(0, 255)
-            rect.set(
-                cx - radius * 0.5f,
-                cy - radius * 0.58f,
-                cx + radius * 0.5f,
-                cy + radius * 0.48f
+            // No thumbnail: a soft sheet of paper, the shape of the file itself.
+            sheetPaint.alpha = (alpha * 0.9f).toInt().coerceIn(0, 255)
+            rectF.set(
+                cx - radius * 0.62f,
+                cy - radius * 0.78f,
+                cx + radius * 0.62f,
+                cy + radius * 0.78f
             )
-            canvas.drawRoundRect(rect, radius * 0.18f, radius * 0.18f, sheetPaint)
+            canvas.drawRoundRect(rectF, radius * 0.16f, radius * 0.16f, sheetPaint)
         }
 
-        // 2. feather the edge to transparent — this is what removes the "circle"
+        // Feather the edge into nothing: the card dissolves into the light
+        // instead of ending in a visible cut.
         maskPaint.shader = featherShader
         maskPaint.alpha = alpha
         canvas.save()
@@ -365,34 +352,93 @@ class TransferBeamView @JvmOverloads constructor(
         canvas.restore()
         maskPaint.shader = null
 
-        // 3. glass veil: light from the upper left, shadow at the lower right
-        glassPaint.alpha = alpha
-        glassPaint.shader = RadialGradient(
-            cx - radius * 0.32f,
-            cy - radius * 0.4f,
-            radius * 1.5f,
-            intArrayOf(
-                ColorUtils.setAlphaComponent(Color.WHITE, 120),
-                ColorUtils.setAlphaComponent(Color.WHITE, 18),
-                ColorUtils.setAlphaComponent(COLOR_SHADOW, 70)
-            ),
-            floatArrayOf(0f, 0.5f, 1f),
-            Shader.TileMode.CLAMP
+        // Light from the upper left, so the thumbnail has volume.
+        drawGlow(
+            canvas, bloomShader, glowPaint,
+            radius * 0.85f, (alpha * 0.32f).toInt().coerceIn(0, 255), 1f,
+            cx - radius * 0.32f, cy - radius * 0.38f
         )
-        canvas.drawCircle(cx, cy, radius, glassPaint)
-        glassPaint.shader = null
 
-        canvas.restoreToCount(saveLayer)
+        canvas.restoreToCount(layer)
+        canvas.restore()
+    }
 
-        // 4. specular hot spot, feathered
+    /** The streak that leaves the phone: elongated gradient, no drawn line. */
+    private fun drawBeam(canvas: Canvas, t: Float) {
+        val local = ((t - 0.34f) / 0.44f).coerceIn(0f, 1f)
+        if (local <= 0f) return
+        val grow = launchEase.getInterpolation(local)
+        val fade = 1f - ((t - 0.76f) / 0.24f).coerceIn(0f, 1f)
+        if (fade <= 0.02f) return
+
+        val length = (70f * density) + grow * height * 0.92f
+        val halfWidth = ((7f + (1f - grow) * 11f) * density)
+        val headY = cy - length * 0.52f
+        val alpha = (205f * grow * fade).toInt().coerceIn(0, 255)
+
+        // Chromatic split: the halo leads, the white core follows.
+        drawStreak(canvas, cx, headY + 4f * density, halfWidth * 1.9f, length * 0.8f,
+            (alpha * 0.34f).toInt().coerceIn(0, 255), haloPaint)
+        drawStreak(canvas, cx, headY, halfWidth, length * 0.66f, alpha, streakPaint)
+    }
+
+    private fun drawStreak(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        halfWidth: Float,
+        halfHeight: Float,
+        alpha: Int,
+        paint: Paint
+    ) {
+        if (alpha <= 0 || halfWidth <= 0f || halfHeight <= 0f) return
         val save = canvas.save()
-        canvas.translate(cx - radius * 0.33f, cy - radius * 0.4f)
-        val spot = radius * 0.46f
-        canvas.scale(spot, spot)
-        dropPaint.shader = dropShader
-        dropPaint.alpha = (alpha * 0.5f).toInt().coerceIn(0, 255)
-        canvas.drawCircle(0f, 0f, 1f, dropPaint)
-        dropPaint.shader = null
+        canvas.translate(x, y)
+        canvas.scale(halfWidth, halfHeight)
+        paint.shader = streakShader
+        paint.alpha = alpha
+        canvas.drawCircle(0f, 0f, 1f, paint)
+        paint.shader = null
+        canvas.restoreToCount(save)
+    }
+
+    /** The instant of departure: hot core plus a horizontal lens flare. */
+    private fun drawCore(canvas: Canvas, t: Float) {
+        val z = (t - 0.36f) / 0.11f
+        val flash = exp(-(z * z)).toFloat()
+        if (flash <= 0.01f) return
+
+        val radius = (11f + 44f * flash) * density
+        drawGlow(canvas, coreShader, corePaint, radius, (255f * flash).toInt().coerceIn(0, 255), 1f)
+        drawGlow(
+            canvas, bloomShader, glowPaint,
+            radius * 4.6f, (255f * flash * 0.45f).toInt().coerceIn(0, 255), 0.09f
+        )
+    }
+
+    /**
+     * Draws a unit shape filled with [shader] at the requested size. Scaling the
+     * canvas instead of rebuilding the gradient is what keeps this allocation-free
+     * at 60 fps.
+     */
+    private fun drawGlow(
+        canvas: Canvas,
+        shader: Shader?,
+        paint: Paint,
+        radius: Float,
+        alpha: Int,
+        squashY: Float = 1f,
+        x: Float = cx,
+        y: Float = cy
+    ) {
+        if (alpha <= 0 || radius <= 0f) return
+        val save = canvas.save()
+        canvas.translate(x, y)
+        canvas.scale(radius, radius * squashY)
+        paint.shader = shader
+        paint.alpha = alpha
+        canvas.drawCircle(0f, 0f, 1f, paint)
+        paint.shader = null
         canvas.restoreToCount(save)
     }
 
@@ -403,14 +449,13 @@ class TransferBeamView @JvmOverloads constructor(
     }
 
     private companion object {
-        const val DURATION_MS = 1250L
-        const val REDUCED_DURATION_MS = 420L
+        const val DURATION_MS = 1050L
+        const val REDUCED_DURATION_MS = 380L
+        const val SPARK_COUNT = 18
 
-        const val WAVE_COUNT = 6
-        const val WAVE_STAGGER = 0.085f
-        const val WAVE_LIFE = 0.60f
-        const val DROPLET_COUNT = 12
+        val TWO_PI = (PI * 2.0).toFloat()
 
         val COLOR_SHADOW: Int = Color.parseColor("#2B2B30")
+        val COLOR_ACCENT: Int = Color.parseColor("#B4855C")
     }
 }

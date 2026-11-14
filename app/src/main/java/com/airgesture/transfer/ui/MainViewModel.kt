@@ -1,7 +1,6 @@
 package com.airgesture.transfer.ui
 
 import android.app.Application
-import android.net.Uri
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,8 +13,8 @@ import com.airgesture.transfer.core.GestureState
 import com.airgesture.transfer.media.MediaEntry
 import com.airgesture.transfer.media.MediaKind
 import com.airgesture.transfer.transfer.NearbyState
-import com.airgesture.transfer.transfer.NearbyTransferManager
-import com.airgesture.transfer.transfer.TransferProgress
+import com.airgesture.transfer.transfer.TransferHub
+import com.airgesture.transfer.transfer.TransferService
 import com.airgesture.transfer.util.Haptics
 import com.airgesture.transfer.util.Permissions
 import com.airgesture.transfer.vision.GestureCalibration
@@ -36,7 +35,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Single owner of the vision pipeline, the media shelf and the P2P session.
+ * Owner of the vision pipeline and the media shelf; the P2P session lives in
+ * [TransferHub] so it survives this screen (and the whole activity) being gone.
  *
  * Threading contract:
  *  - [analyzer] runs on the camera executor thread: pure computation, no views.
@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
  *  - Overlay frames are volatile and conflated, so a slow UI thread can never
  *    build a backlog or stall the camera.
  */
-class MainViewModel(application: Application) : AndroidViewModel(application), NearbyTransferManager.Listener {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as AirGestureApp
     private val repository = app.mediaRepository
@@ -73,7 +73,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     private var lastCapturedAttempt = 0
     private var calibrationSaved = false
     private val thrustSensor = ThrustSensor(application)
-    private val nearby = NearbyTransferManager(application, this)
 
     val analyzer = CameraAnalyzer(
         converter = converter,
@@ -105,15 +104,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     val events = _events.asSharedFlow()
 
     private var loadJob: Job? = null
-    /** Files waiting for the link, oldest first. Nothing is ever dropped. */
-    private val queue = ArrayDeque<MediaEntry>()
     private var sessionActive = false
-    private var nearbyStarted = false
     private var initialLoadDone = false
     private var lastGestureState = GestureState.IDLE
     private var lastHandVisible = false
 
     // ------------------------------------------------------------- lifecycle
+
+    /**
+     * The hub is process-scoped, so this screen only has to *observe* it: coming
+     * back to the app shows the transfer that started from the share sheet, and
+     * leaving the app no longer kills it.
+     */
+    init {
+        viewModelScope.launch {
+            TransferHub.state.collect { snapshot ->
+                _uiState.update { current ->
+                    current.copy(
+                        nearbyState = snapshot.state,
+                        peerName = if (snapshot.state == NearbyState.CONNECTED) {
+                            snapshot.peerName ?: current.peerName
+                        } else {
+                            current.peerName
+                        },
+                        transfer = snapshot.transfer,
+                        queuedCount = snapshot.queue,
+                        logLines = snapshot.logs.takeLast(MAX_LOG_LINES)
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            TransferHub.events.collect { event ->
+                when (event) {
+                    is TransferHub.Event.Sent -> {
+                        haptics.confirm()
+                        _uiState.update { it.copy(transfer = null) }
+                        _events.tryEmit(UiEvent.Sent(event.name))
+                    }
+                    is TransferHub.Event.Received -> {
+                        haptics.tick()
+                        _uiState.update { it.copy(transfer = null) }
+                        _events.tryEmit(UiEvent.Arrival(event.name))
+                        _events.tryEmit(UiEvent.Received(event.name))
+                    }
+                    is TransferHub.Event.Failed -> {
+                        _uiState.update { it.copy(transfer = null) }
+                        _events.tryEmit(UiEvent.Message(event.reason))
+                    }
+                }
+            }
+        }
+    }
 
     fun startSession() {
         if (!Permissions.essentialsGranted(app)) return
@@ -122,10 +164,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
             sessionActive = true
             thrustSensor.start()
         }
-        if (!nearbyStarted) {
-            nearbyStarted = true
-            nearby.start()
-        }
+        TransferHub.ensureStarted(app)
         if (!initialLoadDone) {
             initialLoadDone = true
             load(_uiState.value.kind)
@@ -135,20 +174,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
     }
 
     /**
-     * Called when the camera screen goes away. Only the accelerometer is stopped:
-     * the Nearby session stays alive so an in-flight transfer can finish and so
-     * the peer link survives a trip to the Android settings (e.g. to switch
-     * location on). It is torn down in onCleared.
+     * Called when the camera screen goes away. The accelerometer always stops;
+     * the radios stop only if nothing can be lost (see [TransferHub.shutdownIfIdle]),
+     * because a live transfer or a waiting queue must survive the screen.
      */
     fun stopSession() {
         if (!sessionActive) return
         sessionActive = false
         thrustSensor.stop()
+        TransferHub.shutdownIfIdle()
     }
 
     override fun onCleared() {
         loadJob?.cancel()
-        nearby.stop()
+        // Never tear down a live transfer: the hub keeps it only if a file is in
+        // flight or something is queued.
+        TransferHub.shutdownIfIdle()
         thrustSensor.release()
         handTracker?.close()
         handTracker = null
@@ -414,9 +455,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     /** Explicit "send now" button: no gesture involved at all. */
     fun sendSelectedNow() {
-        val state = _uiState.value
-        val entry = state.items.firstOrNull { it.key == state.selectedUri }
-            ?: state.items.firstOrNull()
+        val entry = selectedEntry()
         if (entry == null) {
             _events.tryEmit(UiEvent.Message(app.getString(R.string.select_file_first)))
             return
@@ -430,43 +469,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
      */
     fun sendItem(entry: MediaEntry) {
         _uiState.update { it.copy(selectedUri = entry.key) }
-        enqueue(entry)
-    }
-
-    /** Adds to the queue and starts sending when the channel is free. */
-    private fun enqueue(entry: MediaEntry) {
-        if (queue.any { it.key == entry.key } || _uiState.value.transfer?.fileName == entry.name) {
+        TransferHub.ensureStarted(app)
+        // Promote the session to a foreground service the moment there is work:
+        // from here on, locking the phone or opening another app cannot kill it.
+        TransferService.ensureRunning(app)
+        val added = TransferHub.enqueue(listOf(entry))
+        if (added == 0) {
             _events.tryEmit(UiEvent.Message(app.getString(R.string.already_queued)))
             return
         }
-        queue.addLast(entry)
-        publishQueue()
         _events.tryEmit(UiEvent.Handoff(entry.name))
-        if (!nearby.isConnected) {
+        if (!TransferHub.isConnected) {
             _events.tryEmit(UiEvent.Message(app.getString(R.string.queued_waiting)))
-            return
         }
-        pump()
-    }
-
-    /** Sends the next queued file when nothing is in flight. */
-    private fun pump() {
-        if (_uiState.value.transfer != null) return
-        if (!nearby.isConnected) return
-        val next = queue.removeFirstOrNull() ?: return
-        publishQueue()
-        dispatch(next)
-    }
-
-    private fun publishQueue() {
-        _uiState.update { it.copy(queuedCount = queue.size) }
     }
 
     /** The user pressed Cancelar: stop the payload, drop what was waiting. */
     fun cancelTransfer() {
-        val cancelled = nearby.cancelCurrent()
-        queue.clear()
-        publishQueue()
+        val cancelled = TransferHub.cancelAll()
         _uiState.update { it.copy(transfer = null) }
         haptics.tick()
         _events.tryEmit(
@@ -476,11 +496,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
 
     private fun sendSelected() {
         if (_uiState.value.calibration != null) return
-        val state = _uiState.value
-        val entry = state.items.firstOrNull { it.key == state.selectedUri }
-            ?: state.items.firstOrNull()
-            ?: return
-        enqueue(entry)
+        val entry = selectedEntry() ?: return
+        sendItem(entry)
     }
 
     /** The card the effect should show: whatever is leaving the phone. */
@@ -488,75 +505,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application), N
         val state = _uiState.value
         return state.items.firstOrNull { it.key == state.selectedUri }
             ?: state.items.firstOrNull()
-    }
-
-    private fun dispatch(entry: MediaEntry) {
-        if (nearby.isBusy) {
-            // Put it back at the head: the current send is about to finish.
-            queue.addFirst(entry)
-            publishQueue()
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_in_progress)))
-            return
-        }
-        if (!nearby.send(entry)) {
-            // Never drop the user's file: it goes back to the head of the queue.
-            queue.addFirst(entry)
-            publishQueue()
-            _events.tryEmit(UiEvent.Message(app.getString(R.string.transfer_not_started)))
-            return
-        }
-        haptics.confirm()
-        _uiState.update {
-            it.copy(
-                transfer = TransferProgress(
-                    fileName = entry.name,
-                    bytesTransferred = 0L,
-                    totalBytes = entry.sizeBytes,
-                    outgoing = true
-                )
-            )
-        }
-    }
-
-    override fun onStateChanged(state: NearbyState, detail: String?) {
-        _uiState.update {
-            it.copy(
-                nearbyState = state,
-                peerName = nearby.peerName ?: detail?.takeIf { state == NearbyState.CONNECTED }
-            )
-        }
-        // Connected: anything the user queued leaves now, in order.
-        if (state == NearbyState.CONNECTED) pump()
-    }
-
-    override fun onTransferProgress(progress: TransferProgress) {
-        _uiState.update { it.copy(transfer = progress) }
-    }
-
-    override fun onFileSent(fileName: String) {
-        _uiState.update { it.copy(transfer = null) }
-        haptics.confirm()
-        _events.tryEmit(UiEvent.Sent(fileName))
-        pump()
-    }
-
-    override fun onFileReceived(fileName: String, uri: Uri) {
-        _events.tryEmit(UiEvent.Arrival(fileName))
-        _uiState.update { it.copy(transfer = null) }
-        haptics.tick()
-        _events.tryEmit(UiEvent.Received(fileName))
-    }
-
-    override fun onLog(line: String) {
-        _uiState.update { state ->
-            val next = (state.logLines + line).takeLast(MAX_LOG_LINES)
-            state.copy(logLines = next)
-        }
-    }
-
-    override fun onTransferFailed(fileName: String?, reason: String) {
-        _uiState.update { it.copy(transfer = null) }
-        _events.tryEmit(UiEvent.Message(reason))
     }
 
     companion object {

@@ -34,6 +34,12 @@ object Permissions {
             permissions += Manifest.permission.BLUETOOTH_CONNECT
         }
 
+        // Not required to *send*, but without it the background service cannot
+        // show progress and the user loses every sign that a transfer is alive.
+        if (sdk >= Build.VERSION_CODES.TIRAMISU) {
+            permissions += Manifest.permission.POST_NOTIFICATIONS
+        }
+
         // Fine location is required on EVERY version by Nearby Connections:
         // BLE discovery silently returns nothing without it (or with the system
         // location toggle off). BLUETOOTH_SCAN neverForLocation is deliberately
@@ -50,6 +56,43 @@ object Permissions {
     }
 
     fun missing(context: Context): List<String> = required(context).filterNot { granted(context, it) }
+
+    /**
+     * Exactly what a background send needs — no camera, no gallery read access.
+     * Sharing a file from the system gallery hands us the file URI with its own
+     * grant, so the app must not ask for a media permission it will not use.
+     */
+    fun transportRequired(context: Context): List<String> {
+        val sdk = Build.VERSION.SDK_INT
+        val permissions = mutableListOf<String>()
+        if (sdk >= Build.VERSION_CODES.S) {
+            permissions += Manifest.permission.BLUETOOTH_SCAN
+            permissions += Manifest.permission.BLUETOOTH_ADVERTISE
+            permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        if (sdk >= Build.VERSION_CODES.TIRAMISU) {
+            permissions += Manifest.permission.NEARBY_WIFI_DEVICES
+            permissions += Manifest.permission.POST_NOTIFICATIONS
+        }
+        // Nearby Connections needs fine location on every version for BLE scans.
+        permissions += Manifest.permission.ACCESS_FINE_LOCATION
+        return permissions.filter { name ->
+            runCatching {
+                context.packageManager.getPermissionInfo(name, 0)
+                true
+            }.getOrDefault(false)
+        }
+    }
+
+    fun missingTransport(context: Context): List<String> =
+        transportRequired(context).filterNot { granted(context, it) }
+
+    /**
+     * What genuinely blocks a send. Notifications are a convenience (progress in
+     * the shade), never a reason to refuse a file.
+     */
+    fun missingForSending(context: Context): List<String> =
+        missingTransport(context).filterNot { it == Manifest.permission.POST_NOTIFICATIONS }
 
     fun granted(context: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED

@@ -19,4 +19,3 @@
 /ci/
 /build.log
 
-# El modelo 3D del avatar se descarga al compilar (downloadAvatarModel), no va en git

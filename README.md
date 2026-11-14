@@ -9,11 +9,65 @@ desde la pestaña Actions**, sin necesidad de Android Studio.
 
 ---
 
+## 0. Qué cambió en 2.0 (lo que pedías)
+
+Tres cosas, en orden de importancia.
+
+### Enviar desde **tu** galería, sin abrir la app
+
+AirGesture ahora aparece en el menú **Compartir** de Android:
+
+```
+Google Fotos / Archivos / WhatsApp  →  Compartir  →  Enviar con AirGesture
+```
+
+Eliges una foto, cinco o un video, compartes, y la app ni se abre: aparece una
+tarjeta translúcida durante un segundo y el envío sigue solo. Selección múltiple
+incluida, y funciona con cualquier proveedor (`content://`), no solo con
+MediaStore: fotos de la nube, archivos de un USB, audios de WhatsApp.
+
+### La transferencia ya no muere al cerrar la app
+
+El motor dejó de vivir dentro de la pantalla. Ahora hay:
+
+- **`TransferHub`** — una única sesión Nearby a nivel de proceso, con su cola.
+  La UI la *observa*; el servicio la *mantiene*.
+- **`TransferService`** — servicio en primer plano (`connectedDevice`) con una
+  notificación que muestra el archivo, el peer y el porcentaje, con botón
+  **Cancelar**. Bloqueas el teléfono, abres otra app o vuelves a la galería: el
+  archivo sigue saliendo.
+- La cola es real: si el otro teléfono todavía no aparece, los archivos esperan
+  (hasta 3 minutos con el aviso en la notificación) y salen en orden al conectar.
+
+### El efecto y el tacto
+
+El efecto de agua concéntrica se fue. El nuevo es una **singularidad**:
+
+```
+0,00  el anillo cae hacia dentro desde los bordes
+0,00  18 motas espiralan hacia el punto de contacto
+0,10  la miniatura real se encoge, se inclina y se disuelve
+0,36  el núcleo: destello + flare horizontal — el archivo ya no está
+0,34  el haz: una estela alargada sale del teléfono
+0,78  la onda expansiva se apaga
+```
+
+Nada está dibujado con trazos: todo son degradados radiales estirados con
+`canvas.scale`, un shader reutilizado y cero asignaciones por fotograma (sigue
+siendo fluido en el Helio G35). La llegada reproduce la misma historia al revés.
+
+Y la pantalla ya no es rígida: las pestañas crecen al elegirse, la tarjeta de
+progreso entra deslizándose, los textos cambian con cross-fade, la previsualización
+de la cámara aparece con un fundido y cada superficie responde al dedo. Todo
+respeta la escala de animaciones del sistema.
+
+---
+
 ## 1. Descargar e instalar el APK (2 minutos)
 
 1. Entra a **[Releases](https://github.com/alexsndersoto04-source/moon/releases/latest)**
-   y abre el último `AirGesture Transfer 1.0.0 (build N)`.
-2. Descarga `AirGestureTransfer-1.0.0.apk` **directamente en el teléfono**
+   y abre el último `AirGesture Transfer 2.0.0 (build N)`.
+2. Descarga `AirGestureTransfer-2.0.0.apk` **directamente en el teléfono**
    (o envíatelo; también está `…-debug.apk` y un `SHA256SUMS.txt`).
    - Alternativa: **Actions → Build APK → último run → Artifacts → `AirGestureTransfer-apk`**
      (requiere sesión de GitHub, el artifact es un `.zip`).
@@ -97,6 +151,22 @@ Cómo leerlo:
 - `mano 0` con `fps > 0` → los frames llegan pero MediaPipe no ve la mano: acerca la
   mano, mejora la luz, usa un fondo liso y que la mano entre completa en el encuadre.
 - `dedos 21` y `mano > 0` → el tracking funciona; si no envía, mira el medidor de empuje.
+
+## 2.5. Enviar sin abrir la app (compartir desde la galería)
+
+```
+Galería → elige foto(s) → Compartir → Enviar con AirGesture
+```
+
+- Se aceptan `ACTION_SEND` y `ACTION_SEND_MULTIPLE`, con cualquier MIME y
+  cualquier proveedor: se leen nombre y tamaño de `OpenableColumns` y el archivo
+  se envía por su URI, sin copiarlo a memoria ni a disco.
+- Si el archivo compartido viene de una app que concede permiso temporal de
+  lectura, ese permiso basta: **no** se pide acceso a la galería para enviar.
+- Si faltan permisos de Bluetooth/ubicación, la tarjeta lo dice en ese momento en
+  vez de fallar en silencio.
+- El servicio arranca en primer plano, así que el envío sobrevive al bloqueo de
+  pantalla; al terminar deja una notificación de "Enviado" y se apaga solo.
 
 ## 3. Estado de la conexión y del envío (visible en pantalla)
 
@@ -469,12 +539,13 @@ teléfono tiene las animaciones desactivadas.
 ```
 app/src/main/java/com/airgesture/transfer/
 ├── core/        AirGestureApp · Prefs · GestureState
-├── media/       MediaKind · MediaEntry · MediaRepository      (MediaStore vía ContentResolver)
+├── media/       MediaKind · MediaEntry · MediaRepository · MediaResolver (URIs de terceros)
 ├── camera/      FrameConverter · CameraAnalyzer               (480p, RGBA, cero allocs)
 ├── vision/      HandTracker · GestureInterpreter · OneEuroFilter · GestureProfile
 │                GestureCalibration · ThrustSensor
-├── transfer/    NearbyTransferManager · NearbyState           (Nearby Connections P2P_CLUSTER)
-├── ui/          MainActivity · MainViewModel · FileAdapter · HandOverlayView · ThumbnailLoader
+├── transfer/    NearbyTransferManager · TransferHub · TransferService · NearbyState
+├── ui/          MainActivity · MainViewModel · ShareActivity · FileAdapter
+│                HandOverlayView · ThumbnailLoader · TransferBeamView
 └── util/        Permissions · Formatters · Haptics
 ```
 
@@ -534,6 +605,8 @@ proyecto es la descarga del modelo durante la compilación.
 | `NEARBY_WIFI_DEVICES` (13+) | Wi-Fi Direct para el transporte |
 | `ACCESS_FINE_LOCATION` (≤11) | Requisito del sistema para escanear BLE en Android 10/11 |
 | `READ_MEDIA_*` / `READ_EXTERNAL_STORAGE` | Listar imágenes, videos, PDF y audio |
+| `FOREGROUND_SERVICE` + `..._CONNECTED_DEVICE` | Enviar en segundo plano sin que Android mate el proceso |
+| `POST_NOTIFICATIONS` (13+) | Progreso y botón de cancelar en la notificación |
 
 Se conceden desde una sola pantalla inicial; si algo se deniega de forma permanente
 aparece el acceso directo a los ajustes de la app.
@@ -560,10 +633,15 @@ ABIs incluidas: `arm64-v8a`, `armeabi-v7a`.
 
 ## 6. Límites conocidos (honestidad sobre el alcance)
 
+- **Para recibir**, el otro teléfono necesita AirGesture abierto (o un envío en
+  curso): el servicio protege la sesión mientras *envías*, no es un modo
+  «siempre visible» que escuche toda la tarde. Enviar en segundo plano, en
+  cambio, funciona siempre.
 - Una conexión a la vez: el modelo mental es «el dispositivo más cercano». Con
   `P2P_CLUSTER` la API admite hasta 4; el envío en paralelo no está implementado.
-- La transferencia vive mientras la app está en primer plano: no hay `ForegroundService`,
-  así que si el sistema mata el proceso a mitad de envío, se cancela.
+- El servicio en primer plano protege el envío mientras el proceso vive; si el
+  usuario fuerza la detención de la app (Ajustes → Detener), Android mata el
+  proceso y la transferencia se cancela, como cualquier otra app.
 - Los umbrales de gesto están afinados por razones físicas, no con un dataset: pueden
   necesitar retoque según la iluminación y la mano. Están todos en un solo archivo y se
   pueden ver en vivo con el HUD de diagnóstico.
