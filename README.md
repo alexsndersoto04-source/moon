@@ -61,6 +61,9 @@ progreso entra deslizándose, los textos cambian con cross-fade, la previsualiza
 de la cámara aparece con un fundido y cada superficie responde al dedo. Todo
 respeta la escala de animaciones del sistema.
 
+> **Descargar e instalar:** [`docs/instalar.html`](docs/instalar.html) (botón directo + QR),
+> o ve directo al [APK firmado](https://github.com/alexsndersoto04-source/moon/releases/latest/download/AirGestureTransfer-2.0.0.apk).
+>
 > **Vista previa sin instalar nada:** [`docs/efecto-2.0.gif`](docs/efecto-2.0.gif)
 > (la animación completa, generada con la misma matemática) y
 > [`docs/efecto-2.0.html`](docs/efecto-2.0.html) (interactiva, con botones para
