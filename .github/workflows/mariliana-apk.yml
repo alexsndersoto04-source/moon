@@ -1,0 +1,52 @@
+name: Mariliana APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/690a9141-moon
+    paths:
+      - 'mariliana/**'
+      - '.github/workflows/mariliana-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Compilar y probar Mariliana
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mariliana/package-lock.json
+      - name: Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Instalar dependencias
+        working-directory: mariliana
+        run: npm ci
+      - name: Probar inventario y sincronización
+        working-directory: mariliana
+        run: npm test
+      - name: Preparar proyecto Android
+        working-directory: mariliana
+        run: npx cap sync android
+      - name: Compilar APK de prueba
+        working-directory: mariliana/android
+        run: bash ./gradlew assembleDebug --no-daemon
+      - name: Guardar APK para descarga
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mariliana-APK
+          path: mariliana/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 90

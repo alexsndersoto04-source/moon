@@ -1,0 +1,20 @@
+{
+  "name": "mariliana-inventario",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Inventario compartido de bebidas",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/camera": "^7.0.5",
+    "@capacitor/cli": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
+    "html5-qrcode": "2.3.8"
+  }
+}

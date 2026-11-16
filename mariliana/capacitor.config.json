@@ -1,0 +1,6 @@
+{
+  "appId": "com.mariliana.inventario",
+  "appName": "Mariliana",
+  "webDir": "public",
+  "server": {"androidScheme": "https"}
+}

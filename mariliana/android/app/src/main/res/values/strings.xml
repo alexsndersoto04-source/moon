@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mariliana</string>
+    <string name="title_activity_main">Mariliana</string>
+    <string name="package_name">com.mariliana.inventario</string>
+    <string name="custom_url_scheme">com.mariliana.inventario</string>
+</resources>
