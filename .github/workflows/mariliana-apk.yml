@@ -10,7 +10,7 @@ on:
       - '.github/workflows/mariliana-apk.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -50,3 +50,13 @@ jobs:
           path: mariliana/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 90
+      - name: Publicar APK de prueba con enlace directo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp mariliana/android/app/build/outputs/apk/debug/app-debug.apk Mariliana.apk
+          gh release create "mariliana-prueba-${GITHUB_RUN_ID}" Mariliana.apk \
+            --target "$GITHUB_SHA" \
+            --title "Mariliana · APK de prueba" \
+            --notes "APK de prueba firmado para depuración. La sincronización entre teléfonos requiere configurar un servidor HTTPS compartido. Antes de usar datos reales, prueba la cámara, los movimientos y las copias de seguridad." \
+            --prerelease
