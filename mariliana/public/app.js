@@ -106,7 +106,7 @@ document.addEventListener('submit',e=>{
  if(f.id==='manual-scan')registerScan(data.barcode);
  if(f.id==='settings-form'){
   const url=(data.url||'').trim().replace(/\/$/,'');if(url){try{const u=new URL(url);if(!(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))||u.username||u.password||u.pathname!=='/'||u.search||u.hash)throw Error()}catch{return notify('Usa una dirección válida, por ejemplo https://inventario.ejemplo.com')}}
-  if(url!==state.config.url){if(state.queue.length)return notify('Sincroniza los cambios pendientes antes de cambiar de servidor.');if(!confirm('¿Cambiar de servidor? Se reemplazará la copia local con la información del nuevo servidor.'))return;state.snapshot={products:[],history:[]};state.errors=[];}
+  if(url!==state.config.url){const firstSetup=!state.config.url&&!state.snapshot.products.length&&!state.snapshot.history.length;if(state.queue.length&&!firstSetup)return notify('Sincroniza los cambios pendientes antes de cambiar de servidor.');const prompt=firstSetup&&state.queue.length?'Hay cambios guardados en este teléfono. ¿Quieres enviarlos al nuevo servidor al sincronizar? Revisa posibles conflictos.':'¿Cambiar de servidor? Se reemplazará la copia local con la información del nuevo servidor.';if(!confirm(prompt))return;state.snapshot={products:[],history:[]};state.errors=[];}
   state.config={actor:(data.actor||'').trim(),url,key:data.key||''};save();notify('Ajustes guardados.');render();sync();
  }
 });

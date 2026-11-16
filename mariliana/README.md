@@ -25,20 +25,43 @@ Abre `http://localhost:3000`. La cámara del navegador requiere permiso y un con
 
 Ejecutar pruebas: `npm test`.
 
-## Configuración real para dos teléfonos
+## Configurar Neon y Render para los dos teléfonos
 
-La sincronización requiere instalar y mantener **un servidor compartido** accesible por ambos teléfonos a través de HTTPS. El APK por sí solo no proporciona un servidor ni una cuenta en la nube. Puede ser un servidor privado o un servicio de alojamiento con Node 22, almacenamiento persistente y un proxy HTTPS; el proveedor puede tener costo. Mantén una copia de seguridad externa. No uses la vista previa temporal como servidor real.
+La aplicación **no viene conectada a ninguna cuenta**. El servidor de Render y la base de datos de Neon deben crearse en tus propias cuentas. Comprueba los precios, límites y condiciones de los planes antes de contratarlos. El plan gratuito de un servidor puede pausarse por inactividad; al despertar puede tardar en responder. La app consulta periódicamente el servidor mientras está abierta, lo que también puede influir en el consumo.
 
-1. Instala el proyecto y las dependencias en el servidor (`npm ci`).
-2. Define `MARILIANA_KEY` como una clave larga y privada, `MARILIANA_DATA` como un directorio persistente y `PORT` como el puerto interno. Por ejemplo:
-   ```sh
-   MARILIANA_KEY='una-clave-larga-y-unica' MARILIANA_DATA=/ruta/persistente PORT=3000 npm start
-   ```
-3. Publica el servicio **solo mediante HTTPS** detrás de un proxy. Sin `MARILIANA_KEY` cualquiera que alcance el servidor puede leer o modificar los datos. Comparte la clave únicamente con las dos personas autorizadas. La clave queda almacenada localmente en cada dispositivo; protege también los teléfonos. Esta versión usa una clave compartida, no cuentas individuales ni permisos separados.
-4. En ambos teléfonos, abre Ajustes e introduce la misma dirección HTTPS y clave. En cada uno escribe un nombre diferente para distinguir los movimientos. No cambies de servidor mientras haya operaciones pendientes.
-5. Comprueba que ambos indican «Sincronizado». Agrega una bebida de prueba, registra una salida desde cada teléfono y verifica los resultados. Prueba también la cámara y la recuperación de conexión antes de usar datos reales.
+### 1. Crear la base en Neon
 
-La interfaz web se puede instalar desde el navegador compatible usando «Instalar aplicación» o «Agregar a pantalla de inicio». Para abrirla sin internet por primera vez, antes hay que cargarla con conexión y permitir que se guarden sus archivos. En el APK los archivos de la interfaz ya están incluidos.
+1. Entra a [Neon](https://neon.tech/) y crea tu cuenta y un proyecto para Mariliana. Elige una región cercana a la de Render, si está disponible.
+2. En la pantalla **Connect**, copia la cadena de conexión PostgreSQL con SSL (preferiblemente la conexión *pooled*). Contiene usuario y contraseña: **no la compartas por chat, ni la subas al repositorio**.
+3. No necesitas crear las tablas manualmente. El servidor las crea al arrancar. Esta base debe ser exclusiva para Mariliana.
+
+### 2. Crear el servidor en Render
+
+1. Entra a [Render](https://render.com/) y crea un **Web Service** conectado a este repositorio de GitHub. Si Render solicita permiso para el repositorio, concédelo en GitHub.
+2. Selecciona la rama que contiene Mariliana: `arena/690a9141-moon`. Mientras se use esa rama, mantenerla disponible; no seleccionar `main` a menos que el proyecto se haya incorporado allí.
+3. Selecciona **Node** y configura:
+   - **Root Directory:** `mariliana`
+   - **Build Command:** `npm ci --omit=dev`
+   - **Start Command:** `npm start`
+   - **Health Check Path**, si se solicita: `/health` (comprueba que el proceso responde, no que la base esté disponible).
+4. En **Environment**, agrega estas variables de forma privada:
+   - `NODE_VERSION`: `22.16.0` (o una versión compatible de Node 22).
+   - `NODE_ENV`: `production`.
+   - `DATABASE_URL`: pega la cadena secreta que copiaste de Neon.
+   - `MARILIANA_KEY`: inventa una clave larga y única de al menos 16 caracteres; la usarán ambos teléfonos. No la incluyas en GitHub ni en el APK.
+5. Despliega el servicio. Render proporcionará una dirección HTTPS. El servidor se negará a iniciar en producción si no tiene base de datos o una clave suficientemente larga. No pongas la URL de Neon en los teléfonos: allí solo va la dirección de Render.
+
+### 3. Configurar los dos teléfonos
+
+En **Ajustes → Sincronización compartida** de cada teléfono escribe la misma dirección HTTPS de Render y la misma `MARILIANA_KEY`, y pon un nombre diferente en cada uno. Guarda los ajustes y verifica que diga «Sincronizado». Prueba con un producto ficticio: agrega unidades en un teléfono, registra una salida en el otro y verifica el resultado. Prueba la cámara, el historial, el borrado de salidas y la recuperación de conexión antes de usar datos reales.
+
+Los cambios que hagas sin conexión quedan pendientes en el teléfono; al volver la conexión se envían. Si la otra persona vendió las últimas unidades, puede aparecer un conflicto en Ajustes que debe revisarse. La clave compartida se guarda localmente en el teléfono; protege ambos dispositivos. Esta versión no tiene cuentas individuales ni permisos separados.
+
+Si la primera instalación nueva tiene operaciones pendientes y todavía no se ha conectado a ningún servidor, la versión actual permite configurar el servidor y enviarlas. **Si ya instalaste el APK anterior y guardaste datos en él, no lo desinstales ni borres sus datos para actualizar**: las versiones de prueba generadas por distintos ejecutores pueden tener firmas distintas y Android podría exigir desinstalar, lo que borraría la copia local. El JSON que se descarga es solo de consulta, no se puede restaurar automáticamente. Pide ayuda para revisar cómo conservar o volver a cargar esos datos antes de proceder.
+
+El SQLite local de prueba no se migra automáticamente a Neon. Si ya existen datos en el servidor de prueba, no desaparecen ni se copian a Neon: es necesaria una migración explícita y verificada. Los datos creados en teléfonos pendientes de sincronizar siguen sus propias reglas indicadas arriba.
+
+La interfaz web se puede instalar desde un navegador compatible. La dirección de vista previa de Arena es temporal y no debe usarse para guardar inventario real.
 
 ## Compilar el APK en una computadora con Android Studio
 
@@ -55,10 +78,6 @@ El archivo de prueba quedará en `android/app/build/outputs/apk/debug/app-debug.
 
 ## Copias y restauración
 
-Ajustes permite descargar un JSON de consulta con el estado visible; **no es una copia completa restaurable** y puede incluir cambios locales pendientes. Para una recuperación fiable, respalda la base SQLite del servidor con una copia coherente, por ejemplo usando la API de respaldo de Node (el archivo de destino no debe existir):
+Ajustes permite descargar un JSON de consulta con el estado visible; **no es una copia completa restaurable** y puede incluir cambios locales pendientes. Neon es el almacenamiento principal, no una copia externa por sí solo. Configura y verifica las opciones de respaldo y restauración disponibles en tu plan de Neon, y conserva copias externas cifradas con herramientas PostgreSQL como `pg_dump`. No compartas la cadena de conexión ni subas copias con datos privados a un repositorio público.
 
-```sh
-node -e "const {DatabaseSync,backup}=require('node:sqlite'); const db=new DatabaseSync('/ruta/persistente/inventario.sqlite'); backup(db,'/ruta/segura/mariliana-copia.sqlite').then(()=>db.close())"
-```
-
-Guarda esa copia fuera del servidor y comprueba periódicamente que se puede restaurar. Para restaurar, detén el servidor, guarda aparte la base actual y sus archivos `-wal` y `-shm`, reemplaza la base por la copia y arranca el servidor de nuevo. Coordina la restauración con ambos usuarios y resuelve primero cualquier cambio pendiente en los teléfonos: una restauración vuelve el servidor a un estado anterior. El JSON descargado desde la interfaz no restaura el sistema.
+Antes de restaurar, coordina con ambas personas, resuelve las operaciones pendientes y detén temporalmente el acceso al servidor. Restaurar una copia devuelve el inventario a un estado anterior y debe comprobarse primero en una base separada. Borrar el historial de salidas no modifica el inventario, pero se conservan identificadores de operaciones para evitar duplicados; esos identificadores crecerán con el uso. PostgreSQL puede reutilizar espacio después de borrar, pero el tamaño facturado no necesariamente disminuye de inmediato. Revisa el consumo y las políticas de retención del proveedor.

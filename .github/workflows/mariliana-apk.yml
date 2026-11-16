@@ -17,6 +17,19 @@ jobs:
     name: Compilar y probar Mariliana
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: prueba-local
+          POSTGRES_DB: mariliana_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mariliana_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Obtener código
         uses: actions/checkout@v4
@@ -36,6 +49,8 @@ jobs:
         run: npm ci
       - name: Probar inventario y sincronización
         working-directory: mariliana
+        env:
+          TEST_DATABASE_URL: postgres://postgres:prueba-local@127.0.0.1:5432/mariliana_test
         run: npm test
       - name: Preparar proyecto Android
         working-directory: mariliana

@@ -1,0 +1,23 @@
+'use strict';
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const {readFileSync} = require('node:fs');
+const {JSDOM} = require('jsdom');
+const tick = () => new Promise(r => setTimeout(r, 10));
+test('configurar el primer servidor conserva productos agregados sin conexión',async()=>{
+ const dom = new JSDOM('<div id="app"></div><div id="toast"></div>', {url:'https://localhost/',runScripts:'outside-only'});
+ const w=dom.window;
+ w.fetch=async()=>{throw Error('offline')};w.confirm=()=>true;w.setInterval=()=>0;
+ w.eval(readFileSync(require.resolve('../public/app.js'),'utf8'));
+ await tick();
+ w.document.querySelector('[data-action="add"]').click();
+ let form=w.document.querySelector('#product-form');
+ form.querySelector('[name=name]').value='Refresco';form.querySelector('[name=quantity]').value='8';
+ form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+ w.document.querySelector('[data-nav="settings"]').click();await tick();
+ form=w.document.querySelector('#settings-form');form.querySelector('[name=url]').value='https://servidor.ejemplo.com';
+ form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+ const state=JSON.parse(w.localStorage.getItem('mariliana-v1'));
+ assert.equal(state.config.url,'https://servidor.ejemplo.com');assert.equal(state.queue.length,1);assert.equal(state.queue[0].product.name,'Refresco');
+ await tick();w.close();
+});
