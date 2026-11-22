@@ -100,7 +100,7 @@
     </style>
 
     <!-- JARVIS: tema oscuro futurista -->
-    <style name="Theme.Jarvis" parent="Theme.Material3.NoActionBar">
+    <style name="Theme.Jarvis" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">#22D3EE</item>
         <item name="colorOnPrimary">#0B0F19</item>
         <item name="colorSecondary">#2563EB</item>
