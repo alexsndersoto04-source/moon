@@ -273,7 +273,7 @@ class JarvisActivity : AppCompatActivity() {
         }
         input = EditText(this).apply {
             hint = "Escribe o toca el micrófono…"
-            hintTextColor = Color.rgb(100, 116, 139)
+            setHintTextColor(Color.rgb(100, 116, 139))
             setTextColor(Color.WHITE)
             textSize = 15f
             inputType = InputType.TYPE_CLASS_TEXT
@@ -495,11 +495,10 @@ class JarvisActivity : AppCompatActivity() {
         RecyclerView.Adapter<ChatAdapter.Holder>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            val bubble = TextView(parent.context).apply {
-                textSize = 14f
-                setPadding(dp(12), dp(10), dp(12), dp(10))
+            val container = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.HORIZONTAL
                 layoutParams = RecyclerView.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
                     marginStart = dp(4)
                     marginEnd = dp(4)
@@ -507,32 +506,36 @@ class JarvisActivity : AppCompatActivity() {
                     bottomMargin = dp(3)
                 }
             }
-            return Holder(bubble)
+            val bubble = TextView(parent.context).apply {
+                textSize = 14f
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                maxWidth = (resources.displayMetrics.widthPixels * 0.75f).toInt()
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+            container.addView(bubble)
+            return Holder(container, bubble)
         }
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val msg = items[position]
-            val view = holder.textView
+            val view = holder.bubble
+            holder.container.gravity = if (msg.isUser) Gravity.END else Gravity.START
             view.text = if (msg.isUser) msg.text else {
                 if (msg.label.isNotBlank()) "[${msg.label}] ${msg.text}" else msg.text
             }
-            val params = view.layoutParams as RecyclerView.LayoutParams
             if (msg.isUser) {
                 view.setTextColor(Color.rgb(11, 15, 25))
                 view.background = roundedBg(Color.rgb(34, 211, 238), 16)
-                params.gravity = Gravity.END
-                params.width = ViewGroup.LayoutParams.WRAP_CONTENT
             } else {
                 view.setTextColor(Color.WHITE)
                 view.background = roundedBg(Color.rgb(17, 24, 39), 16)
-                params.gravity = Gravity.START
-                params.width = ViewGroup.LayoutParams.WRAP_CONTENT
             }
-            view.layoutParams = params
         }
 
         override fun getItemCount(): Int = items.size
 
-        class Holder(val textView: TextView) : RecyclerView.ViewHolder(textView)
+        class Holder(val container: LinearLayout, val bubble: TextView) : RecyclerView.ViewHolder(container)
     }
 }

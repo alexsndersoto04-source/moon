@@ -99,7 +99,7 @@ class SetupActivity : AppCompatActivity() {
     private fun inputField(hintText: String, isPassword: Boolean = false): EditText {
         return EditText(this).apply {
             hint = hintText
-            hintTextColor = Color.rgb(100, 116, 139)
+            setHintTextColor(Color.rgb(100, 116, 139))
             setTextColor(Color.WHITE)
             textSize = 14f
             inputType = if (isPassword) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD

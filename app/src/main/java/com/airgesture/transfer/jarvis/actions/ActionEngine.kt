@@ -1,6 +1,7 @@
 package com.airgesture.transfer.jarvis.actions
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -602,12 +603,17 @@ class ActionEngine(
 
     private fun toggleDnd(on: Boolean): ActionResult {
         return try {
-            val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (on) audio.setInterruptionFilter(AudioManager.INTERRUPTION_FILTER_PRIORITY)
-                else audio.setInterruptionFilter(AudioManager.INTERRUPTION_FILTER_ALL)
+            val notifier = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (notifier.isNotificationPolicyAccessGranted) {
+                if (on) notifier.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                else notifier.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                return ActionResult(true, if (on) "No molestar activado." else "No molestar desactivado.", if (on) "Modo no molestar activado." else "Modo no molestar desactivado.")
             }
-            ActionResult(true, if (on) "No molestar activado." else "No molestar desactivado.", if (on) "Modo no molestar activado." else "Modo no molestar desactivado.")
+            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            ActionResult(true, "Concede a JARVIS acceso a «No molestar» y vuelve a intentarlo.", "Te abro los ajustes de No molestar para que des permiso a JARVIS.")
         } catch (e: Exception) {
             openSettings("sound")
             ActionResult(true, "Abriendo ajustes de sonido.", "Te abro los ajustes de sonido.")
@@ -784,7 +790,7 @@ class ActionEngine(
             "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
             "display", "pantalla", "brillo" -> Settings.ACTION_DISPLAY_SETTINGS
             "sound", "sonido" -> Settings.ACTION_SOUND_SETTINGS
-            "battery", "batería", "bateria" -> Settings.ACTION_BATTERY_SETTINGS
+            "battery", "batería", "bateria" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
             "location", "ubicación", "ubicacion" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
             else -> Settings.ACTION_SETTINGS
         }
@@ -803,8 +809,8 @@ class ActionEngine(
             putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, start)
             putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
             putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, false)
-            putExtra(CalendarContract.EXTRA_EVENT_TITLE, clean)
-            putExtra(CalendarContract.EXTRA_EVENT_DESCRIPTION, note)
+            putExtra(CalendarContract.Events.TITLE, clean)
+            putExtra(CalendarContract.Events.DESCRIPTION, note)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)

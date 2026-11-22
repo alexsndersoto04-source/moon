@@ -270,7 +270,7 @@ class ProjectsActivity : AppCompatActivity() {
     private fun dialogInput(hintText: String): EditText {
         return EditText(this).apply {
             hint = hintText
-            hintTextColor = Color.rgb(100, 116, 139)
+            setHintTextColor(Color.rgb(100, 116, 139))
             setTextColor(Color.WHITE)
             textSize = 15f
             inputType = InputType.TYPE_CLASS_TEXT
