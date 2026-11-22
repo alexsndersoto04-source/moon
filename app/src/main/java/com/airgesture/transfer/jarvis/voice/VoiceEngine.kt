@@ -102,7 +102,7 @@ class VoiceEngine(
                 try {
                     val voices = engine.voices
                     val spanishVoice = voices.firstOrNull {
-                        it.locale.language == "es" && !it.isNetworkRequired
+                        it.locale.language == "es" && !it.isNetworkConnectionRequired
                     } ?: voices.firstOrNull { it.locale.language == "es" }
                     if (spanishVoice != null) engine.voice = spanishVoice
                 } catch (e: Exception) {
@@ -126,9 +126,6 @@ class VoiceEngine(
                         mainHandler.post { listener.onSpeakingStopped() }
                     }
 
-                    override fun onStop(id: String?) {
-                        mainHandler.post { listener.onSpeakingStopped() }
-                    }
                 })
                 ttsReady = true
             }

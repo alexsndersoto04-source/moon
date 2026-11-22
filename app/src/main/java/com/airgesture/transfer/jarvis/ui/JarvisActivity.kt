@@ -536,6 +536,6 @@ class JarvisActivity : AppCompatActivity() {
 
         override fun getItemCount(): Int = items.size
 
-        class Holder(val container: LinearLayout, val bubble: TextView) : RecyclerView.ViewHolder(container)
+        inner class Holder(val container: LinearLayout, val bubble: TextView) : RecyclerView.ViewHolder(container)
     }
 }
