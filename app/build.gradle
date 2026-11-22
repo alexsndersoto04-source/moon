@@ -11,8 +11,8 @@ android {
         applicationId "com.airgesture.transfer"
         minSdk 29
         targetSdk 34
-        versionCode 16
-        versionName "1.7.1"
+        versionCode 20
+        versionName "2.0.0-jarvis"
 
         // Redmi 9C (Helio G35) is 64-bit; armeabi-v7a keeps 32-bit devices working.
         ndk {
@@ -114,6 +114,10 @@ dependencies {
 
     // --- Google Nearby Connections: P2P over Wi-Fi Direct / BLE, no internet ---
     implementation 'com.google.android.gms:play-services-nearby:19.3.0'
+
+    // --- JARVIS: IA (OpenRouter + Groq) y JSON ---
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.11.0'
 }
 
 // ---------------------------------------------------------------------------

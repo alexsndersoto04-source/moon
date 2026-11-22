@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AirGesture</string>
-    <string name="brand">AirGesture</string>
-    <string name="brand_sub">Transferencia por gestos</string>
+    <string name="app_name">JARVIS</string>
+    <string name="brand">JARVIS</string>
+    <string name="brand_sub">Asistente personal con IA</string>
 
     <string name="tab_images">Imágenes</string>
     <string name="tab_videos">Videos</string>

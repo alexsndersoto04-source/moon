@@ -99,6 +99,26 @@
         <item name="android:paddingStart">0dp</item>
     </style>
 
+    <!-- JARVIS: tema oscuro futurista -->
+    <style name="Theme.Jarvis" parent="Theme.Material3.NoActionBar">
+        <item name="colorPrimary">#22D3EE</item>
+        <item name="colorOnPrimary">#0B0F19</item>
+        <item name="colorSecondary">#2563EB</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="colorSurface">#111827</item>
+        <item name="colorOnSurface">#FFFFFF</item>
+        <item name="colorSurfaceVariant">#1E293B</item>
+        <item name="colorOnSurfaceVariant">#94A3B8</item>
+        <item name="android:colorBackground">#0B0F19</item>
+        <item name="android:windowBackground">#0B0F19</item>
+        <item name="android:statusBarColor">#0B0F19</item>
+        <item name="android:navigationBarColor">#0B0F19</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#94A3B8</item>
+    </style>
+
     <style name="TabChip" parent="TextAppearance.AirGesture.Tab">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
