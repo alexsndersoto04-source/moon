@@ -267,6 +267,7 @@ async function startServer() {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     const sendEvent = (event: string, data: any) => {
@@ -275,24 +276,35 @@ async function startServer() {
     };
 
     const runId = req.body.runId || `run_${Date.now()}`;
-    req.on('close', () => {
-      abortAgentRun(runId);
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        abortAgentRun(runId);
+      }
     });
 
-    await runAgentLoop(
-      {
-        runId,
-        brain: req.body.brain,
-        prompt: req.body.prompt,
-        history: req.body.history || [],
-        snapshot: req.body.snapshot,
-        autoApprove: req.body.autoApprove !== false,
-        maxSteps: req.body.maxSteps || 20,
-      },
-      sendEvent
-    );
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded) {
+        res.write(': ping\n\n');
+      }
+    }, 15000);
 
-    if (!res.writableEnded) res.end();
+    try {
+      await runAgentLoop(
+        {
+          runId,
+          brain: req.body.brain,
+          prompt: req.body.prompt,
+          history: req.body.history || [],
+          snapshot: req.body.snapshot,
+          autoApprove: req.body.autoApprove !== false,
+          maxSteps: req.body.maxSteps || 20,
+        },
+        sendEvent
+      );
+    } finally {
+      clearInterval(heartbeat);
+      if (!res.writableEnded) res.end();
+    }
   });
 
   app.post('/api/agent/abort', (req, res) => {
