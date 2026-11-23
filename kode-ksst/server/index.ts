@@ -26,7 +26,7 @@ import {
 } from './runtime/workspace.ts';
 import { getAvailableRuntimes, runProjectFile, runShellCommand, runSnippet } from './runtime/executor.ts';
 import { checkProjectDiagnostics } from './runtime/diagnostics.ts';
-import { testBrainConnection } from './agent/brainAdapter.ts';
+import { listBrainModels, testBrainConnection } from './agent/brainAdapter.ts';
 import { abortAgentRun, resolveToolApproval, runAgentLoop } from './agent/orchestrator.ts';
 import { IDE_TOOLS } from './agent/tools.ts';
 
@@ -249,6 +249,15 @@ async function startServer() {
     try {
       const result = await testBrainConnection(req.body.brain);
       res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/agent/list-models', async (req, res) => {
+    try {
+      const models = await listBrainModels(req.body.brain);
+      res.json({ ok: true, models });
     } catch (err: any) {
       res.status(400).json({ ok: false, error: err.message });
     }

@@ -34,21 +34,73 @@ export interface BrainResponse {
   rawFinishReason?: string;
 }
 
+export function sanitizeApiKey(raw: string | undefined): string {
+  if (!raw) return '';
+  return raw.replace(/[\s\u200B-\u200D\uFEFF"']/g, '').trim();
+}
+
 function cleanBaseUrl(url: string | undefined, fallback: string): string {
   return (url && url.trim() ? url.trim() : fallback).replace(/\/+$/, '');
 }
 
+function normalizeConfig(raw: BrainConfig): BrainConfig {
+  const apiKey = sanitizeApiKey(raw.apiKey);
+  let provider = raw.provider;
+  let baseUrl = raw.baseUrl?.trim() || '';
+  let model = raw.model?.trim() || '';
+
+  // Auto-detect provider if mismatched with key prefix
+  if (apiKey.startsWith('AIza') && provider !== 'gemini') {
+    provider = 'gemini';
+    if (!baseUrl || baseUrl.includes('openai.com')) {
+      baseUrl = 'https://generativelanguage.googleapis.com';
+    }
+    if (!model || model.startsWith('gpt-') || model.startsWith('claude-')) {
+      model = 'gemini-2.5-flash';
+    }
+  } else if (apiKey.startsWith('sk-ant-') && provider !== 'anthropic') {
+    provider = 'anthropic';
+    if (!baseUrl || baseUrl.includes('openai.com')) {
+      baseUrl = 'https://api.anthropic.com';
+    }
+    if (!model || model.startsWith('gpt-') || model.startsWith('gemini-')) {
+      model = 'claude-sonnet-4-20250514';
+    }
+  } else if (apiKey.startsWith('gsk_') && (!baseUrl || baseUrl.includes('openai.com'))) {
+    provider = 'openai';
+    baseUrl = 'https://api.groq.com/openai/v1';
+    if (!model || model.startsWith('gpt-')) model = 'llama-3.3-70b-versatile';
+  } else if (apiKey.startsWith('sk-or-v1-') && (!baseUrl || baseUrl.includes('openai.com'))) {
+    provider = 'openai';
+    baseUrl = 'https://openrouter.ai/api/v1';
+    if (!model || model === 'gpt-4o') model = 'openai/gpt-4o-mini';
+  } else if (apiKey.startsWith('xai-') && (!baseUrl || baseUrl.includes('openai.com'))) {
+    provider = 'openai';
+    baseUrl = 'https://api.x.ai/v1';
+    if (!model || model.startsWith('gpt-')) model = 'grok-3-mini';
+  }
+
+  return { ...raw, provider, apiKey, baseUrl, model };
+}
+
 export async function callBrain(
-  config: BrainConfig,
+  rawConfig: BrainConfig,
   messages: ConversationMessage[],
   tools: ToolDefinition[],
   signal?: AbortSignal
 ): Promise<BrainResponse> {
+  const config = normalizeConfig(rawConfig);
+
   if (!config.apiKey && config.provider !== 'openai') {
-    throw new Error('API key is required for this provider.');
+    throw new Error('Falta la API Key para este proveedor.');
   }
-  if (config.provider === 'openai' && !config.apiKey && !config.baseUrl?.includes('localhost') && !config.baseUrl?.includes('127.0.0.1')) {
-    throw new Error('API key is required. Configure your Brain API key in the Brain Connector.');
+  if (
+    config.provider === 'openai' &&
+    !config.apiKey &&
+    !config.baseUrl?.includes('localhost') &&
+    !config.baseUrl?.includes('127.0.0.1')
+  ) {
+    throw new Error('Falta la API Key. Configúrala en "Conectar Cerebro API".');
   }
 
   if (config.provider === 'openai') {
@@ -60,16 +112,18 @@ export async function callBrain(
   if (config.provider === 'gemini') {
     return callGemini(config, messages, tools, signal);
   }
-  throw new Error(`Unsupported provider: ${config.provider}`);
+  throw new Error(`Proveedor no soportado: ${config.provider}`);
 }
 
 async function callOpenAICompatible(
   config: BrainConfig,
   messages: ConversationMessage[],
   tools: ToolDefinition[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  skipTemperature = false
 ): Promise<BrainResponse> {
-  const baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.openai.com/v1');
+  let baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.openai.com/v1');
+  if (baseUrl === 'https://api.openai.com') baseUrl = 'https://api.openai.com/v1';
   const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
 
   const formattedMessages = messages.map((m) => {
@@ -97,11 +151,16 @@ async function callOpenAICompatible(
     return { role: m.role, content: m.content };
   });
 
+  const model = config.model || 'gpt-4o';
+  const isReasoningModel = /^(o1|o3|o4|gpt-5)/i.test(model);
+
   const body: any = {
-    model: config.model || 'gpt-4o',
+    model,
     messages: formattedMessages,
-    temperature: config.temperature ?? 0.2,
   };
+  if (!skipTemperature && !isReasoningModel) {
+    body.temperature = config.temperature ?? 0.2;
+  }
   if (config.maxTokens) body.max_tokens = config.maxTokens;
   if (tools.length > 0) {
     body.tools = tools.map((t) => ({
@@ -121,6 +180,10 @@ async function callOpenAICompatible(
   if (config.apiKey) {
     headers['Authorization'] = `Bearer ${config.apiKey}`;
   }
+  if (baseUrl.includes('openrouter.ai')) {
+    headers['HTTP-Referer'] = 'https://kode-ksst.app';
+    headers['X-Title'] = 'KODE KSST IDE';
+  }
 
   const res = await fetch(url, {
     method: 'POST',
@@ -131,12 +194,15 @@ async function callOpenAICompatible(
 
   const rawText = await res.text();
   if (!res.ok) {
-    throw new Error(`OpenAI-compatible API error (${res.status}): ${rawText.slice(0, 600)}`);
+    if (!skipTemperature && res.status === 400 && rawText.toLowerCase().includes('temperature')) {
+      return callOpenAICompatible(config, messages, tools, signal, true);
+    }
+    throw new Error(`Error API (${res.status}) en ${url}: ${rawText.slice(0, 600)}`);
   }
 
   const data = JSON.parse(rawText);
   const choice = data.choices?.[0];
-  if (!choice) throw new Error('API returned no choices.');
+  if (!choice) throw new Error('La API no devolvió opciones (choices vacío).');
 
   const msg = choice.message || {};
   const toolCalls: AgentToolCall[] = [];
@@ -172,8 +238,8 @@ async function callAnthropic(
   tools: ToolDefinition[],
   signal?: AbortSignal
 ): Promise<BrainResponse> {
-  const baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.anthropic.com');
-  const url = baseUrl.endsWith('/v1/messages') ? baseUrl : `${baseUrl}/v1/messages`;
+  const baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.anthropic.com').replace(/\/v1$/, '');
+  const url = `${baseUrl}/v1/messages`;
 
   const systemParts: string[] = [];
   const anthropicMsgs: any[] = [];
@@ -274,8 +340,8 @@ async function callGemini(
   tools: ToolDefinition[],
   signal?: AbortSignal
 ): Promise<BrainResponse> {
-  const baseUrl = cleanBaseUrl(config.baseUrl, 'https://generativelanguage.googleapis.com');
-  const model = config.model || 'gemini-2.5-flash';
+  const baseUrl = cleanBaseUrl(config.baseUrl, 'https://generativelanguage.googleapis.com').replace(/\/v1beta$/, '');
+  const model = (config.model || 'gemini-2.5-flash').replace(/^models\//, '');
   const url = `${baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   const systemParts: string[] = [];
@@ -385,19 +451,93 @@ async function callGemini(
   };
 }
 
-export async function testBrainConnection(config: BrainConfig): Promise<{ ok: boolean; reply: string; latencyMs: number }> {
+export async function listBrainModels(rawConfig: BrainConfig): Promise<string[]> {
+  const config = normalizeConfig(rawConfig);
+
+  if (config.provider === 'gemini') {
+    const baseUrl = cleanBaseUrl(config.baseUrl, 'https://generativelanguage.googleapis.com').replace(/\/v1beta$/, '');
+    const res = await fetch(`${baseUrl}/v1beta/models?key=${encodeURIComponent(config.apiKey)}`);
+    const raw = await res.text();
+    if (!res.ok) throw new Error(`Error listando modelos Gemini (${res.status}): ${raw.slice(0, 300)}`);
+    const data = JSON.parse(raw);
+    const models: string[] = (data.models || [])
+      .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m: any) => String(m.name || '').replace(/^models\//, ''))
+      .filter(Boolean);
+    return models;
+  }
+
+  if (config.provider === 'anthropic') {
+    const baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.anthropic.com').replace(/\/v1$/, '');
+    const res = await fetch(`${baseUrl}/v1/models`, {
+      headers: {
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+    });
+    const raw = await res.text();
+    if (!res.ok) throw new Error(`Error listando modelos Anthropic (${res.status}): ${raw.slice(0, 300)}`);
+    const data = JSON.parse(raw);
+    return (data.data || []).map((m: any) => m.id).filter(Boolean);
+  }
+
+  let baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.openai.com/v1');
+  if (baseUrl === 'https://api.openai.com') baseUrl = 'https://api.openai.com/v1';
+  const headers: Record<string, string> = {};
+  if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+  const res = await fetch(`${baseUrl}/models`, { headers });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`Error listando modelos (${res.status}): ${raw.slice(0, 300)}`);
+  const data = JSON.parse(raw);
+  return (data.data || []).map((m: any) => m.id).filter(Boolean).sort();
+}
+
+export async function testBrainConnection(
+  rawConfig: BrainConfig
+): Promise<{ ok: boolean; reply: string; latencyMs: number; resolvedConfig?: BrainConfig; availableModels?: string[] }> {
+  const config = normalizeConfig(rawConfig);
   const start = Date.now();
-  const resp = await callBrain(
-    config,
-    [
-      { role: 'system', content: 'Respond with exactly: KODE_KSST_BRAIN_ONLINE' },
-      { role: 'user', content: 'Health check ping' },
-    ],
-    []
-  );
-  return {
-    ok: true,
-    reply: resp.text.trim() || 'Connected (empty text)',
-    latencyMs: Date.now() - start,
-  };
+
+  try {
+    const resp = await callBrain(
+      config,
+      [
+        { role: 'system', content: 'Respond with exactly: KODE_KSST_BRAIN_ONLINE' },
+        { role: 'user', content: 'Health check ping' },
+      ],
+      []
+    );
+    return {
+      ok: true,
+      reply: resp.text.trim() || 'Conectado',
+      latencyMs: Date.now() - start,
+      resolvedConfig: config,
+    };
+  } catch (primaryErr: any) {
+    // If key itself works for listing models, auto-pick a supported model on that key!
+    try {
+      const models = await listBrainModels(config);
+      if (models.length > 0) {
+        const preferred =
+          models.find((m) => /flash|gpt-4o-mini|gpt-4o|claude|deepseek-chat|llama-3\.3|grok/i.test(m)) || models[0];
+        const retryCfg = { ...config, model: preferred };
+        const resp = await callBrain(
+          retryCfg,
+          [
+            { role: 'system', content: 'Respond with exactly: KODE_KSST_BRAIN_ONLINE' },
+            { role: 'user', content: 'Health check ping' },
+          ],
+          []
+        );
+        return {
+          ok: true,
+          reply: `${resp.text.trim() || 'Conectado'} (modelo ajustado a ${preferred})`,
+          latencyMs: Date.now() - start,
+          resolvedConfig: retryCfg,
+          availableModels: models.slice(0, 25),
+        };
+      }
+    } catch {}
+    throw primaryErr;
+  }
 }
