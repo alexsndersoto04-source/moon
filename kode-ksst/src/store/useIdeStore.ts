@@ -62,6 +62,7 @@ interface IdeState {
   showCommandPalette: boolean;
   showNewProjectModal: boolean;
   showBrainModal: boolean;
+  showInstallModal: boolean;
 
   // Execution & Diagnostics
   executionHistory: ExecutionResult[];
@@ -123,6 +124,7 @@ interface IdeState {
   setShowCommandPalette: (v: boolean) => void;
   setShowNewProjectModal: (v: boolean) => void;
   setShowBrainModal: (v: boolean) => void;
+  setShowInstallModal: (v: boolean) => void;
   setPreviewUrl: (url: string) => void;
   reloadPreview: () => void;
 
@@ -162,6 +164,7 @@ export const useIdeStore = create<IdeState>((set, get) => ({
   showCommandPalette: false,
   showNewProjectModal: false,
   showBrainModal: false,
+  showInstallModal: false,
 
   executionHistory: [],
   isRunning: false,
@@ -539,6 +542,7 @@ export const useIdeStore = create<IdeState>((set, get) => ({
   setShowCommandPalette: (v) => set({ showCommandPalette: v }),
   setShowNewProjectModal: (v) => set({ showNewProjectModal: v }),
   setShowBrainModal: (v) => set({ showBrainModal: v }),
+  setShowInstallModal: (v) => set({ showInstallModal: v }),
   setPreviewUrl: (url) => set({ previewUrl: url, previewNonce: Date.now() }),
   reloadPreview: () => set({ previewNonce: Date.now() }),
 

@@ -9,6 +9,7 @@ import {
   Play,
   Save,
   ShieldCheck,
+  Smartphone,
   Terminal,
   Zap,
 } from 'lucide-react';
@@ -35,6 +36,7 @@ export const TopBar: React.FC = () => {
     setShowCommandPalette,
     setShowNewProjectModal,
     setShowBrainModal,
+    setShowInstallModal,
   } = useIdeStore();
 
   const dirtyCount = openTabs.filter((t) => t.dirty).length;
@@ -124,6 +126,15 @@ export const TopBar: React.FC = () => {
 
       {/* Right Panel Toggles & Brain */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+        <button
+          onClick={() => setShowInstallModal(true)}
+          className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs"
+          title="Instalar como App móvil"
+        >
+          <Smartphone className="w-3.5 h-3.5" />
+          <span className="hidden lg:inline">App</span>
+        </button>
+
         <button
           onClick={() => setShowBrainModal(true)}
           className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md text-xs font-medium border transition ${

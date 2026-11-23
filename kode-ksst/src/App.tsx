@@ -16,6 +16,7 @@ import { AgentPanel } from './components/Agent/AgentPanel';
 import { BrainConfigModal } from './components/Agent/BrainConfigModal';
 import { CommandPalette } from './components/CommandPalette';
 import { NewProjectModal } from './components/NewProjectModal';
+import { InstallAppModal } from './components/InstallAppModal';
 
 export const App: React.FC = () => {
   const {
@@ -191,6 +192,7 @@ export const App: React.FC = () => {
       {/* Modals & Palette */}
       <BrainConfigModal />
       <NewProjectModal />
+      <InstallAppModal />
       <CommandPalette />
       <DiffModal />
 

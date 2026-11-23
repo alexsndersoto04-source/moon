@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: kode-ksst
+    runtime: docker
+    rootDir: kode-ksst
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
