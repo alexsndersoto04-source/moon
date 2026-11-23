@@ -12,13 +12,14 @@ export interface BrainConfig {
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: Record<string, any>; // JSON Schema object
+  parameters: Record<string, any>;
 }
 
 export interface AgentToolCall {
   id: string;
   name: string;
   arguments: Record<string, any>;
+  extraMeta?: Record<string, any>; // e.g. Gemini thoughtSignature
 }
 
 export type ConversationMessage =
@@ -32,6 +33,7 @@ export interface BrainResponse {
   toolCalls: AgentToolCall[];
   usage?: { inputTokens?: number; outputTokens?: number };
   rawFinishReason?: string;
+  usedPromptToolFallback?: boolean;
 }
 
 export function sanitizeApiKey(raw: string | undefined): string {
@@ -43,44 +45,201 @@ function cleanBaseUrl(url: string | undefined, fallback: string): string {
   return (url && url.trim() ? url.trim() : fallback).replace(/\/+$/, '');
 }
 
-function normalizeConfig(raw: BrainConfig): BrainConfig {
+export function normalizeConfig(raw: BrainConfig): BrainConfig {
   const apiKey = sanitizeApiKey(raw.apiKey);
   let provider = raw.provider;
   let baseUrl = raw.baseUrl?.trim() || '';
   let model = raw.model?.trim() || '';
 
-  // Auto-detect provider if mismatched with key prefix
-  if (apiKey.startsWith('AIza') && provider !== 'gemini') {
+  const isKnownCloudDefault =
+    !baseUrl ||
+    baseUrl.includes('api.openai.com') ||
+    baseUrl.includes('generativelanguage.googleapis.com') ||
+    baseUrl.includes('api.anthropic.com') ||
+    baseUrl.includes('api.groq.com') ||
+    baseUrl.includes('api.deepseek.com') ||
+    baseUrl.includes('api.x.ai') ||
+    baseUrl.includes('openrouter.ai') ||
+    baseUrl.includes('router.huggingface.co');
+
+  if (apiKey.startsWith('AIza')) {
     provider = 'gemini';
-    if (!baseUrl || baseUrl.includes('openai.com')) {
+    if (isKnownCloudDefault && !baseUrl.includes('googleapis.com')) {
       baseUrl = 'https://generativelanguage.googleapis.com';
     }
-    if (!model || model.startsWith('gpt-') || model.startsWith('claude-')) {
+    if (!model || !model.toLowerCase().includes('gemini')) {
       model = 'gemini-2.5-flash';
     }
-  } else if (apiKey.startsWith('sk-ant-') && provider !== 'anthropic') {
+  } else if (apiKey.startsWith('sk-ant-')) {
     provider = 'anthropic';
-    if (!baseUrl || baseUrl.includes('openai.com')) {
+    if (isKnownCloudDefault && !baseUrl.includes('anthropic.com')) {
       baseUrl = 'https://api.anthropic.com';
     }
-    if (!model || model.startsWith('gpt-') || model.startsWith('gemini-')) {
+    if (!model || !model.toLowerCase().includes('claude')) {
       model = 'claude-sonnet-4-20250514';
     }
-  } else if (apiKey.startsWith('gsk_') && (!baseUrl || baseUrl.includes('openai.com'))) {
+  } else if (apiKey.startsWith('gsk_')) {
     provider = 'openai';
-    baseUrl = 'https://api.groq.com/openai/v1';
-    if (!model || model.startsWith('gpt-')) model = 'llama-3.3-70b-versatile';
-  } else if (apiKey.startsWith('sk-or-v1-') && (!baseUrl || baseUrl.includes('openai.com'))) {
+    if (isKnownCloudDefault && !baseUrl.includes('groq.com')) {
+      baseUrl = 'https://api.groq.com/openai/v1';
+    }
+    if (!model || model.startsWith('gpt-') || model.startsWith('gemini-') || model.startsWith('claude-') || /allam|whisper|tts|guard/i.test(model)) {
+      model = 'llama-3.3-70b-versatile';
+    }
+  } else if (apiKey.startsWith('sk-or-')) {
     provider = 'openai';
-    baseUrl = 'https://openrouter.ai/api/v1';
+    if (isKnownCloudDefault && !baseUrl.includes('openrouter.ai')) {
+      baseUrl = 'https://openrouter.ai/api/v1';
+    }
     if (!model || model === 'gpt-4o') model = 'openai/gpt-4o-mini';
-  } else if (apiKey.startsWith('xai-') && (!baseUrl || baseUrl.includes('openai.com'))) {
+  } else if (apiKey.startsWith('xai-')) {
     provider = 'openai';
-    baseUrl = 'https://api.x.ai/v1';
-    if (!model || model.startsWith('gpt-')) model = 'grok-3-mini';
+    if (isKnownCloudDefault && !baseUrl.includes('x.ai')) {
+      baseUrl = 'https://api.x.ai/v1';
+    }
+    if (!model || !model.toLowerCase().includes('grok')) model = 'grok-3-mini';
+  } else if (apiKey.startsWith('hf_')) {
+    provider = 'openai';
+    if (isKnownCloudDefault && !baseUrl.includes('huggingface.co')) {
+      baseUrl = 'https://router.huggingface.co/v1';
+    }
+    if (!model || model.startsWith('gpt-')) model = 'Qwen/Qwen2.5-Coder-32B-Instruct';
+  } else if (apiKey.startsWith('sk-proj-')) {
+    provider = 'openai';
+    if (isKnownCloudDefault && !baseUrl.includes('openai.com')) {
+      baseUrl = 'https://api.openai.com/v1';
+    }
+    if (!model || model.startsWith('gemini-') || model.startsWith('claude-') || model.startsWith('llama')) {
+      model = 'gpt-4o-mini';
+    }
+  } else if (apiKey.startsWith('sk-') && (provider === 'gemini' || provider === 'anthropic')) {
+    provider = 'openai';
+    if (isKnownCloudDefault && (baseUrl.includes('googleapis.com') || baseUrl.includes('anthropic.com'))) {
+      baseUrl = 'https://api.openai.com/v1';
+    }
+    if (!model || model.startsWith('gemini-') || model.startsWith('claude-')) {
+      model = 'gpt-4o-mini';
+    }
   }
 
   return { ...raw, provider, apiKey, baseUrl, model };
+}
+
+function isNonToolChatModel(modelId: string): boolean {
+  return /(whisper|tts|orpheus|playai|guard|shield|embed|embedding|imagen|veo|dall-e|sora|moderation|transcribe|audio|realtime|search|allam|gemma-3n|babbage|davinci)/i.test(
+    modelId
+  );
+}
+
+function rankModelsForCoding(models: string[], provider: BrainProvider, baseUrl = '', apiKey = ''): string[] {
+  const priorityPatterns: RegExp[] =
+    provider === 'gemini'
+      ? [/^gemini-2\.5-flash$/i, /^gemini-2\.0-flash$/i, /^gemini-2\.5-pro$/i, /^gemini-1\.5-flash$/i, /^gemini-1\.5-pro$/i, /^gemini/i]
+      : provider === 'anthropic'
+        ? [/claude-sonnet-4/i, /claude-3-7-sonnet/i, /claude-3-5-sonnet/i, /claude-3-5-haiku/i, /claude/i]
+        : baseUrl.includes('groq.com') || apiKey.startsWith('gsk_')
+          ? [/^llama-3\.3-70b-versatile$/i, /^qwen-2\.5-coder/i, /^qwen\/qwen3/i, /^llama-3\.1-8b-instant$/i, /^meta-llama\/llama-4/i, /llama/i]
+          : baseUrl.includes('deepseek.com')
+            ? [/^deepseek-chat$/i, /^deepseek-reasoner$/i]
+            : [/^gpt-4o-mini$/i, /^gpt-4o$/i, /^gpt-4\.1-mini$/i, /^gpt-4\.1$/i, /^gpt-4/i, /^o3-mini$/i, /^grok-3/i, /coder/i];
+
+  const usable = models.filter((m) => !isNonToolChatModel(m));
+  const pool = usable.length > 0 ? usable : models;
+
+  return [...pool].sort((a, b) => {
+    const score = (id: string) => {
+      for (let i = 0; i < priorityPatterns.length; i++) {
+        if (priorityPatterns[i].test(id)) return i;
+      }
+      return priorityPatterns.length + 1;
+    };
+    const diff = score(a) - score(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+}
+
+function isToolUnsupportedError(status: number, rawText: string): boolean {
+  if (status !== 400 && status !== 422) return false;
+  return /tool.?call|function.?call|tools.*not supported|does not support tools|tool_choice|unknown field.*tools/i.test(
+    rawText
+  );
+}
+
+function buildReactToolMessages(messages: ConversationMessage[], tools: ToolDefinition[]): ConversationMessage[] {
+  const toolSpec = tools
+    .map((t) => `- ${t.name}: ${t.description}\n  parameters: ${JSON.stringify(t.parameters)}`)
+    .join('\n');
+
+  const reactInstruction = `
+=== TOOL CALLING PROTOCOL (TEXT MODE) ===
+Native tool calling is disabled on this model, so to invoke any IDE tool you MUST output a block in this exact format:
+<tool_call>
+{"name": "TOOL_NAME", "arguments": { ... }}
+</tool_call>
+
+Available tools:
+${toolSpec}
+
+Rules:
+- You may output one or more <tool_call>...</tool_call> blocks when you need to inspect files, edit code, run commands, or control the IDE.
+- Wait for the tool result before assuming output.
+- When finished and no more tools are needed, respond normally without <tool_call>.`;
+
+  const converted: ConversationMessage[] = [];
+  let addedInstruction = false;
+
+  for (const m of messages) {
+    if (m.role === 'system') {
+      converted.push({ role: 'system', content: `${m.content}\n\n${reactInstruction}` });
+      addedInstruction = true;
+    } else if (m.role === 'assistant') {
+      const tcText = (m.toolCalls || [])
+        .map((tc) => `<tool_call>\n${JSON.stringify({ name: tc.name, arguments: tc.arguments })}\n</tool_call>`)
+        .join('\n');
+      converted.push({
+        role: 'assistant',
+        content: [m.content, tcText].filter(Boolean).join('\n'),
+      });
+    } else if (m.role === 'tool') {
+      converted.push({
+        role: 'user',
+        content: `<tool_result name="${m.toolName}">\n${m.content}\n</tool_result>`,
+      });
+    } else {
+      converted.push(m);
+    }
+  }
+
+  if (!addedInstruction) {
+    converted.unshift({ role: 'system', content: reactInstruction });
+  }
+  return converted;
+}
+
+function parseReactToolCalls(text: string): { cleanText: string; toolCalls: AgentToolCall[] } {
+  const toolCalls: AgentToolCall[] = [];
+  let cleanText = text;
+
+  const regex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const rawJson = match[1].replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (parsed && typeof parsed.name === 'string') {
+        toolCalls.push({
+          id: `react_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: parsed.name,
+          arguments: parsed.arguments && typeof parsed.arguments === 'object' ? parsed.arguments : {},
+        });
+      }
+    } catch {}
+  }
+
+  if (toolCalls.length > 0) {
+    cleanText = text.replace(regex, '').trim();
+  }
+  return { cleanText, toolCalls };
 }
 
 export async function callBrain(
@@ -103,16 +262,30 @@ export async function callBrain(
     throw new Error('Falta la API Key. Configúrala en "Conectar Cerebro API".');
   }
 
-  if (config.provider === 'openai') {
-    return callOpenAICompatible(config, messages, tools, signal);
+  const dispatch = (msgs: ConversationMessage[], activeTools: ToolDefinition[]) => {
+    if (config.provider === 'openai') return callOpenAICompatible(config, msgs, activeTools, signal);
+    if (config.provider === 'anthropic') return callAnthropic(config, msgs, activeTools, signal);
+    if (config.provider === 'gemini') return callGemini(config, msgs, activeTools, signal);
+    throw new Error(`Proveedor no soportado: ${config.provider}`);
+  };
+
+  try {
+    return await dispatch(messages, tools);
+  } catch (err: any) {
+    if (tools.length > 0 && err?._toolUnsupported) {
+      // Automatic fallback: run the exact same request with Text-Mode ReAct Tool Calling!
+      const reactMsgs = buildReactToolMessages(messages, tools);
+      const resp = await dispatch(reactMsgs, []);
+      const parsed = parseReactToolCalls(resp.text);
+      return {
+        ...resp,
+        text: parsed.cleanText,
+        toolCalls: parsed.toolCalls,
+        usedPromptToolFallback: true,
+      };
+    }
+    throw err;
   }
-  if (config.provider === 'anthropic') {
-    return callAnthropic(config, messages, tools, signal);
-  }
-  if (config.provider === 'gemini') {
-    return callGemini(config, messages, tools, signal);
-  }
-  throw new Error(`Proveedor no soportado: ${config.provider}`);
 }
 
 async function callOpenAICompatible(
@@ -128,7 +301,7 @@ async function callOpenAICompatible(
 
   const formattedMessages = messages.map((m) => {
     if (m.role === 'assistant') {
-      const msg: any = { role: 'assistant', content: m.content || null };
+      const msg: any = { role: 'assistant', content: m.content || (m.toolCalls?.length ? null : '') };
       if (m.toolCalls && m.toolCalls.length > 0) {
         msg.tool_calls = m.toolCalls.map((tc) => ({
           id: tc.id,
@@ -151,7 +324,7 @@ async function callOpenAICompatible(
     return { role: m.role, content: m.content };
   });
 
-  const model = config.model || 'gpt-4o';
+  const model = config.model || 'gpt-4o-mini';
   const isReasoningModel = /^(o1|o3|o4|gpt-5)/i.test(model);
 
   const body: any = {
@@ -161,7 +334,7 @@ async function callOpenAICompatible(
   if (!skipTemperature && !isReasoningModel) {
     body.temperature = config.temperature ?? 0.2;
   }
-  if (config.maxTokens) body.max_tokens = config.maxTokens;
+  if (config.maxTokens && !isReasoningModel) body.max_tokens = config.maxTokens;
   if (tools.length > 0) {
     body.tools = tools.map((t) => ({
       type: 'function',
@@ -197,7 +370,11 @@ async function callOpenAICompatible(
     if (!skipTemperature && res.status === 400 && rawText.toLowerCase().includes('temperature')) {
       return callOpenAICompatible(config, messages, tools, signal, true);
     }
-    throw new Error(`Error API (${res.status}) en ${url}: ${rawText.slice(0, 600)}`);
+    const err: any = new Error(`Error API (${res.status}) en ${url}: ${rawText.slice(0, 600)}`);
+    if (tools.length > 0 && isToolUnsupportedError(res.status, rawText)) {
+      err._toolUnsupported = true;
+    }
+    throw err;
   }
 
   const data = JSON.parse(rawText);
@@ -242,13 +419,23 @@ async function callAnthropic(
   const url = `${baseUrl}/v1/messages`;
 
   const systemParts: string[] = [];
-  const anthropicMsgs: any[] = [];
+  const anthropicMsgs: Array<{ role: 'user' | 'assistant'; content: any[] }> = [];
+
+  const pushMsg = (role: 'user' | 'assistant', blocks: any[]) => {
+    if (blocks.length === 0) return;
+    const last = anthropicMsgs[anthropicMsgs.length - 1];
+    if (last && last.role === role) {
+      last.content.push(...blocks);
+    } else {
+      anthropicMsgs.push({ role, content: blocks });
+    }
+  };
 
   for (const m of messages) {
     if (m.role === 'system') {
-      systemParts.push(m.content);
+      if (m.content.trim()) systemParts.push(m.content);
     } else if (m.role === 'user') {
-      anthropicMsgs.push({ role: 'user', content: m.content });
+      pushMsg('user', [{ type: 'text', text: m.content || ' ' }]);
     } else if (m.role === 'assistant') {
       const blocks: any[] = [];
       if (m.content) blocks.push({ type: 'text', text: m.content });
@@ -262,29 +449,27 @@ async function callAnthropic(
           });
         }
       }
-      anthropicMsgs.push({ role: 'assistant', content: blocks });
+      pushMsg('assistant', blocks);
     } else if (m.role === 'tool') {
-      const last = anthropicMsgs[anthropicMsgs.length - 1];
-      const block = {
-        type: 'tool_result',
-        tool_use_id: m.toolCallId,
-        content: m.content,
-      };
-      if (last && last.role === 'user' && Array.isArray(last.content)) {
-        last.content.push(block);
-      } else {
-        anthropicMsgs.push({ role: 'user', content: [block] });
-      }
+      pushMsg('user', [
+        {
+          type: 'tool_result',
+          tool_use_id: m.toolCallId,
+          content: m.content || 'ok',
+        },
+      ]);
     }
   }
 
   const body: any = {
     model: config.model || 'claude-sonnet-4-20250514',
     max_tokens: config.maxTokens || 4096,
-    system: systemParts.join('\n\n'),
     messages: anthropicMsgs,
     temperature: config.temperature ?? 0.2,
   };
+  if (systemParts.length > 0) {
+    body.system = systemParts.join('\n\n');
+  }
   if (tools.length > 0) {
     body.tools = tools.map((t) => ({
       name: t.name,
@@ -306,7 +491,11 @@ async function callAnthropic(
 
   const rawText = await res.text();
   if (!res.ok) {
-    throw new Error(`Anthropic API error (${res.status}): ${rawText.slice(0, 600)}`);
+    const err: any = new Error(`Anthropic API error (${res.status}): ${rawText.slice(0, 600)}`);
+    if (tools.length > 0 && isToolUnsupportedError(res.status, rawText)) {
+      err._toolUnsupported = true;
+    }
+    throw err;
   }
 
   const data = JSON.parse(rawText);
@@ -334,6 +523,26 @@ async function callAnthropic(
   };
 }
 
+function sanitizeSchemaForGemini(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema;
+  const copy: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (k === 'additionalProperties' || k === '$schema' || k === 'default') continue;
+    if (k === 'properties' && v && typeof v === 'object') {
+      const props: any = {};
+      for (const [pk, pv] of Object.entries(v as Record<string, any>)) {
+        props[pk] = sanitizeSchemaForGemini(pv);
+      }
+      copy.properties = props;
+    } else if (k === 'items' && v && typeof v === 'object') {
+      copy.items = sanitizeSchemaForGemini(v);
+    } else {
+      copy[k] = v;
+    }
+  }
+  return copy;
+}
+
 async function callGemini(
   config: BrainConfig,
   messages: ConversationMessage[],
@@ -345,46 +554,54 @@ async function callGemini(
   const url = `${baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   const systemParts: string[] = [];
-  const contents: any[] = [];
+  const contents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
+
+  const pushPart = (role: 'user' | 'model', part: any) => {
+    const last = contents[contents.length - 1];
+    if (last && last.role === role) {
+      last.parts.push(part);
+    } else {
+      contents.push({ role, parts: [part] });
+    }
+  };
 
   for (const m of messages) {
     if (m.role === 'system') {
-      systemParts.push(m.content);
+      if (m.content.trim()) systemParts.push(m.content);
     } else if (m.role === 'user') {
-      contents.push({ role: 'user', parts: [{ text: m.content }] });
+      pushPart('user', { text: m.content || ' ' });
     } else if (m.role === 'assistant') {
-      const parts: any[] = [];
-      if (m.content) parts.push({ text: m.content });
+      if (m.content) pushPart('model', { text: m.content });
       if (m.toolCalls) {
         for (const tc of m.toolCalls) {
-          parts.push({
+          const fcPart: any = {
             functionCall: {
               name: tc.name,
-              args: tc.arguments,
+              args: tc.arguments || {},
             },
-          });
+          };
+          if (tc.extraMeta?.thoughtSignature) {
+            fcPart.thoughtSignature = tc.extraMeta.thoughtSignature;
+          }
+          pushPart('model', fcPart);
         }
       }
-      contents.push({ role: 'model', parts });
     } else if (m.role === 'tool') {
       let parsedResp: any;
       try {
         parsedResp = JSON.parse(m.content);
+        if (typeof parsedResp !== 'object' || parsedResp === null || Array.isArray(parsedResp)) {
+          parsedResp = { result: parsedResp };
+        }
       } catch {
         parsedResp = { result: m.content };
       }
-      const part = {
+      pushPart('user', {
         functionResponse: {
           name: m.toolName,
           response: parsedResp,
         },
-      };
-      const last = contents[contents.length - 1];
-      if (last && last.role === 'user' && last.parts?.[0]?.functionResponse) {
-        last.parts.push(part);
-      } else {
-        contents.push({ role: 'user', parts: [part] });
-      }
+      });
     }
   }
 
@@ -401,11 +618,17 @@ async function callGemini(
   if (tools.length > 0) {
     body.tools = [
       {
-        functionDeclarations: tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-        })),
+        functionDeclarations: tools.map((t) => {
+          const decl: any = {
+            name: t.name,
+            description: t.description,
+          };
+          const propKeys = Object.keys(t.parameters?.properties || {});
+          if (propKeys.length > 0) {
+            decl.parameters = sanitizeSchemaForGemini(t.parameters);
+          }
+          return decl;
+        }),
       },
     ];
   }
@@ -419,7 +642,11 @@ async function callGemini(
 
   const rawText = await res.text();
   if (!res.ok) {
-    throw new Error(`Gemini API error (${res.status}): ${rawText.slice(0, 600)}`);
+    const err: any = new Error(`Gemini API error (${res.status}): ${rawText.slice(0, 600)}`);
+    if (tools.length > 0 && isToolUnsupportedError(res.status, rawText)) {
+      err._toolUnsupported = true;
+    }
+    throw err;
   }
 
   const data = JSON.parse(rawText);
@@ -428,12 +655,14 @@ async function callGemini(
   let text = '';
   const toolCalls: AgentToolCall[] = [];
   for (const p of parts) {
+    if (p.thought) continue; // skip internal thinking traces
     if (p.text) text += p.text;
     if (p.functionCall) {
       toolCalls.push({
         id: `gem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         name: p.functionCall.name,
         arguments: p.functionCall.args || {},
+        extraMeta: p.thoughtSignature ? { thoughtSignature: p.thoughtSignature } : undefined,
       });
     }
   }
@@ -463,8 +692,8 @@ export async function listBrainModels(rawConfig: BrainConfig): Promise<string[]>
     const models: string[] = (data.models || [])
       .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
       .map((m: any) => String(m.name || '').replace(/^models\//, ''))
-      .filter(Boolean);
-    return models;
+      .filter((id: string) => id && !isNonToolChatModel(id) && !/^gemma/i.test(id));
+    return rankModelsForCoding(models, 'gemini');
   }
 
   if (config.provider === 'anthropic') {
@@ -478,7 +707,8 @@ export async function listBrainModels(rawConfig: BrainConfig): Promise<string[]>
     const raw = await res.text();
     if (!res.ok) throw new Error(`Error listando modelos Anthropic (${res.status}): ${raw.slice(0, 300)}`);
     const data = JSON.parse(raw);
-    return (data.data || []).map((m: any) => m.id).filter(Boolean);
+    const models = (data.data || []).map((m: any) => m.id).filter(Boolean);
+    return rankModelsForCoding(models, 'anthropic');
   }
 
   let baseUrl = cleanBaseUrl(config.baseUrl, 'https://api.openai.com/v1');
@@ -489,8 +719,24 @@ export async function listBrainModels(rawConfig: BrainConfig): Promise<string[]>
   const raw = await res.text();
   if (!res.ok) throw new Error(`Error listando modelos (${res.status}): ${raw.slice(0, 300)}`);
   const data = JSON.parse(raw);
-  return (data.data || []).map((m: any) => m.id).filter(Boolean).sort();
+  const models = (data.data || [])
+    .map((m: any) => m.id)
+    .filter((id: string) => Boolean(id) && !isNonToolChatModel(id));
+  return rankModelsForCoding(models, 'openai', baseUrl, config.apiKey);
 }
+
+const PING_TOOL: ToolDefinition[] = [
+  {
+    name: 'ide_ping',
+    description: 'Verify IDE tool calling capability.',
+    parameters: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: 'Short status string.' },
+      },
+    },
+  },
+];
 
 export async function testBrainConnection(
   rawConfig: BrainConfig
@@ -498,44 +744,46 @@ export async function testBrainConnection(
   const config = normalizeConfig(rawConfig);
   const start = Date.now();
 
-  try {
-    const resp = await callBrain(
-      config,
+  const tryPing = async (cfg: BrainConfig) => {
+    return callBrain(
+      cfg,
       [
-        { role: 'system', content: 'Respond with exactly: KODE_KSST_BRAIN_ONLINE' },
+        { role: 'system', content: 'Respond briefly with: KODE_KSST_BRAIN_ONLINE (do not call tools for this ping).' },
         { role: 'user', content: 'Health check ping' },
       ],
-      []
+      PING_TOOL
     );
+  };
+
+  try {
+    const resp = await tryPing(config);
+    let models: string[] | undefined;
+    try {
+      models = (await listBrainModels(config)).slice(0, 30);
+    } catch {}
     return {
       ok: true,
-      reply: resp.text.trim() || 'Conectado',
+      reply: `${resp.text.trim() || 'Conectado'}${resp.usedPromptToolFallback ? ' (modo ReAct)' : ''}`,
       latencyMs: Date.now() - start,
       resolvedConfig: config,
+      availableModels: models,
     };
   } catch (primaryErr: any) {
-    // If key itself works for listing models, auto-pick a supported model on that key!
+    // Try discovering working models on that API key
     try {
       const models = await listBrainModels(config);
-      if (models.length > 0) {
-        const preferred =
-          models.find((m) => /flash|gpt-4o-mini|gpt-4o|claude|deepseek-chat|llama-3\.3|grok/i.test(m)) || models[0];
-        const retryCfg = { ...config, model: preferred };
-        const resp = await callBrain(
-          retryCfg,
-          [
-            { role: 'system', content: 'Respond with exactly: KODE_KSST_BRAIN_ONLINE' },
-            { role: 'user', content: 'Health check ping' },
-          ],
-          []
-        );
-        return {
-          ok: true,
-          reply: `${resp.text.trim() || 'Conectado'} (modelo ajustado a ${preferred})`,
-          latencyMs: Date.now() - start,
-          resolvedConfig: retryCfg,
-          availableModels: models.slice(0, 25),
-        };
+      for (const candidate of models.slice(0, 5)) {
+        try {
+          const retryCfg = { ...config, model: candidate };
+          const resp = await tryPing(retryCfg);
+          return {
+            ok: true,
+            reply: `${resp.text.trim() || 'Conectado'} (modelo ajustado a ${candidate})`,
+            latencyMs: Date.now() - start,
+            resolvedConfig: retryCfg,
+            availableModels: models.slice(0, 30),
+          };
+        } catch {}
       }
     } catch {}
     throw primaryErr;

@@ -15,7 +15,7 @@ const PRESETS: Array<{
     label: 'OpenAI',
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
   },
   {
     id: 'gemini',
@@ -60,6 +60,13 @@ const PRESETS: Array<{
     model: 'grok-3-mini',
   },
   {
+    id: 'huggingface',
+    label: 'HuggingFace',
+    provider: 'openai',
+    baseUrl: 'https://router.huggingface.co/v1',
+    model: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+  },
+  {
     id: 'ollama',
     label: 'Ollama / Local',
     provider: 'openai',
@@ -73,8 +80,9 @@ function detectPresetFromKey(rawKey: string): string | null {
   if (k.startsWith('AIza')) return 'gemini';
   if (k.startsWith('sk-ant-')) return 'anthropic';
   if (k.startsWith('gsk_')) return 'groq';
-  if (k.startsWith('sk-or-v1-')) return 'openrouter';
+  if (k.startsWith('sk-or-')) return 'openrouter';
   if (k.startsWith('xai-')) return 'xai';
+  if (k.startsWith('hf_')) return 'huggingface';
   if (k.startsWith('sk-proj-')) return 'openai';
   return null;
 }
@@ -171,7 +179,7 @@ export const BrainConfigModal: React.FC = () => {
       if (res.ok) {
         const finalCfg = res.resolvedConfig ? { ...draft, ...res.resolvedConfig } : draft;
         setDraft(finalCfg);
-        setBrainConfig(finalCfg);
+        setBrainConfig(finalCfg, true);
         setBrainTestedOk(true);
         if (Array.isArray(res.availableModels)) {
           setModelsList(res.availableModels);
@@ -191,7 +199,7 @@ export const BrainConfigModal: React.FC = () => {
 
   const handleSave = () => {
     const clean = { ...draft, apiKey: draft.apiKey.replace(/[\s\u200B-\u200D\uFEFF"']/g, '') };
-    setBrainConfig(clean);
+    setBrainConfig(clean, Boolean(testResult?.ok));
     setShowBrainModal(false);
     addToast(`Cerebro configurado: ${clean.model} (${clean.provider})`, 'success');
   };

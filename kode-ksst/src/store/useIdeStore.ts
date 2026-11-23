@@ -25,7 +25,7 @@ function loadBrainConfig(): BrainConfig {
     provider: 'openai',
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     temperature: 0.2,
   };
 }
@@ -128,7 +128,7 @@ interface IdeState {
   setPreviewUrl: (url: string) => void;
   reloadPreview: () => void;
 
-  setBrainConfig: (cfg: BrainConfig) => void;
+  setBrainConfig: (cfg: BrainConfig, keepTested?: boolean) => void;
   setBrainTestedOk: (ok: boolean | null) => void;
   setAutoApprove: (v: boolean) => void;
   setAgentInputDraft: (v: string) => void;
@@ -546,11 +546,11 @@ export const useIdeStore = create<IdeState>((set, get) => ({
   setPreviewUrl: (url) => set({ previewUrl: url, previewNonce: Date.now() }),
   reloadPreview: () => set({ previewNonce: Date.now() }),
 
-  setBrainConfig: (cfg) => {
+  setBrainConfig: (cfg, keepTested = false) => {
     try {
       localStorage.setItem(BRAIN_STORAGE_KEY, JSON.stringify(cfg));
     } catch {}
-    set({ brainConfig: cfg, brainTestedOk: null });
+    set((s) => ({ brainConfig: cfg, brainTestedOk: keepTested ? s.brainTestedOk : null }));
   },
   setBrainTestedOk: (ok) => set({ brainTestedOk: ok }),
   setAutoApprove: (v) => set({ autoApprove: v }),
