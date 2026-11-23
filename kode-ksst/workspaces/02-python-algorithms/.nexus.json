@@ -1,0 +1,6 @@
+{
+  "name": "02 · Python Graph & Data Lab",
+  "description": "Dijkstra pathfinding, matrix stats, and unittest verification suite",
+  "primaryLanguage": "python",
+  "entryFile": "main.py"
+}

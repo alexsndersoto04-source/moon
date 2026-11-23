@@ -1,0 +1,6 @@
+{
+  "name": "01 · TypeScript Task Engine",
+  "description": "Multi-file TypeScript task scheduler, priority queue & test runner",
+  "primaryLanguage": "typescript",
+  "entryFile": "src/main.ts"
+}

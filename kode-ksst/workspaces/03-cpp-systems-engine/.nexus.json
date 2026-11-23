@@ -1,0 +1,6 @@
+{
+  "name": "03 · C++20 Systems Engine",
+  "description": "High-performance C++20 ring buffer & benchmark with Makefile",
+  "primaryLanguage": "cpp",
+  "entryFile": "src/main.cpp"
+}

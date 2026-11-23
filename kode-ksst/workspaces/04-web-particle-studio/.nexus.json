@@ -1,0 +1,6 @@
+{
+  "name": "04 · Interactive Web Studio",
+  "description": "Real-time HTML5 Canvas orbital particle simulation with Live Web Preview",
+  "primaryLanguage": "html",
+  "entryFile": "index.html"
+}
