@@ -1,30 +1,15 @@
-import React, { useEffect, useRef } from 'react';
-import * as monaco from 'monaco-editor';
-import editorWorker from 'monaco-editor/editor/editor.worker?worker';
-import jsonWorker from 'monaco-editor/language/json/json.worker?worker';
-import cssWorker from 'monaco-editor/language/css/css.worker?worker';
-import htmlWorker from 'monaco-editor/language/html/html.worker?worker';
-import tsWorker from 'monaco-editor/language/typescript/ts.worker?worker';
+import React, { useEffect, useRef, useState } from 'react';
+import type * as MonacoNS from 'monaco-editor';
 import { Play, Save, ShieldCheck, Sparkles, GitCompare, Code2 } from 'lucide-react';
 import { useIdeStore } from '../../store/useIdeStore';
-
-// Configure Monaco local Vite workers once
-if (typeof self !== 'undefined' && !(self as any).MonacoEnvironment) {
-  (self as any).MonacoEnvironment = {
-    getWorker(_: unknown, label: string) {
-      if (label === 'json') return new jsonWorker();
-      if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker();
-      if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker();
-      if (label === 'typescript' || label === 'javascript') return new tsWorker();
-      return new editorWorker();
-    },
-  };
-}
+import { loadMonaco } from '../../lib/monacoLoader';
 
 export const MonacoWorkspace: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<MonacoNS.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<typeof MonacoNS | null>(null);
   const suppressChangeRef = useRef(false);
+  const [monacoReady, setMonacoReady] = useState(false);
 
   const {
     openTabs,
@@ -32,92 +17,97 @@ export const MonacoWorkspace: React.FC = () => {
     diagnostics,
     jumpRequest,
     updateTabContent,
-    saveFile,
-    runCurrentFile,
-    runDiagnostics,
     setCursor,
     setSelection,
     setDiffModalTab,
     setAgentInputDraft,
     setShowAgentPanel,
+    saveFile,
+    runCurrentFile,
+    runDiagnostics,
     selection,
   } = useIdeStore();
 
   const activeTab = openTabs.find((t) => t.path === activeFile) || null;
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    let disposed = false;
 
-    monaco.editor.defineTheme('nexus-obsidian', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        { token: 'comment', foreground: '64748b', fontStyle: 'italic' },
-        { token: 'keyword', foreground: '38bdf8' },
-        { token: 'string', foreground: '34d399' },
-        { token: 'number', foreground: 'f59e0b' },
-        { token: 'type', foreground: 'a78bfa' },
-      ],
-      colors: {
-        'editor.background': '#0d121c',
-        'editor.lineHighlightBackground': '#141c2c',
-        'editorLineNumber.foreground': '#475569',
-        'editorLineNumber.activeForeground': '#38bdf8',
-        'editor.selectionBackground': '#0284c740',
-        'editorCursor.foreground': '#38bdf8',
-      },
-    });
+    loadMonaco().then((monaco) => {
+      if (disposed || !containerRef.current) return;
+      monacoRef.current = monaco;
 
-    const editor = monaco.editor.create(containerRef.current, {
-      value: '',
-      language: 'plaintext',
-      theme: 'nexus-obsidian',
-      automaticLayout: true,
-      fontSize: 13.5,
-      lineHeight: 21,
-      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontLigatures: true,
-      minimap: { enabled: true },
-      scrollBeyondLastLine: false,
-      smoothScrolling: true,
-      cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'on',
-      bracketPairColorization: { enabled: true },
-      padding: { top: 10 },
-      tabSize: 2,
-    });
+      monaco.editor.defineTheme('nexus-obsidian', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '64748b', fontStyle: 'italic' },
+          { token: 'keyword', foreground: '38bdf8' },
+          { token: 'string', foreground: '34d399' },
+          { token: 'number', foreground: 'f59e0b' },
+          { token: 'type', foreground: 'a78bfa' },
+        ],
+        colors: {
+          'editor.background': '#0d121c',
+          'editor.lineHighlightBackground': '#141c2c',
+          'editorLineNumber.foreground': '#475569',
+          'editorLineNumber.activeForeground': '#38bdf8',
+          'editor.selectionBackground': '#0284c740',
+          'editorCursor.foreground': '#38bdf8',
+        },
+      });
 
-    editorRef.current = editor;
+      const editor = monaco.editor.create(containerRef.current, {
+        value: '',
+        language: 'plaintext',
+        theme: 'nexus-obsidian',
+        automaticLayout: true,
+        fontSize: 13.5,
+        lineHeight: 21,
+        fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontLigatures: true,
+        minimap: { enabled: window.innerWidth >= 768 },
+        scrollBeyondLastLine: false,
+        smoothScrolling: true,
+        cursorBlinking: 'smooth',
+        bracketPairColorization: { enabled: true },
+        padding: { top: 10 },
+        tabSize: 2,
+      });
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      useIdeStore.getState().saveFile();
-    });
+      editorRef.current = editor;
+      setMonacoReady(true);
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      useIdeStore.getState().runCurrentFile();
-    });
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        useIdeStore.getState().saveFile();
+      });
 
-    editor.onDidChangeModelContent(() => {
-      if (suppressChangeRef.current) return;
-      const currentActive = useIdeStore.getState().activeFile;
-      if (currentActive) {
-        updateTabContent(currentActive, editor.getValue());
-      }
-    });
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+        useIdeStore.getState().runCurrentFile();
+      });
 
-    editor.onDidChangeCursorPosition((e) => {
-      setCursor(e.position.lineNumber, e.position.column);
-    });
+      editor.onDidChangeModelContent(() => {
+        if (suppressChangeRef.current) return;
+        const currentActive = useIdeStore.getState().activeFile;
+        if (currentActive) {
+          updateTabContent(currentActive, editor.getValue());
+        }
+      });
 
-    editor.onDidChangeCursorSelection((e) => {
-      const model = editor.getModel();
-      if (!model) return;
-      const text = model.getValueInRange(e.selection);
-      setSelection(text);
+      editor.onDidChangeCursorPosition((e) => {
+        setCursor(e.position.lineNumber, e.position.column);
+      });
+
+      editor.onDidChangeCursorSelection((e) => {
+        const model = editor.getModel();
+        if (!model) return;
+        setSelection(model.getValueInRange(e.selection));
+      });
     });
 
     return () => {
-      editor.dispose();
+      disposed = true;
+      editorRef.current?.dispose();
       editorRef.current = null;
     };
   }, []);
@@ -125,7 +115,9 @@ export const MonacoWorkspace: React.FC = () => {
   // Sync active tab content & language into Monaco
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor) return;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !monacoReady) return;
+
     if (!activeTab) {
       suppressChangeRef.current = true;
       editor.setValue('');
@@ -144,16 +136,17 @@ export const MonacoWorkspace: React.FC = () => {
         suppressChangeRef.current = false;
       }
     }
-  }, [activeTab?.path, activeTab?.content, activeTab?.language]);
+  }, [monacoReady, activeTab?.path, activeTab?.content, activeTab?.language]);
 
   // Apply backend diagnostics to Monaco markers
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor || !activeTab) return;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !activeTab || !monacoReady) return;
     const model = editor.getModel();
     if (!model) return;
     const fileDiags = diagnostics.filter((d) => d.file === activeTab.path);
-    const markers: monaco.editor.IMarkerData[] = fileDiags.map((d) => ({
+    const markers: MonacoNS.editor.IMarkerData[] = fileDiags.map((d) => ({
       severity:
         d.severity === 'error'
           ? monaco.MarkerSeverity.Error
@@ -167,18 +160,18 @@ export const MonacoWorkspace: React.FC = () => {
       endColumn: 120,
     }));
     monaco.editor.setModelMarkers(model, 'nexus-diagnostics', markers);
-  }, [diagnostics, activeTab?.path]);
+  }, [monacoReady, diagnostics, activeTab?.path]);
 
-  // Handle jump-to-line requests (search, problems, agent ide_open_file)
+  // Handle jump-to-line requests
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor || !jumpRequest || !activeTab || jumpRequest.path !== activeTab.path) return;
+    if (!editor || !jumpRequest || !activeTab || jumpRequest.path !== activeTab.path || !monacoReady) return;
     setTimeout(() => {
       editor.revealLineInCenter(jumpRequest.line);
       editor.setPosition({ lineNumber: jumpRequest.line, column: jumpRequest.column || 1 });
       editor.focus();
     }, 30);
-  }, [jumpRequest?.nonce, activeTab?.path]);
+  }, [monacoReady, jumpRequest?.nonce, activeTab?.path]);
 
   const askAgentAboutSelection = () => {
     const snippet = selection.trim();
@@ -192,7 +185,6 @@ export const MonacoWorkspace: React.FC = () => {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-[#0d121c] relative">
-      {/* Breadcrumbs & Quick Action Bar */}
       {activeTab && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-[#0b1019] border-b border-slate-800/70 text-xs shrink-0">
           <div className="flex items-center gap-2 text-slate-400 truncate">
@@ -219,7 +211,7 @@ export const MonacoWorkspace: React.FC = () => {
               title="Enviar archivo o selección al Agente"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{selection.trim() ? 'IA: Selección' : 'IA: Revisar'}</span>
+              <span className="hidden sm:inline">{selection.trim() ? 'IA: Selección' : 'IA: Revisar'}</span>
             </button>
             <button
               onClick={() => runDiagnostics(activeTab.path)}
@@ -253,7 +245,6 @@ export const MonacoWorkspace: React.FC = () => {
         </div>
       )}
 
-      {/* Monaco Container */}
       <div className="relative flex-1 min-h-0">
         <div ref={containerRef} className="w-full h-full" />
 
@@ -264,7 +255,7 @@ export const MonacoWorkspace: React.FC = () => {
             </div>
             <h2 className="text-lg font-semibold text-slate-200">KODE KSST Workspace</h2>
             <p className="text-sm text-slate-400 max-w-md mt-2">
-              Selecciona un archivo en el Explorador, presiona <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 font-mono text-xs">Ctrl+Shift+P</kbd> para abrir la paleta de comandos o pídele al Agente que programe por ti.
+              Selecciona un archivo en el Explorador, o pídele al Agente que programe por ti.
             </p>
           </div>
         )}

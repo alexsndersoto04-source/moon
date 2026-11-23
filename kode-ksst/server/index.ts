@@ -390,6 +390,9 @@ async function startServer() {
     });
   });
 
+  // Serve pre-minified Monaco Editor assets locally (zero CDN, fast mobile/cloud builds)
+  app.use('/monaco-vs', express.static(path.join(ROOT_DIR, 'node_modules/monaco-editor/min/vs')));
+
   // Frontend serving: Vite middleware in dev, dist/ in production
   const isProd = process.env.NODE_ENV === 'production';
   if (isProd) {

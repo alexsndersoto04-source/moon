@@ -11,9 +11,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 5000,
+    chunkSizeWarningLimit: 2000,
   },
   optimizeDeps: {
-    include: ['monaco-editor', '@xterm/xterm', '@xterm/addon-fit', 'lucide-react', 'zustand'],
+    include: ['@xterm/xterm', '@xterm/addon-fit', 'lucide-react', 'zustand'],
   },
 });

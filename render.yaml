@@ -2,11 +2,10 @@ services:
   - type: web
     name: kode-ksst
     runtime: docker
-    rootDir: kode-ksst
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./kode-ksst/Dockerfile
+    dockerContext: ./kode-ksst
     plan: free
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
