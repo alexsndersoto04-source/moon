@@ -15,7 +15,7 @@ import {
 import { useIdeStore } from '../../store/useIdeStore';
 import { WebTerminal } from './WebTerminal';
 
-export const BottomPanel: React.FC = () => {
+export const BottomPanel: React.FC<{ fullHeight?: boolean }> = ({ fullHeight }) => {
   const {
     bottomTab,
     showBottomPanel,
@@ -40,7 +40,7 @@ export const BottomPanel: React.FC = () => {
   const [quickCmd, setQuickCmd] = useState('');
   const [showStdin, setShowStdin] = useState(false);
 
-  if (!showBottomPanel) return null;
+  if (!fullHeight && !showBottomPanel) return null;
 
   const latestExec = executionHistory[0];
 
@@ -59,7 +59,7 @@ export const BottomPanel: React.FC = () => {
   };
 
   return (
-    <div className="h-64 border-t border-slate-800/80 bg-[#080c13] flex flex-col shrink-0">
+    <div className={`${fullHeight ? 'flex-1 h-full' : 'h-64'} border-t border-slate-800/80 bg-[#080c13] flex flex-col shrink-0`}>
       {/* Header Tabs */}
       <div className="flex items-center justify-between px-2 bg-[#0a0f18] border-b border-slate-800/80 h-9 shrink-0">
         <div className="flex items-center gap-1">

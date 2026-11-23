@@ -110,3 +110,4 @@ export interface AgentChatItem {
 
 export type SidebarTab = 'explorer' | 'search' | 'git' | 'runner' | 'outline';
 export type BottomTab = 'output' | 'terminal' | 'problems' | 'preview';
+export type MobileView = 'files' | 'editor' | 'console' | 'agent';

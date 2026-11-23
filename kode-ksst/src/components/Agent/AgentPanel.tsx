@@ -96,7 +96,7 @@ const ToolCard: React.FC<{ tc: AgentToolCallLog }> = ({ tc }) => {
   );
 };
 
-export const AgentPanel: React.FC = () => {
+export const AgentPanel: React.FC<{ mobileFull?: boolean }> = ({ mobileFull }) => {
   const {
     showAgentPanel,
     brainConfig,
@@ -127,7 +127,7 @@ export const AgentPanel: React.FC = () => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [agentMessages]);
 
-  if (!showAgentPanel) return null;
+  if (!mobileFull && !showAgentPanel) return null;
 
   const hasBrainKey = Boolean(brainConfig.apiKey?.trim()) || Boolean(brainConfig.baseUrl?.includes('127.0.0.1')) || Boolean(brainConfig.baseUrl?.includes('localhost'));
 
@@ -146,7 +146,11 @@ export const AgentPanel: React.FC = () => {
   ];
 
   return (
-    <div className="w-[380px] xl:w-[420px] bg-[#090d15] border-l border-slate-800/90 flex flex-col shrink-0">
+    <div
+      className={`${
+        mobileFull ? 'w-full flex-1 min-h-0' : 'w-[380px] xl:w-[420px] border-l border-slate-800/90'
+      } bg-[#090d15] flex flex-col shrink-0`}
+    >
       {/* Agent Header */}
       <div className="px-3 py-2.5 border-b border-slate-800/80 bg-[#0b1019] space-y-2 shrink-0">
         <div className="flex items-center justify-between">

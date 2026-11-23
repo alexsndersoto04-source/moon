@@ -8,6 +8,7 @@ import {
   EditorTab,
   ExecutionResult,
   FileNode,
+  MobileView,
   ProjectInfo,
   RuntimeCapability,
   SidebarTab,
@@ -57,6 +58,7 @@ interface IdeState {
   bottomTab: BottomTab;
   showBottomPanel: boolean;
   showAgentPanel: boolean;
+  mobileView: MobileView;
   showCommandPalette: boolean;
   showNewProjectModal: boolean;
   showBrainModal: boolean;
@@ -117,6 +119,7 @@ interface IdeState {
   setBottomTab: (tab: BottomTab) => void;
   setShowBottomPanel: (v: boolean) => void;
   setShowAgentPanel: (v: boolean) => void;
+  setMobileView: (v: MobileView) => void;
   setShowCommandPalette: (v: boolean) => void;
   setShowNewProjectModal: (v: boolean) => void;
   setShowBrainModal: (v: boolean) => void;
@@ -155,6 +158,7 @@ export const useIdeStore = create<IdeState>((set, get) => ({
   bottomTab: 'output',
   showBottomPanel: true,
   showAgentPanel: true,
+  mobileView: 'editor',
   showCommandPalette: false,
   showNewProjectModal: false,
   showBrainModal: false,
@@ -266,6 +270,7 @@ export const useIdeStore = create<IdeState>((set, get) => ({
     if (existing) {
       set({
         activeFile: filePath,
+        mobileView: 'editor',
         jumpRequest: line ? { path: filePath, line, column: column || 1, nonce: Date.now() } : get().jumpRequest,
       });
       return;
@@ -289,6 +294,7 @@ export const useIdeStore = create<IdeState>((set, get) => ({
     set((s) => ({
       openTabs: [...s.openTabs, newTab],
       activeFile: filePath,
+      mobileView: 'editor',
       jumpRequest: line ? { path: filePath, line, column: column || 1, nonce: Date.now() } : s.jumpRequest,
     }));
   },
@@ -435,6 +441,7 @@ export const useIdeStore = create<IdeState>((set, get) => ({
       set((s) => ({
         executionHistory: [stamped, ...s.executionHistory].slice(0, 30),
         bottomTab: result.previewUrl ? 'preview' : 'output',
+        mobileView: 'console',
         previewUrl: result.previewUrl || s.previewUrl,
         previewNonce: result.previewUrl ? Date.now() : s.previewNonce,
       }));
@@ -523,11 +530,12 @@ export const useIdeStore = create<IdeState>((set, get) => ({
     get().addToast('Proyecto restaurado al checkpoint', 'success');
   },
 
-  setSidebarTab: (tab) => set({ sidebarTab: tab, showSidebar: true }),
+  setSidebarTab: (tab) => set({ sidebarTab: tab, showSidebar: true, mobileView: 'files' }),
   setShowSidebar: (v) => set({ showSidebar: v }),
-  setBottomTab: (tab) => set({ bottomTab: tab, showBottomPanel: true }),
+  setBottomTab: (tab) => set({ bottomTab: tab, showBottomPanel: true, mobileView: 'console' }),
   setShowBottomPanel: (v) => set({ showBottomPanel: v }),
-  setShowAgentPanel: (v) => set({ showAgentPanel: v }),
+  setShowAgentPanel: (v) => set({ showAgentPanel: v, mobileView: v ? 'agent' : 'editor' }),
+  setMobileView: (v) => set({ mobileView: v }),
   setShowCommandPalette: (v) => set({ showCommandPalette: v }),
   setShowNewProjectModal: (v) => set({ showNewProjectModal: v }),
   setShowBrainModal: (v) => set({ showBrainModal: v }),

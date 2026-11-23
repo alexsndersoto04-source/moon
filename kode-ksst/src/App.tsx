@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, Bot, CheckCircle2, Code2, Files, Terminal, X } from 'lucide-react';
 import { useIdeStore } from './store/useIdeStore';
 import { TopBar } from './components/TopBar';
 import { ActivityBar } from './components/ActivityBar';
@@ -27,9 +27,13 @@ export const App: React.FC = () => {
     activeFile,
     diagnostics,
     activeProjectId,
+    mobileView,
+    setMobileView,
     toasts,
     removeToast,
     setBottomTab,
+    agentRunning,
+    isRunning,
   } = useIdeStore();
 
   useEffect(() => {
@@ -38,20 +42,27 @@ export const App: React.FC = () => {
 
   const activeTab = openTabs.find((t) => t.path === activeFile);
 
+  const renderSidebarContent = () => (
+    <>
+      {sidebarTab === 'explorer' && <FileExplorer />}
+      {sidebarTab === 'search' && <GlobalSearch />}
+      {sidebarTab === 'git' && <GitPanel />}
+      {sidebarTab === 'runner' && <RunConfigsPanel />}
+      {sidebarTab === 'outline' && <SymbolOutline />}
+    </>
+  );
+
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#0b0f17] text-slate-100 overflow-hidden">
+    <div className="h-[100dvh] w-screen flex flex-col bg-[#0b0f17] text-slate-100 overflow-hidden">
       <TopBar />
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Desktop Multi-Pane IDE Layout */}
+      <div className="hidden md:flex flex-1 min-h-0 overflow-hidden">
         <ActivityBar />
 
         {showSidebar && (
           <aside className="w-64 bg-[#090d14] border-r border-slate-800/80 flex flex-col shrink-0 overflow-hidden">
-            {sidebarTab === 'explorer' && <FileExplorer />}
-            {sidebarTab === 'search' && <GlobalSearch />}
-            {sidebarTab === 'git' && <GitPanel />}
-            {sidebarTab === 'runner' && <RunConfigsPanel />}
-            {sidebarTab === 'outline' && <SymbolOutline />}
+            {renderSidebarContent()}
           </aside>
         )}
 
@@ -64,8 +75,86 @@ export const App: React.FC = () => {
         <AgentPanel />
       </div>
 
-      {/* Status Bar */}
-      <footer className="h-6 bg-[#070a10] border-t border-slate-800/90 px-3 flex items-center justify-between text-[11px] text-slate-400 shrink-0">
+      {/* Mobile Touch-First Single-Pane IDE Layout */}
+      <div className="flex md:hidden flex-1 min-h-0 overflow-hidden">
+        {mobileView === 'files' && (
+          <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+            <ActivityBar />
+            <aside className="flex-1 bg-[#090d14] flex flex-col min-w-0 overflow-hidden">
+              {renderSidebarContent()}
+            </aside>
+          </div>
+        )}
+
+        {mobileView === 'editor' && (
+          <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+            <EditorTabs />
+            <MonacoWorkspace />
+          </main>
+        )}
+
+        {mobileView === 'console' && (
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+            <BottomPanel fullHeight />
+          </div>
+        )}
+
+        {mobileView === 'agent' && (
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+            <AgentPanel mobileFull />
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="flex md:hidden items-center justify-around bg-[#070a10] border-t border-slate-800/90 h-13 px-1 shrink-0">
+        <button
+          onClick={() => setMobileView('files')}
+          className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg text-[11px] ${
+            mobileView === 'files' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-400'
+          }`}
+        >
+          <Files className="w-4 h-4" />
+          <span>Archivos</span>
+        </button>
+
+        <button
+          onClick={() => setMobileView('editor')}
+          className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg text-[11px] ${
+            mobileView === 'editor' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-400'
+          }`}
+        >
+          <Code2 className="w-4 h-4" />
+          <span>Editor</span>
+        </button>
+
+        <button
+          onClick={() => setMobileView('console')}
+          className={`relative flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg text-[11px] ${
+            mobileView === 'console' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-400'
+          }`}
+        >
+          <Terminal className="w-4 h-4" />
+          <span>Consola</span>
+          {(isRunning || diagnostics.length > 0) && (
+            <span className={`absolute top-1 right-2 w-2 h-2 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'}`} />
+          )}
+        </button>
+
+        <button
+          onClick={() => setMobileView('agent')}
+          className={`relative flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg text-[11px] ${
+            mobileView === 'agent' ? 'text-violet-300 bg-violet-500/15' : 'text-slate-400'
+          }`}
+        >
+          <Bot className="w-4 h-4" />
+          <span>Agente IA</span>
+          {agentRunning && <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-violet-400 animate-pulse" />}
+        </button>
+      </nav>
+
+      {/* Desktop Status Bar */}
+      <footer className="hidden md:flex h-6 bg-[#070a10] border-t border-slate-800/90 px-3 items-center justify-between text-[11px] text-slate-400 shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-sky-400 font-medium">workspace: {activeProjectId || 'loading...'}</span>
           <button
@@ -107,7 +196,7 @@ export const App: React.FC = () => {
 
       {/* Toast Notifications */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-9 right-4 z-50 space-y-2 max-w-sm">
+        <div className="fixed bottom-16 md:bottom-9 right-4 z-50 space-y-2 max-w-sm">
           {toasts.map((t) => (
             <div
               key={t.id}

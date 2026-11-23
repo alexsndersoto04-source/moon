@@ -122,7 +122,7 @@ export const BrainConfigModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-[#0b1019] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto bg-[#0b1019] border border-slate-700/80 rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-[#090d14]">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
