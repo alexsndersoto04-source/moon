@@ -1,0 +1,6 @@
+Hola mundo, este es el clúster distribuido MiniMind funcionando en Redmi 9C y Redmi 13C.
+El Redmi 9C actúa como director principal coordinando el entrenamiento en paralelo.
+El Redmi 13C aporta su procesador y memoria para calcular gradientes compartidos.
+Juntos entrenamos un modelo de lenguaje real paso a paso con All-Reduce síncrono.
+La inteligencia artificial distribuida permite unir recursos de dos teléfonos Android.
+Cada paso reduce la pérdida del modelo y mejora la generación de texto en español.

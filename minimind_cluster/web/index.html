@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiniMind Cluster — Redmi 9C + Redmi 13C</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #131a2a;
+      --border: #1e293b;
+      --accent: #3b82f6;
+      --green: #10b981;
+      --red: #ef4444;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin-bottom: 4px; }
+    .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .card h2 { font-size: 1rem; margin-bottom: 10px; color: #e2e8f0; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .stat { background: #0f1523; padding: 10px; border-radius: 8px; text-align: center; }
+    .stat .val { font-size: 1.25rem; font-weight: 700; color: var(--accent); }
+    .stat .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .device { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #0f1523; border-radius: 8px; margin-bottom: 8px; }
+    .badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+    .badge.ready, .badge.connected { background: rgba(16,185,129,0.15); color: var(--green); }
+    .badge.training { background: rgba(59,130,246,0.2); color: var(--accent); }
+    .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+    button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; }
+    .btn-start { background: var(--green); color: #052e16; }
+    .btn-stop { background: var(--red); color: #fff; }
+    .btn-gen { background: var(--accent); color: #fff; flex: 0 0 auto; padding: 10px 16px; }
+    input[type="text"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #0f1523; color: var(--text); font-size: 0.95rem; }
+    .gen-row { display: flex; gap: 8px; }
+    .output { margin-top: 10px; padding: 10px; background: #0f1523; border-radius: 8px; font-family: monospace; font-size: 0.85rem; min-height: 44px; white-space: pre-wrap; }
+    canvas { width: 100%; height: 140px; background: #0f1523; border-radius: 8px; display: block; }
+  </style>
+</head>
+<body>
+  <h1>MiniMind Cluster Móvil</h1>
+  <p class="subtitle">Entrenamiento Distribuido Real (All-Reduce Síncrono) • Redmi 9C Director + Redmi 13C Worker</p>
+
+  <div class="card">
+    <h2>Estado del Entrenamiento</h2>
+    <div class="grid">
+      <div class="stat"><div class="val" id="stepVal">0</div><div class="lbl">Paso (Step)</div></div>
+      <div class="stat"><div class="val" id="lossVal">—</div><div class="lbl">Pérdida (Loss)</div></div>
+      <div class="stat"><div class="val" id="tpsVal">0</div><div class="lbl">Tokens / seg</div></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-start" onclick="sendCmd('start_training')">▶ Iniciar Entrenamiento</button>
+      <button class="btn-stop" onclick="sendCmd('stop_training')">⏹ Detener</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Dispositivos Conectados</h2>
+    <div id="deviceList">Conectando al Director Redmi 9C...</div>
+    <p class="subtitle" style="margin-top:8px; margin-bottom:0;" id="wsInfo"></p>
+  </div>
+
+  <div class="card">
+    <h2>Curva de Pérdida (Loss)</h2>
+    <canvas id="lossChart" width="640" height="140"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Probar Modelo MiniMind</h2>
+    <div class="gen-row">
+      <input type="text" id="promptInput" value="Hola mundo" placeholder="Escribe un inicio de frase..." />
+      <button class="btn-gen" onclick="generateText()">Generar</button>
+    </div>
+    <div class="output" id="genOutput">Aquí aparecerá el texto generado por tu modelo...</div>
+  </div>
+
+  <script>
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws`);
+    let lossPoints = [];
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'register_dashboard' }));
+    };
+
+    ws.onmessage = (ev) => {
+      const data = JSON.parse(ev.data);
+      if (data.type === 'cluster_state') {
+        renderCluster(data);
+      } else if (data.type === 'train_step') {
+        document.getElementById('stepVal').textContent = data.step;
+        document.getElementById('lossVal').textContent = data.loss.toFixed(4);
+        document.getElementById('tpsVal').textContent = data.tokens_per_sec;
+        lossPoints.push(data.loss);
+        if (lossPoints.length > 60) lossPoints.shift();
+        drawChart();
+        if (data.cluster) renderCluster(data.cluster);
+      } else if (data.type === 'generated_text') {
+        document.getElementById('genOutput').textContent = data.text;
+      }
+    };
+
+    function renderCluster(c) {
+      document.getElementById('stepVal').textContent = c.step;
+      document.getElementById('wsInfo').textContent = `Para unir el Redmi 13C: python3 -m minimind_cluster.worker --host ${c.local_ip} --port ${c.port}`;
+      if (c.loss_history && c.loss_history.length > 0 && lossPoints.length === 0) {
+        lossPoints = c.loss_history.map(x => x.loss);
+        document.getElementById('lossVal').textContent = lossPoints[lossPoints.length - 1].toFixed(4);
+        drawChart();
+      }
+      const list = document.getElementById('deviceList');
+      list.innerHTML = c.devices.map(d => `
+        <div class="device">
+          <div>
+            <strong>${d.name}</strong><br/>
+            <span style="font-size:0.78rem;color:#94a3b8">${d.role} • Pasos: ${d.steps}</span>
+          </div>
+          <span class="badge ${d.status}">${d.status.toUpperCase()}</span>
+        </div>
+      `).join('');
+    }
+
+    function sendCmd(type) {
+      ws.send(JSON.stringify({ type }));
+    }
+
+    function generateText() {
+      const prompt = document.getElementById('promptInput').value;
+      ws.send(JSON.stringify({ type: 'generate_text', prompt }));
+    }
+
+    function drawChart() {
+      const canvas = document.getElementById('lossChart');
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      if (lossPoints.length < 2) return;
+      const maxL = Math.max(...lossPoints, 0.1);
+      const minL = Math.min(...lossPoints, 0);
+      const range = Math.max(maxL - minL, 0.01);
+
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      lossPoints.forEach((val, idx) => {
+        const x = (idx / (lossPoints.length - 1)) * (w - 20) + 10;
+        const y = h - 12 - ((val - minL) / range) * (h - 24);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+  </script>
+</body>
+</html>
