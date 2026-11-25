@@ -15,6 +15,9 @@
     agent: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2.2 2.2m9.6 9.6L19 19M19 5l-2.2 2.2m-9.6 9.6L5 19"/></svg>',
     tool: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 18 3l3 3-3.5 3.5m-3-3L5 16l3 3 9.5-9.5M4 20l2-1"/></svg>'
   };
+  let modelCatalogRevision = 0;
+  let modelInputEdited = false;
+  let apiKeyOrigin = '';
   const state = {
     health: null,
     tree: [],
@@ -1103,11 +1106,46 @@
     requestAnimationFrame(() => $('#quick-open-input').focus());
   }
 
+  function providerOrigin(value) {
+    try {
+      const url = new URL(String(value || '').trim() || 'https://api.openai.com/v1');
+      return ['http:', 'https:'].includes(url.protocol) ? url.origin : '';
+    } catch { return ''; }
+  }
+
+  function setModelDiscoveryNote(message, kind = '') {
+    const note = $('#model-discovery-note');
+    note.textContent = message;
+    note.classList.toggle('success', kind === 'success');
+    note.classList.toggle('error', kind === 'error');
+  }
+
+  function resetModelCatalog(message = 'Busca el catálogo para elegir un modelo disponible. Si el proveedor marca alguno como gratis, CodeForge lo prioriza; también puedes escribir un ID manualmente.') {
+    modelCatalogRevision++;
+    $('#setting-model-options').replaceChildren();
+    setModelDiscoveryNote(message);
+  }
+
+  function handleProviderUrlInput() {
+    const nextOrigin = providerOrigin($('#setting-base-url').value);
+    const keyInput = $('#setting-api-key');
+    if (keyInput.value && nextOrigin && (!apiKeyOrigin || apiKeyOrigin !== nextOrigin)) {
+      keyInput.value = '';
+      apiKeyOrigin = '';
+      toast('Cambió el host del proveedor: borré la API key anterior para no enviarla a otro servicio. Pega la key del nuevo proveedor.', 'warning', 6500);
+    } else if (!keyInput.value) {
+      apiKeyOrigin = nextOrigin;
+    }
+    resetModelCatalog('Cambió la URL del proveedor. Busca su catálogo; la selección manual sigue disponible.');
+  }
+
   function fillSettingsForm() {
     const settings = state.settings;
     $('#setting-base-url').value = settings.baseUrl || 'https://api.openai.com/v1';
     $('#setting-model').value = settings.model || '';
     $('#setting-api-key').value = settings.apiKey || '';
+    apiKeyOrigin = settings.apiKey ? providerOrigin(settings.baseUrl) : '';
+    modelInputEdited = false;
     $('#setting-temperature').value = settings.temperature ?? 0.2;
     $('#setting-max-steps').value = settings.maxSteps || 16;
     $('#setting-tools').checked = settings.tools !== false;
@@ -1116,6 +1154,7 @@
     $('#setting-minimap').checked = settings.minimap !== false;
     $('#setting-autosave').checked = settings.autosave === true;
     $('#agent-model-label').textContent = settings.model || 'Configura un modelo';
+    resetModelCatalog();
   }
 
   function readSettingsForm() {
@@ -1146,11 +1185,104 @@
     return { baseUrl, model, apiKey, temperature, maxSteps, tools, requestTimeout: 180000 };
   }
 
+  function agentConfigFromInputs() {
+    return {
+      ...agentConfig(),
+      baseUrl: $('#setting-base-url').value.trim() || 'https://api.openai.com/v1',
+      model: $('#setting-model').value.trim(),
+      apiKey: $('#setting-api-key').value.trim(),
+      temperature: Math.min(Math.max(Number($('#setting-temperature').value) || 0, 0), 2),
+      maxSteps: Math.min(Math.max(Number($('#setting-max-steps').value) || 16, 1), 40),
+      tools: $('#setting-tools').checked
+    };
+  }
+
+  async function discoverAgentModels(providerLabel = 'este proveedor') {
+    const button = $('#discover-models-button');
+    const preset = $('#openrouter-preset-button');
+    if (button.disabled) return;
+    const config = agentConfigFromInputs();
+    const revision = modelCatalogRevision;
+    const oldButtonText = button.textContent;
+    const oldPresetText = preset.textContent;
+    button.disabled = true;
+    preset.disabled = true;
+    button.textContent = 'Buscando…';
+    preset.textContent = 'Consultando catálogo…';
+    setModelDiscoveryNote(`Consultando los modelos de ${providerLabel}…`);
+    try {
+      const response = await api('/api/agent/models', { method: 'POST', body: { config } });
+      if (revision !== modelCatalogRevision || providerOrigin($('#setting-base-url').value) !== providerOrigin(config.baseUrl) || $('#setting-api-key').value.trim() !== config.apiKey) return;
+      const models = Array.isArray(response.models) ? response.models : [];
+      const list = $('#setting-model-options');
+      list.replaceChildren();
+      for (const model of models) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.label = model.free ? 'GRATIS según el catálogo del proveedor' : 'El proveedor no lo marca GRATIS';
+        list.append(option);
+      }
+
+      const modelInput = $('#setting-model');
+      const currentModel = modelInput.value.trim();
+      const currentInfo = models.find((item) => item.id === currentModel);
+      let selectedModel = currentModel;
+      let autoSelected = false;
+      if (models.length && !currentInfo && (!currentModel || !modelInputEdited)) {
+        const choice = models.find((item) => item.free) || models[0];
+        modelInput.value = choice.id;
+        selectedModel = choice.id;
+        modelInputEdited = false;
+        autoSelected = true;
+      }
+
+      if (!models.length) {
+        setModelDiscoveryNote(`El catálogo de ${providerLabel} respondió, pero no devolvió modelos. Puedes escribir el ID manualmente y probar la conexión.`, 'success');
+        return;
+      }
+      const freeCount = Number(response.freeCount) || models.filter((item) => item.free).length;
+      let detail;
+      if (autoSelected) {
+        const chosen = models.find((item) => item.id === selectedModel);
+        detail = chosen?.free
+          ? `Seleccioné automáticamente ${selectedModel}, marcado GRATIS por el catálogo.`
+          : `Seleccioné automáticamente ${selectedModel}; el catálogo no marca ningún modelo como GRATIS.`;
+      } else if (currentInfo) {
+        detail = currentInfo.free
+          ? `Se conserva ${selectedModel}, marcado GRATIS por el catálogo.`
+          : `Se conserva ${selectedModel}; el proveedor no lo marca GRATIS.`;
+      } else if (currentModel && modelInputEdited) {
+        detail = `Conservé el ID escrito (${currentModel}); no aparece en el catálogo y no pude confirmar que esté disponible.`;
+      } else {
+        detail = `Modelo seleccionado: ${selectedModel}.`;
+      }
+      const freeSummary = freeCount
+        ? `${freeCount} de ${models.length} modelos marcados GRATIS.`
+        : `Ninguno de los ${models.length} modelos está marcado GRATIS; consulta los precios del proveedor.`;
+      setModelDiscoveryNote(`Catálogo encontrado: ${models.length} modelos. ${freeSummary} ${detail}`, 'success');
+    } catch (error) {
+      if (revision !== modelCatalogRevision) return;
+      const hint = error.status === 404
+        ? ' El proveedor no publica un catálogo en /models; escribe el ID manualmente y prueba la conexión.'
+        : error.status === 401 || error.status === 403
+          ? ' Revisa que la API key corresponda a este proveedor.'
+          : error.status === 502
+            ? ' Verifica la URL base y que el servidor del proveedor esté accesible; también puedes introducir el ID manualmente.'
+            : '';
+      setModelDiscoveryNote(`${error.message}${hint}`, 'error');
+    } finally {
+      button.disabled = false;
+      preset.disabled = false;
+      button.textContent = oldButtonText;
+      preset.textContent = oldPresetText;
+    }
+  }
+
   async function testAgentConnection() {
-    readSettingsFromInputsOnly();
-    if (!state.settings.model) {
+    const config = agentConfigFromInputs();
+    if (!config.model) {
       $('#agent-test-result').className = 'agent-test-result error';
-      $('#agent-test-result').textContent = 'Escribe el nombre del modelo antes de probar.';
+      $('#agent-test-result').textContent = 'Selecciona un modelo del catálogo o escribe su ID antes de probar.';
       return;
     }
     const button = $('#test-agent-button');
@@ -1160,7 +1292,7 @@
     const result = $('#agent-test-result');
     result.className = 'agent-test-result hidden';
     try {
-      const response = await api('/api/agent/test', { method: 'POST', body: { config: agentConfig() } });
+      const response = await api('/api/agent/test', { method: 'POST', body: { config } });
       result.className = 'agent-test-result success';
       result.textContent = `Conexión correcta · ${response.model} · herramientas ${response.tools ? 'disponibles' : 'no disponibles'}${response.reply ? ` · Respuesta: ${response.reply}` : ''}`;
     } catch (error) {
@@ -1170,15 +1302,6 @@
       button.disabled = false;
       button.innerHTML = old;
     }
-  }
-
-  function readSettingsFromInputsOnly() {
-    state.settings.baseUrl = $('#setting-base-url').value.trim() || 'https://api.openai.com/v1';
-    state.settings.model = $('#setting-model').value.trim();
-    state.settings.apiKey = $('#setting-api-key').value.trim();
-    state.settings.temperature = Math.min(Math.max(Number($('#setting-temperature').value) || 0, 0), 2);
-    state.settings.maxSteps = Math.min(Math.max(Number($('#setting-max-steps').value) || 16, 1), 40);
-    state.settings.tools = $('#setting-tools').checked;
   }
 
   function renderMarkdown(text) {
@@ -1594,6 +1717,21 @@
     });
     $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); readSettingsForm(); });
     $('#setting-font-size').addEventListener('input', (event) => { $('#font-size-value').textContent = `${event.target.value} px`; });
+    $('#setting-base-url').addEventListener('input', handleProviderUrlInput);
+    $('#setting-api-key').addEventListener('input', (event) => {
+      apiKeyOrigin = event.currentTarget.value ? providerOrigin($('#setting-base-url').value) : '';
+      resetModelCatalog('Cambió la API key. Vuelve a buscar el catálogo si este proveedor la requiere.');
+    });
+    $('#setting-model').addEventListener('input', () => {
+      modelInputEdited = true;
+      $('#agent-test-result').className = 'agent-test-result hidden';
+    });
+    $('#discover-models-button').addEventListener('click', () => discoverAgentModels());
+    $('#openrouter-preset-button').addEventListener('click', () => {
+      $('#setting-base-url').value = 'https://openrouter.ai/api/v1';
+      handleProviderUrlInput();
+      discoverAgentModels('OpenRouter');
+    });
     $('#test-agent-button').addEventListener('click', testAgentConnection);
     $('#toggle-api-key').addEventListener('click', (event) => {
       const input = $('#setting-api-key');

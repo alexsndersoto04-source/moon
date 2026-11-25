@@ -43,7 +43,13 @@ Variables opcionales:
 
 ## Agente IA
 
-Abre **Ajustes → Agente IA** y define una URL base, el nombre de modelo y, si el proveedor lo requiere, la API key. Se admiten servicios que implementen `POST /chat/completions`; por ejemplo, proveedores tipo OpenAI o servidores locales como Ollama. La URL base puede incluir `/v1` o acabar directamente en `/chat/completions`.
+Abre **Ajustes → Agente IA**, configura la URL base y pulsa **Buscar modelos**. CodeForge consulta el catálogo compatible `GET /models`, muestra los IDs encontrados y selecciona automáticamente primero uno que el proveedor marque como gratuito; si no hay uno gratuito, elige uno disponible y lo indica. Puedes escoger otra sugerencia o escribir el ID manualmente cuando el proveedor no publique catálogo. La prueba de conexión confirma si el modelo realmente acepta solicitudes de chat y herramientas.
+
+El botón **OpenRouter: buscar modelos GRATIS** configura `https://openrouter.ai/api/v1` y consulta su catálogo. Para chatear necesitas una API key de OpenRouter; la disponibilidad, límites y precios de los modelos gratuitos pueden cambiar. La etiqueta GRATIS se basa en los metadatos publicados por el proveedor, no es una garantía independiente de disponibilidad o de límites.
+
+Se admiten servicios que implementen `POST /chat/completions`, como proveedores tipo OpenAI o servidores locales como Ollama. La URL base puede incluir `/v1` o acabar directamente en `/chat/completions`. Si el proveedor no tiene `GET /models`, introduce el ID manualmente y usa **Probar conexión**.
+
+Un error `insufficient_quota` o `credit_balance_exhausted` indica que esa API key no tiene saldo: cambiar el modelo dentro de la misma cuenta no lo soluciona. La suscripción de ChatGPT no añade créditos a la API; para cambiar de proveedor, usa su URL y su propia API key. Si cambias el host del proveedor en Ajustes, CodeForge borra la clave del formulario para evitar enviarla por accidente a otro servicio.
 
 La configuración, incluida la clave, se conserva únicamente en el `localStorage` del navegador actual. La clave se envía al backend para atender las solicitudes y no se escribe en archivos del servidor. Las llamadas de herramientas trabajan sobre el workspace real: pueden crear/editar/borrar archivos, ejecutar código, buscar y restaurar snapshots. El agente bloquea comandos peligrosos en su herramienta de shell; revisa sus cambios y resultados.
 

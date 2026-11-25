@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const http = require('node:http');
 const WebSocket = require('ws');
 
 async function expectStatus(response, status, message) {
@@ -62,6 +63,52 @@ async function main() {
   const address = server.address();
   const base = `http://127.0.0.1:${address.port}`;
   const wsBase = `ws://127.0.0.1:${address.port}`;
+  let providerAuthorization = '';
+  const providerServer = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/v1/models') {
+      providerAuthorization = req.headers.authorization || '';
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: [
+        { id: 'paid-model', pricing: { prompt: '0.01', completion: '0.02' } },
+        { id: 'free-by-price', pricing: { prompt: '0', completion: '0' } },
+        { id: 'free-by-input-output', pricing: { input: '0', output: '0' } },
+        { id: 'free-by-flag', metadata: { free: true } },
+        { id: 'free-by-id:free' },
+        { id: 'missing-prices', pricing: {} },
+        { id: 'null-prices', pricing: { prompt: null, completion: null } },
+        { id: 'duplicate-free', free: true },
+        { id: 'duplicate-free', free: false }
+      ] }));
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/v1/chat/completions') {
+      let raw = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => { raw += chunk; });
+      req.on('end', () => {
+        let model = '';
+        try { model = JSON.parse(raw).model; } catch { /* malformed test request */ }
+        if (model === 'quota-model') {
+          res.writeHead(429, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' } }));
+        } else if (model === 'rate-model') {
+          res.writeHead(429, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'Rate limit exceeded.', type: 'rate_limit_exceeded', code: 'rate_limit_exceeded' } }));
+        } else {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] }));
+        }
+      });
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Not found' } }));
+  });
+  await new Promise((resolve, reject) => {
+    providerServer.once('error', reject);
+    providerServer.listen(0, '127.0.0.1', resolve);
+  });
+  const providerBase = `http://127.0.0.1:${providerServer.address().port}/v1`;
   let assertions = 0;
   const check = (condition, message) => { assertions++; assert.ok(condition, message); };
 
@@ -69,7 +116,10 @@ async function main() {
     // The app and vendored editor assets are served by the actual Express server.
     const html = await request(base, '/');
     await expectStatus(html, 200);
-    check((await html.text()).includes('CodeForge Agent'), 'index.html should serve the actual editor UI');
+    const htmlContent = await html.text();
+    check(htmlContent.includes('CodeForge Agent'), 'index.html should serve the actual editor UI');
+    check(htmlContent.includes('discover-models-button') && htmlContent.includes('setting-model-options'), 'agent settings expose a searchable provider model catalog');
+    check(htmlContent.includes('insufficient_quota') && htmlContent.includes('OpenRouter: buscar modelos GRATIS'), 'settings explain quota errors and offer a free-model provider preset');
     for (const asset of ['/css/app.css', '/js/app.js', '/vendor/monaco/vs/loader.js', '/vendor/xterm/xterm.js', '/vendor/xterm-fit/addon-fit.js', '/vendor/xterm-css/xterm.css']) {
       const response = await request(base, asset);
       await expectStatus(response, 200, `${asset} should be served`);
@@ -219,6 +269,50 @@ async function main() {
     response = await request(base, '/api/agent/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ config: {} }) });
     await expectStatus(response, 400, 'agent config validation reports a useful HTTP error');
 
+    check(agent.normalizeModelsUrl(providerBase) === `${providerBase}/models`, 'model catalog URL is derived from a provider base URL');
+    check(agent.normalizeModelsUrl(`${providerBase}/chat/completions`) === `${providerBase}/models`, 'model catalog URL is normalized when chat/completions is already present');
+    check(agent.normalizeBase(`${providerBase}/models`) === `${providerBase}/chat/completions`, 'chat URL is normalized when models is already present');
+    response = await request(base, '/api/agent/models', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { baseUrl: providerBase, apiKey: 'provider-test-key' } })
+    });
+    await expectStatus(response, 200, 'model discovery proxies the provider catalog through the application API');
+    const catalog = await json(response);
+    check(catalog.models.length === 8 && catalog.freeCount === 5, 'catalog accepts multiple pricing/free metadata formats and removes duplicate IDs');
+    check(catalog.models.slice(0, catalog.freeCount).every((item) => item.free), 'free models sort before models without free metadata');
+    check(catalog.models.find((item) => item.id === 'missing-prices')?.free === false && catalog.models.find((item) => item.id === 'null-prices')?.free === false, 'missing or null pricing is not incorrectly treated as free');
+    check(providerAuthorization === 'Bearer provider-test-key', 'catalog requests authenticate with the selected provider API key');
+    check(catalog.source === `${providerBase}/models`, 'catalog response identifies the queried endpoint');
+
+    response = await request(base, '/api/agent/test', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { baseUrl: providerBase, model: 'quota-model', apiKey: 'provider-test-key' } })
+    });
+    await expectStatus(response, 429, 'provider quota status reaches the client');
+    const quotaFailure = await json(response);
+    check(/no tiene saldo\/créditos disponibles/i.test(quotaFailure.error) && /cambiar a otro modelo de OpenAI no lo soluciona/i.test(quotaFailure.error), 'insufficient_quota explains that changing models cannot restore balance');
+
+    response = await request(base, '/api/agent/test', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { baseUrl: providerBase, model: 'rate-model', apiKey: 'provider-test-key' } })
+    });
+    await expectStatus(response, 429);
+    const rateFailure = await json(response);
+    check(/límite de solicitudes/i.test(rateFailure.error) && !/no tiene saldo\/créditos disponibles/i.test(rateFailure.error), 'ordinary rate limits are distinguished from exhausted credits');
+
+    const offlinePort = providerServer.address().port;
+    await new Promise((resolve) => {
+      providerServer.close(resolve);
+      providerServer.closeAllConnections?.();
+    });
+    response = await request(base, '/api/agent/models', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { baseUrl: `http://127.0.0.1:${offlinePort}/v1` } })
+    });
+    await expectStatus(response, 502, 'provider network failures are returned as upstream connection errors');
+    const connectionFailure = await json(response);
+    check(/No se pudo conectar con el catálogo de modelos/i.test(connectionFailure.error), 'connection errors are clearly distinguished from provider quota errors');
+
     console.log(`CodeForge integration: ${assertions} assertions passed.`);
   } finally {
     server.closeWebSockets?.();
@@ -229,6 +323,12 @@ async function main() {
       server.close(finish);
       server.closeAllConnections?.();
     });
+    if (providerServer.listening) {
+      await new Promise((resolve) => {
+        providerServer.close(resolve);
+        providerServer.closeAllConnections?.();
+      });
+    }
     await fs.rm(temporaryRoot, { recursive: true, force: true });
   }
 }

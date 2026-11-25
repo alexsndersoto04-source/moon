@@ -118,6 +118,12 @@ function createApp() {
   app.get('/api/agent/tools', (_req, res) => ok(res, {
     tools: agent.TOOLS.map((item) => ({ name: item.function.name, description: item.function.description }))
   }));
+  app.post('/api/agent/models', async (req, res) => {
+    try {
+      const config = (req.body || {}).config || {};
+      ok(res, await agent.listModels(config));
+    } catch (error) { bad(res, error); }
+  });
   app.post('/api/agent/test', async (req, res) => {
     try {
       const config = (req.body || {}).config || {};

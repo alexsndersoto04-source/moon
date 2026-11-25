@@ -294,12 +294,20 @@
           <div class="settings-section-heading"><div><h3>Agente IA</h3><p>Compatible con APIs tipo OpenAI, OpenRouter y servidores locales como Ollama.</p></div><span class="settings-badge">LOCAL</span></div>
           <label class="field-label" for="setting-base-url">URL base</label>
           <input class="text-field" id="setting-base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="url">
-          <div class="field-help">Se completa con <code>/chat/completions</code>, salvo que ya lo incluyas.</div>
+          <div class="field-help">CodeForge completa <code>/chat/completions</code> para el chat y consulta <code>/models</code> para descubrir opciones.</div>
           <label class="field-label" for="setting-model">Modelo <span class="required-mark">*</span></label>
-          <input class="text-field" id="setting-model" type="text" placeholder="gpt-4o-mini" autocomplete="off">
-          <label class="field-label" for="setting-api-key">API key <span class="optional-label">opcional para servicios locales</span></label>
+          <div class="field-with-action">
+            <input class="text-field" id="setting-model" type="text" list="setting-model-options" placeholder="Buscar modelos disponibles" autocomplete="off">
+            <datalist id="setting-model-options"></datalist>
+            <button id="discover-models-button" class="secondary-button model-discovery-button" type="button">Buscar modelos</button>
+          </div>
+          <div id="model-discovery-note" class="field-help model-discovery-note" role="status" aria-live="polite">Busca el catálogo para elegir un modelo disponible. Si el proveedor marca alguno como gratis, CodeForge lo prioriza; también puedes escribir un ID manualmente.</div>
+          <button id="openrouter-preset-button" class="text-button provider-preset" type="button">OpenRouter: buscar modelos GRATIS</button>
+          <div class="field-help">OpenRouter requiere su propia API key para chatear; los modelos gratis tienen límites y disponibilidad variables.</div>
+          <label class="field-label" for="setting-api-key">API key <span class="optional-label">usa la clave del proveedor elegido</span></label>
           <div class="secret-field"><input class="text-field" id="setting-api-key" type="password" placeholder="sk-…" autocomplete="new-password"><button type="button" id="toggle-api-key" class="secret-toggle">Mostrar</button></div>
           <div class="field-help">La clave se guarda solo en el almacenamiento local de este navegador y se envía al servidor para cada solicitud. No se persiste en el backend.</div>
+          <div class="field-help">Si OpenAI responde <code>insufficient_quota</code> o <code>credit_balance_exhausted</code>, esa API key no tiene saldo: cambiar de modelo en OpenAI no lo soluciona. La suscripción de ChatGPT no añade saldo a la API. Para usar otro proveedor, cambia la URL y pega la API key de ese proveedor.</div>
           <div class="settings-grid">
             <div><label class="field-label" for="setting-temperature">Temperatura</label><input class="text-field" id="setting-temperature" type="number" min="0" max="2" step="0.1" value="0.2"></div>
             <div><label class="field-label" for="setting-max-steps">Pasos de agente</label><input class="text-field" id="setting-max-steps" type="number" min="1" max="40" value="16"></div>

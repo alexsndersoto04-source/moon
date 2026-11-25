@@ -144,9 +144,104 @@ async function buildContext(openFile) {
 function normalizeBase(url) {
   let base = String(url || '').trim().replace(/\/+$/, '');
   if (!base) base = 'https://api.openai.com/v1';
-  if (/\/chat\/completions$/i.test(base)) return base;
+  base = base.replace(/\/(?:models|chat\/completions)$/i, '');
   if (!/\/v\d+(?:beta\d*)?$/i.test(base)) base += '/v1';
   return base + '/chat/completions';
+}
+
+function normalizeModelsUrl(url) {
+  let base = String(url || '').trim().replace(/\/+$/, '');
+  if (!base) base = 'https://api.openai.com/v1';
+  if (/\/models$/i.test(base)) return base;
+  base = base.replace(/\/chat\/completions$/i, '');
+  if (!/\/v\d+(?:beta\d*)?$/i.test(base)) base += '/v1';
+  return base + '/models';
+}
+
+function providerError(raw, status, url) {
+  let payload = {};
+  try { payload = JSON.parse(raw); } catch { /* provider returned plain text */ }
+  const details = payload?.error || payload || {};
+  const message = typeof details === 'string'
+    ? details
+    : String(details.message || payload?.message || '');
+  const code = String(typeof details === 'object'
+    ? (details.code || details.type || payload?.code || '')
+    : '');
+  const quotaError = /insufficient_quota|credit_balance_exhausted|no credits remaining/i.test(`${code} ${message}`);
+  const friendly = quotaError
+    ? 'La API indica que esta clave no tiene saldo/créditos disponibles. Si es una clave de OpenAI, cambiar a otro modelo de OpenAI no lo soluciona: recarga saldo o cambia a otro proveedor usando una API key de ese proveedor. Los modelos GRATIS solo aplican en proveedores que los ofrezcan.'
+    : status === 429
+      ? 'El proveedor aplicó un límite de solicitudes (HTTP 429); este código por sí solo no indica falta de saldo. Espera un momento o revisa los límites de tu cuenta.'
+      : message || raw.slice(0, 500) || `Error HTTP ${status}`;
+  const error = new Error(`HTTP ${status} del proveedor: ${friendly}${url ? ` (${url})` : ''}`);
+  error.status = status;
+  error.providerCode = code;
+  return error;
+}
+
+function freeModel(item, id) {
+  const pricing = item?.pricing;
+  const isZeroPrice = (value) => {
+    if (typeof value !== 'number' && typeof value !== 'string') return false;
+    if (typeof value === 'string' && !value.trim()) return false;
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount === 0;
+  };
+  const inputPrice = pricing?.prompt ?? pricing?.input;
+  const outputPrice = pricing?.completion ?? pricing?.output;
+  const zeroPricing = pricing && isZeroPrice(inputPrice) && isZeroPrice(outputPrice);
+  const advertisedFree = [item?.free, item?.is_free, item?.metadata?.free]
+    .some((value) => value === true || value === 'true');
+  return advertisedFree || /:free$/i.test(id) || Boolean(zeroPricing);
+}
+
+async function listModels(config = {}) {
+  const url = normalizeModelsUrl(config.baseUrl);
+  let parsed;
+  try { parsed = new URL(url); }
+  catch { throw Object.assign(new Error('La URL base del proveedor no es válida.'), { status: 400 }); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw Object.assign(new Error('La URL del proveedor debe usar HTTP o HTTPS.'), { status: 400 });
+  }
+  const headers = { Accept: 'application/json', ...(config.headers && typeof config.headers === 'object' ? config.headers : {}) };
+  if (config.apiKey) headers.Authorization = 'Bearer ' + String(config.apiKey);
+  const controller = new AbortController();
+  const timeoutMs = Math.min(Math.max(Number(config.requestTimeout) || 30000, 5000), 90000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  let raw;
+  try {
+    response = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+    raw = await response.text();
+  } catch (error) {
+    const message = error.name === 'AbortError'
+      ? `Tiempo límite al consultar el catálogo de modelos (${url}).`
+      : `No se pudo conectar con el catálogo de modelos en ${url}: ${error.message}`;
+    throw Object.assign(new Error(message), { status: 502, code: 'PROVIDER_CONNECTION_FAILED' });
+  } finally { clearTimeout(timer); }
+  if (!response.ok) throw providerError(raw, response.status, url);
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch { throw Object.assign(new Error('El endpoint de modelos no devolvió JSON válido.'), { status: 502 }); }
+  const source = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data) ? payload.data
+      : Array.isArray(payload?.models) ? payload.models : [];
+  const models = source.map((item) => {
+    const id = typeof item === 'string' ? item : String(item?.id || item?.name || '');
+    if (!id) return null;
+    return { id, free: typeof item === 'object' && item ? freeModel(item, id) : /:free$/i.test(id) };
+  }).filter(Boolean);
+  const byId = new Map();
+  for (const model of models) {
+    const existing = byId.get(model.id);
+    byId.set(model.id, { id: model.id, free: model.free || Boolean(existing?.free) });
+  }
+  const unique = [...byId.values()]
+    .sort((a, b) => Number(b.free) - Number(a.free) || a.id.localeCompare(b.id))
+    .slice(0, 1000);
+  return { models: unique, freeCount: unique.filter((model) => model.free).length, source: url };
 }
 
 async function callLLM(config, messages, withTools, signal) {
@@ -182,11 +277,7 @@ async function callLLM(config, messages, withTools, signal) {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
   }
-  if (!response.ok) {
-    const error = new Error(`HTTP ${response.status} del proveedor\n${raw.slice(0, 1200)}`);
-    error.status = response.status;
-    throw error;
-  }
+  if (!response.ok) throw providerError(raw, response.status, url);
   let data;
   try { data = JSON.parse(raw); } catch { throw new Error('El proveedor devolvió una respuesta que no es JSON: ' + raw.slice(0, 400)); }
   const choice = data.choices?.[0];
@@ -340,4 +431,4 @@ async function probe(config) {
   return { ok: true, model: config.model, tools, reply: reply.slice(0, 200) };
 }
 
-module.exports = { TOOLS, loop, execute, systemPrompt, parseTextCalls, probe, callLLM, normalizeBase };
+module.exports = { TOOLS, loop, execute, systemPrompt, parseTextCalls, probe, callLLM, normalizeBase, normalizeModelsUrl, listModels, providerError };
