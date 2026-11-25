@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="description" content="CodeForge — editor de código web con Monaco, terminal y agente de programación.">
+  <title>CodeForge · Editor de código</title>
+  <link rel="stylesheet" href="/vendor/xterm-css/xterm.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <button id="toggle-sidebar" class="icon-button mobile-only" type="button" aria-label="Mostrar explorador" title="Explorador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14"/></svg>
+        </button>
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M4 8.5 16 2l12 6.5v15L16 30 4 23.5z"/><path d="m11 12-4 4 4 4m10-8 4 4-4 4m-3-10-4 12"/></svg>
+        </div>
+        <div class="brand-name">CodeForge <span class="brand-version">2.1</span></div>
+      </div>
+
+      <div class="topbar-center">
+        <div class="workspace-pill" title="Workspace activo">
+          <span class="workspace-dot"></span>
+          <span id="workspace-name">Workspace</span>
+          <span class="workspace-branch">local</span>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="save-button" class="toolbar-button" type="button" title="Guardar (Ctrl+S)" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l3 3v13H4V4zm3 0v6h8V4M8 20v-7h8v7"/></svg>
+          <span>Guardar</span><kbd>⌘S</kbd>
+        </button>
+        <button id="run-button" class="run-button" type="button" title="Ejecutar archivo activo (F5)" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 12 7-12 7z"/></svg>
+          <span>Ejecutar</span><kbd>F5</kbd>
+        </button>
+        <span class="topbar-divider"></span>
+        <button id="open-agent-button" class="icon-button agent-launch" type="button" aria-label="Abrir agente IA" title="Agente de código">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v3m0 11v3M3.5 12h3m11 0h3M6 6l2.1 2.1m7.8 7.8L18 18m0-12-2.1 2.1m-7.8 7.8L6 18"/><circle cx="12" cy="12" r="4.5"/></svg>
+        </button>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Ajustes" title="Ajustes">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 13.5 1.1.8-1.3 2.3-1.3-.5a7.5 7.5 0 0 1-1.6.9l-.2 1.4h-2.7l-.3-1.4a7.5 7.5 0 0 1-1.7-.9l-1.2.5-1.4-2.3 1.1-.9a7 7 0 0 1 0-1.9l-1.1-.8 1.4-2.3 1.3.5c.5-.4 1.1-.7 1.7-.9l.2-1.4h2.7l.3 1.4c.6.2 1.1.5 1.6.9l1.3-.5 1.3 2.3-1.1.8c.1.7.1 1.3 0 2Z" transform="translate(-1.5 -1)"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="workbench" id="workbench">
+      <aside class="sidebar" id="sidebar" aria-label="Explorador del workspace">
+        <nav class="activity-bar" aria-label="Vistas">
+          <button class="activity-button is-active" type="button" data-view="explorer" aria-label="Explorador" title="Explorador">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5h6l2 2h9v11h-17z"/><path d="M3.5 8h17"/></svg>
+          </button>
+          <button class="activity-button" type="button" data-view="search" aria-label="Buscar" title="Buscar en archivos">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg>
+          </button>
+          <button class="activity-button" type="button" data-view="snapshots" aria-label="Snapshots" title="Snapshots">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16v12H4zM8 7.5V5h8v2.5M8 12h8m-8 3.5h5"/><path d="M17.5 3.5v5m-2.5-2.5h5"/></svg>
+          </button>
+          <div class="activity-spacer"></div>
+          <button id="activity-agent" class="activity-button" type="button" aria-label="Agente IA" title="Agente IA">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2.2 2.2m7.6 7.6L18 18m0-12-2.2 2.2m-7.6 7.6L6 18"/><circle cx="12" cy="12" r="4"/></svg>
+          </button>
+        </nav>
+
+        <section class="sidebar-main">
+          <div class="sidebar-heading">
+            <div class="sidebar-heading-copy">
+              <h1 id="sidebar-title">EXPLORADOR</h1>
+              <span id="file-count" class="muted-count">0</span>
+            </div>
+            <div class="sidebar-heading-actions" id="explorer-actions">
+              <button class="mini-icon-button" id="new-file-button" type="button" aria-label="Nuevo archivo" title="Nuevo archivo">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7m-8 1h4m-2-2v4m5-12v6m-3-3h6"/></svg>
+              </button>
+              <button class="mini-icon-button" id="new-folder-button" type="button" aria-label="Nueva carpeta" title="Nueva carpeta">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6h6l2 2h9v11h-17zM3.5 9h17m-8.5 2.5v5m-2.5-2.5h5"/></svg>
+              </button>
+              <button class="mini-icon-button" id="refresh-tree-button" type="button" aria-label="Actualizar explorador" title="Actualizar">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 9A6.5 6.5 0 0 1 17 6.5L20 9M4 15l3 2.5A6.5 6.5 0 0 0 18 15"/></svg>
+              </button>
+            </div>
+            <div class="sidebar-heading-actions hidden" id="search-actions">
+              <button class="mini-icon-button" id="clear-search-button" type="button" aria-label="Limpiar búsqueda" title="Limpiar búsqueda">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              </button>
+            </div>
+            <div class="sidebar-heading-actions hidden" id="snapshot-actions">
+              <button class="mini-icon-button" id="create-snapshot-button" type="button" aria-label="Crear snapshot" title="Crear snapshot">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg>
+              </button>
+              <button class="mini-icon-button" id="refresh-snapshots-button" type="button" aria-label="Actualizar snapshots" title="Actualizar">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 9A6.5 6.5 0 0 1 17 6.5L20 9M4 15l3 2.5A6.5 6.5 0 0 0 18 15"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-view" id="explorer-view">
+            <div class="workspace-root-row">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6h6l2 2h9v11h-17z"/></svg>
+              <span id="root-label">WORKSPACE</span>
+              <button id="root-menu-button" class="mini-icon-button root-menu" type="button" aria-label="Acciones del workspace" title="Acciones">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+              </button>
+            </div>
+            <div class="tree-scroll" id="file-tree" role="tree" aria-label="Archivos"></div>
+            <div id="tree-empty" class="empty-hint hidden">
+              <div class="empty-hint-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8m-8 3h8m-8 3h5"/></svg></div>
+              <strong>Workspace vacío</strong>
+              <span>Crea un archivo para empezar.</span>
+              <button class="text-button" id="empty-create-file" type="button">Crear primer archivo</button>
+            </div>
+          </div>
+
+          <div class="sidebar-view hidden" id="search-view">
+            <form id="search-form" class="search-form">
+              <label class="search-input-wrap" for="search-query">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg>
+                <input id="search-query" type="search" placeholder="Buscar en archivos" autocomplete="off">
+                <kbd>↵</kbd>
+              </label>
+              <div class="search-options">
+                <label class="check-option"><input id="search-case" type="checkbox"><span>Aa</span><em>Distinguir mayúsculas</em></label>
+                <label class="check-option"><input id="search-regex" type="checkbox"><span>.*</span><em>Expresión regular</em></label>
+              </div>
+              <input id="search-glob" class="glob-input" type="text" placeholder="Filtro de archivo: *.js (opcional)">
+            </form>
+            <div id="search-summary" class="search-summary"></div>
+            <div id="search-results" class="search-results"></div>
+          </div>
+
+          <div class="sidebar-view hidden" id="snapshots-view">
+            <div class="snapshot-intro">
+              <p>Copias reales del workspace. Restaurar crea primero una copia de seguridad automática.</p>
+            </div>
+            <div id="snapshot-list" class="snapshot-list"></div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="editor-column" id="editor-column">
+        <div class="editor-topline">
+          <div class="breadcrumbs" id="breadcrumbs"><span class="breadcrumb-workspace">workspace</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-placeholder">Sin archivo abierto</span></div>
+          <div class="editor-tools">
+            <button id="quick-open-button" class="editor-tool-button" type="button" title="Abrir archivo rápido (Ctrl+P)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg>
+              <span>Abrir archivo</span><kbd>⌘P</kbd>
+            </button>
+            <button id="toggle-terminal-button" class="editor-tool-button" type="button" title="Mostrar/ocultar terminal">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 5 5-5 5m7 2h9"/></svg>
+              <span>Terminal</span>
+            </button>
+            <button id="toggle-agent-button" class="editor-tool-button" type="button" title="Mostrar/ocultar agente">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+              <span>Agente</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="editor-tabs" id="editor-tabs" role="tablist" aria-label="Archivos abiertos">
+          <div class="tab-placeholder">Abre un archivo desde el explorador para comenzar</div>
+        </div>
+
+        <section class="editor-surface" id="editor-surface" aria-label="Editor">
+          <div id="monaco-editor" class="monaco-host hidden"></div>
+          <div id="welcome-view" class="welcome-view">
+            <div class="welcome-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M6 12.5 24 3l18 9.5v23L24 45 6 35.5z"/><path d="m17 18-6 6 6 6m14-12 6 6-6 6m-4-15-6 18"/></svg></div>
+            <div class="welcome-eyebrow">ENTORNO DE DESARROLLO</div>
+            <h2>Tu código. Tu espacio de trabajo.</h2>
+            <p>Abre un archivo del workspace o crea uno nuevo. Los cambios se guardan en el sistema de archivos del servidor.</p>
+            <div class="welcome-actions">
+              <button class="primary-button" id="welcome-new-file" type="button"><svg viewBox="0 0 24 24"><path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7m-8 1h4m-2-2v4m5-12v6m-3-3h6"/></svg>Nuevo archivo</button>
+              <button class="secondary-button" id="welcome-open-terminal" type="button"><svg viewBox="0 0 24 24"><path d="m4 6 5 5-5 5m7 2h9"/></svg>Abrir terminal</button>
+            </div>
+            <div class="welcome-shortcuts"><span><kbd>Ctrl</kbd><kbd>S</kbd> Guardar</span><span><kbd>Ctrl</kbd><kbd>P</kbd> Abrir archivo</span><span><kbd>F5</kbd> Ejecutar</span></div>
+          </div>
+        </section>
+
+        <section class="bottom-panel" id="bottom-panel" aria-label="Panel inferior">
+          <div class="bottom-panel-header">
+            <div class="bottom-tabs" role="tablist" aria-label="Paneles">
+              <button class="bottom-tab is-active" id="terminal-tab" type="button" data-panel="terminal" role="tab" aria-selected="true">TERMINAL <span class="terminal-indicator"></span></button>
+              <button class="bottom-tab" id="output-tab" type="button" data-panel="output" role="tab" aria-selected="false">SALIDA</button>
+            </div>
+            <div class="bottom-panel-actions">
+              <span id="terminal-state" class="terminal-state"><i></i>Desconectada</span>
+              <button class="mini-icon-button" id="new-terminal-button" type="button" aria-label="Nueva terminal" title="Nueva terminal">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 5 5-5 5m7 2h5m-2.5-2.5v5"/></svg>
+              </button>
+              <button class="mini-icon-button" id="clear-output-button" type="button" aria-label="Limpiar salida" title="Limpiar salida">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m-8 0 1 13h8l1-13m-7 3v7m3-7v7"/></svg>
+              </button>
+              <button class="mini-icon-button" id="maximize-panel-button" type="button" aria-label="Maximizar panel" title="Maximizar/Restaurar">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg>
+              </button>
+              <button class="mini-icon-button" id="close-panel-button" type="button" aria-label="Ocultar panel" title="Ocultar panel">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="bottom-panel-body">
+            <div class="terminal-panel" id="terminal-panel" role="tabpanel">
+              <div class="terminal-tabs" id="terminal-tabs"></div>
+              <div class="terminal-host-wrap" id="terminal-host-wrap"></div>
+            </div>
+            <div class="output-panel hidden" id="output-panel" role="tabpanel">
+              <div id="run-output" class="run-output"><div class="output-empty">La salida de ejecución aparecerá aquí.</div></div>
+            </div>
+          </div>
+        </section>
+        <div class="panel-resize-handle" id="panel-resize-handle" role="separator" aria-label="Cambiar tamaño del panel inferior" aria-orientation="horizontal" tabindex="0"></div>
+      </main>
+
+      <aside class="agent-panel" id="agent-panel" aria-label="Agente de código">
+        <div class="agent-header">
+          <div class="agent-title-lockup">
+            <div class="agent-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2.2 2.2m9.6 9.6L19 19M19 5l-2.2 2.2m-9.6 9.6L5 19"/></svg></div>
+            <div><strong>CodeForge Agent</strong><span id="agent-model-label">Configura un modelo</span></div>
+          </div>
+          <div class="agent-header-actions">
+            <button class="mini-icon-button" id="agent-new-chat-button" type="button" title="Nueva conversación" aria-label="Nueva conversación"><svg viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg></button>
+            <button class="mini-icon-button" id="agent-settings-button" type="button" title="Ajustes del agente" aria-label="Ajustes del agente"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7a5.7 5.7 0 0 0-.5-1.2l.9-1.9-2.1-2.1-1.9.9a5.7 5.7 0 0 0-1.2-.5l-.7-2h-3l-.7 2a5.7 5.7 0 0 0-1.2.5l-1.9-.9-2.1 2.1.9 1.9a5.7 5.7 0 0 0-.5 1.2l-2 .7v3l2 .7c.1.4.3.8.5 1.2l-.9 1.9 2.1 2.1 1.9-.9c.4.2.8.4 1.2.5l.7 2h3l.7-2c.4-.1.8-.3 1.2-.5l1.9.9 2.1-2.1-.9-1.9c.2-.4.4-.8.5-1.2z" transform="translate(2 0) scale(.83)"/></svg></button>
+            <button class="mini-icon-button" id="close-agent-button" type="button" title="Cerrar agente" aria-label="Cerrar agente"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="agent-privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg><span>El agente modifica archivos reales del workspace.</span></div>
+        <div id="agent-transcript" class="agent-transcript" aria-live="polite">
+          <div class="agent-welcome" id="agent-welcome">
+            <div class="agent-welcome-orb"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="5"/><path d="M16 2v6m0 16v6M2 16h6m16 0h6M6 6l4.3 4.3m11.4 11.4L26 26m0-20-4.3 4.3M10.3 21.7 6 26"/></svg></div>
+            <h2>¿Qué vamos a construir?</h2>
+            <p>Puedo explorar el código, implementar funciones, corregir errores y ejecutar pruebas.</p>
+            <div class="suggestion-list">
+              <button type="button" class="suggestion-chip" data-prompt="Analiza la estructura del workspace y dime por dónde empezar.">Analiza este workspace <span>→</span></button>
+              <button type="button" class="suggestion-chip" data-prompt="Revisa el archivo abierto, encuentra errores y propón una corrección.">Revisa el archivo abierto <span>→</span></button>
+            </div>
+            <button id="agent-welcome-settings" class="text-button" type="button">Configurar proveedor y modelo</button>
+          </div>
+        </div>
+        <form id="agent-form" class="agent-composer">
+          <textarea id="agent-input" rows="3" placeholder="Pide un cambio, revisión o prueba…" aria-label="Mensaje para CodeForge Agent"></textarea>
+          <div class="composer-footer">
+            <span class="composer-hint"><kbd>Enter</kbd> enviar · <kbd>Shift Enter</kbd> nueva línea</span>
+            <button id="agent-send-button" class="send-button" type="submit" aria-label="Enviar mensaje" title="Enviar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7.5 18-3.2-7.3L3 10.5z"/><path d="M10.3 13.7 21 3"/></svg>
+            </button>
+          </div>
+        </form>
+      </aside>
+    </div>
+
+    <footer class="statusbar">
+      <div class="status-left">
+        <button id="status-workspace" class="status-item" type="button" title="Estado del workspace"><span class="status-green-dot"></span><span>Workspace</span></button>
+        <span id="status-message" class="status-message">Listo</span>
+      </div>
+      <div class="status-right">
+        <span id="runtime-status" class="status-item status-runtime">Conectando…</span>
+        <span id="cursor-status" class="status-item hidden">Ln 1, Col 1</span>
+        <span id="encoding-status" class="status-item hidden">UTF-8</span>
+        <span id="language-status" class="status-item">CodeForge</span>
+      </div>
+    </footer>
+  </div>
+
+  <dialog id="quick-open-dialog" class="modal quick-open-modal">
+    <div class="quick-open-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg>
+      <input id="quick-open-input" type="search" placeholder="Buscar archivos por nombre…" autocomplete="off" aria-label="Buscar y abrir archivo">
+      <kbd>ESC</kbd>
+    </div>
+    <div id="quick-open-results" class="quick-open-results"></div>
+    <div class="quick-open-foot">Selecciona un archivo para abrir · <kbd>↑</kbd><kbd>↓</kbd> navegar · <kbd>↵</kbd> abrir</div>
+  </dialog>
+
+  <dialog id="settings-dialog" class="modal settings-modal">
+    <form id="settings-form" method="dialog">
+      <div class="modal-header">
+        <div><span class="modal-eyebrow">PREFERENCIAS DEL EDITOR</span><h2>Ajustes</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="settings-dialog" aria-label="Cerrar ajustes"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="settings-body">
+        <section class="settings-section">
+          <h3>Editor</h3>
+          <label class="field-label" for="setting-font-size">Tamaño de fuente <span id="font-size-value">14 px</span></label>
+          <input id="setting-font-size" type="range" min="11" max="22" value="14">
+          <label class="toggle-row"><span><strong>Minimapa</strong><small>Vista general del archivo en el editor</small></span><input id="setting-minimap" type="checkbox" checked><i class="toggle-ui"></i></label>
+          <label class="toggle-row"><span><strong>Guardar al cambiar de pestaña</strong><small>Guarda automáticamente los cambios pendientes</small></span><input id="setting-autosave" type="checkbox"><i class="toggle-ui"></i></label>
+        </section>
+        <section class="settings-section">
+          <div class="settings-section-heading"><div><h3>Agente IA</h3><p>Compatible con APIs tipo OpenAI, OpenRouter y servidores locales como Ollama.</p></div><span class="settings-badge">LOCAL</span></div>
+          <label class="field-label" for="setting-base-url">URL base</label>
+          <input class="text-field" id="setting-base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="url">
+          <div class="field-help">CodeForge completa <code>/chat/completions</code> para el chat y consulta <code>/models</code> para descubrir opciones.</div>
+          <label class="field-label" for="setting-model">Modelo <span class="required-mark">*</span></label>
+          <div class="field-with-action">
+            <input class="text-field" id="setting-model" type="text" list="setting-model-options" placeholder="Buscar modelos disponibles" autocomplete="off">
+            <datalist id="setting-model-options"></datalist>
+            <button id="discover-models-button" class="secondary-button model-discovery-button" type="button">Buscar modelos</button>
+          </div>
+          <div id="model-discovery-note" class="field-help model-discovery-note" role="status" aria-live="polite">Busca el catálogo para elegir un modelo disponible. Si el proveedor marca alguno como gratis, CodeForge lo prioriza; también puedes escribir un ID manualmente.</div>
+          <button id="openrouter-preset-button" class="text-button provider-preset" type="button">OpenRouter: buscar modelos GRATIS</button>
+          <div class="field-help">OpenRouter requiere su propia API key para chatear; los modelos gratis tienen límites y disponibilidad variables.</div>
+          <label class="field-label" for="setting-api-key">API key <span class="optional-label">usa la clave del proveedor elegido</span></label>
+          <div class="secret-field"><input class="text-field" id="setting-api-key" type="password" placeholder="sk-…" autocomplete="new-password"><button type="button" id="toggle-api-key" class="secret-toggle">Mostrar</button></div>
+          <div class="field-help">La clave se guarda solo en el almacenamiento local de este navegador y se envía al servidor para cada solicitud. No se persiste en el backend.</div>
+          <div class="field-help">Si OpenAI responde <code>insufficient_quota</code> o <code>credit_balance_exhausted</code>, esa API key no tiene saldo: cambiar de modelo en OpenAI no lo soluciona. La suscripción de ChatGPT no añade saldo a la API. Para usar otro proveedor, cambia la URL y pega la API key de ese proveedor.</div>
+          <div class="settings-grid">
+            <div><label class="field-label" for="setting-temperature">Temperatura</label><input class="text-field" id="setting-temperature" type="number" min="0" max="2" step="0.1" value="0.2"></div>
+            <div><label class="field-label" for="setting-max-steps">Pasos de agente</label><input class="text-field" id="setting-max-steps" type="number" min="1" max="40" value="16"></div>
+          </div>
+          <label class="toggle-row"><span><strong>Llamadas a herramientas</strong><small>Permite leer, modificar y ejecutar código real</small></span><input id="setting-tools" type="checkbox" checked><i class="toggle-ui"></i></label>
+          <div class="settings-warning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5m0 3h.01"/></svg><span>El agente puede escribir archivos y ejecutar código. Revisa sus acciones antes de continuar.</span></div>
+          <div id="agent-test-result" class="agent-test-result hidden"></div>
+          <button id="test-agent-button" class="secondary-button full-button" type="button"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 17l9 5 9-5"/></svg>Probar conexión</button>
+        </section>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="secondary-button" data-close-dialog="settings-dialog">Cancelar</button>
+        <button id="save-settings-button" type="submit" class="primary-button">Guardar ajustes</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="prompt-dialog" class="modal prompt-modal">
+    <form id="prompt-form" method="dialog">
+      <div class="modal-header"><div><span class="modal-eyebrow" id="prompt-eyebrow">WORKSPACE</span><h2 id="prompt-title">Nuevo archivo</h2></div><button class="icon-button" type="button" data-close-dialog="prompt-dialog" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <p id="prompt-description" class="prompt-description"></p>
+      <label class="field-label" for="prompt-input" id="prompt-label">Nombre</label>
+      <input class="text-field" id="prompt-input" type="text" autocomplete="off" required>
+      <div class="modal-footer"><button type="button" class="secondary-button" data-close-dialog="prompt-dialog">Cancelar</button><button id="prompt-submit" class="primary-button" type="submit">Crear</button></div>
+    </form>
+  </dialog>
+
+  <div id="context-menu" class="context-menu hidden" role="menu"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/vendor/monaco/vs/loader.js"></script>
+  <script src="/vendor/xterm/xterm.js"></script>
+  <script src="/vendor/xterm-fit/addon-fit.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
