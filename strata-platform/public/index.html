@@ -3,239 +3,328 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="Strata Engineering — Plataforma conversacional de ingeniería con 150 agentes especialistas, espacio de trabajo de código, terminal y pool multi-LLM gratuito.">
-  <title>Strata · 150 Agentes de Ingeniería</title>
+  <meta name="theme-color" content="#fafafa">
+  <meta name="description" content="Strata Engineering — Plataforma conversacional de alto nivel para planificar con IA y construir proyectos complejos con 150 agentes especialistas.">
+  <title>Strata · Planificación y 150 Agentes de Ingeniería</title>
   <link rel="stylesheet" href="/vendor/xterm-css/xterm.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-  <div class="arena-app" id="arena-app">
+  <div class="strata-app" id="strata-app">
 
-    <!-- ==================== LEFT COLLAPSIBLE SIDEBAR (ARENA STYLE) ==================== -->
+    <!-- ==================== LEFT SIDEBAR (ORGANIZED IN COLLAPSIBLE BARS) ==================== -->
     <div class="sidebar-backdrop hidden" id="sidebar-backdrop"></div>
-    <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
-      <div class="sidebar-top">
+    <aside class="sidebar" id="sidebar" aria-label="Navegación y barras desplegables">
+      <div class="sidebar-head">
         <div class="brand-lockup">
-          <div class="brand-logo" aria-hidden="true">S</div>
-          <div class="brand-text">
+          <div class="brand-mark" aria-hidden="true">S</div>
+          <div class="brand-title">
             <strong>Strata</strong>
             <span>150 Agentes</span>
           </div>
         </div>
-        <button type="button" class="icon-btn ghost" id="close-sidebar-btn" title="Ocultar menú" aria-label="Ocultar menú">
+        <button type="button" class="icon-btn ghost sm" id="close-sidebar-btn" title="Ocultar barra lateral" aria-label="Ocultar menú">
           <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
       </div>
 
-      <div class="sidebar-primary-action">
-        <button type="button" class="new-chat-btn" id="new-chat-btn">
+      <div class="sidebar-cta">
+        <button type="button" class="new-thread-btn" id="new-chat-btn">
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           <span>Nueva conversación</span>
         </button>
       </div>
 
-      <div class="sidebar-section">
-        <div class="sidebar-section-label">ESPACIO DE INGENIERÍA</div>
-        <nav class="sidebar-nav">
-          <button type="button" class="sidebar-link" id="open-agents-modal-btn">
-            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>Flota de 150 Agentes</span>
-            <span class="pill-count" id="sidebar-agents-count">150</span>
-          </button>
-          <button type="button" class="sidebar-link" data-open-workspace="code">
-            <svg viewBox="0 0 24 24"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>
-            <span>Código y Archivos</span>
-            <span class="pill-count" id="sidebar-files-count">0</span>
-          </button>
-          <button type="button" class="sidebar-link" data-open-workspace="terminal">
-            <svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></svg>
-            <span>Terminal y Ejecución</span>
-          </button>
-          <button type="button" class="sidebar-link" data-open-workspace="diagnostics">
-            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span>Auditoría y Errores</span>
-            <span class="pill-count" id="sidebar-diag-count">0</span>
-          </button>
-          <button type="button" class="sidebar-link" data-open-drawer="tools">
-            <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-            <span>Herramientas y Git</span>
-          </button>
-        </nav>
-      </div>
+      <div class="sidebar-bars">
+        <!-- BARRA DESPLEGABLE 1: CONVERSACIONES -->
+        <details class="nav-bar" open>
+          <summary class="nav-bar-summary">
+            <span class="nav-bar-title">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Conversaciones</span>
+            </span>
+            <span class="bar-badge" id="sidebar-threads-count">0</span>
+          </summary>
+          <div class="nav-bar-body">
+            <div class="threads-list" id="threads-list"></div>
+          </div>
+        </details>
 
-      <div class="sidebar-section threads-section">
-        <div class="sidebar-section-label">HISTORIAL RECIENTE</div>
-        <div class="threads-list" id="threads-list"></div>
-      </div>
+        <!-- BARRA DESPLEGABLE 2: FLOTA DE 150 AGENTES -->
+        <details class="nav-bar">
+          <summary class="nav-bar-summary">
+            <span class="nav-bar-title">
+              <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Flota de 150 Agentes</span>
+            </span>
+            <span class="bar-badge" id="sidebar-agents-count">150</span>
+          </summary>
+          <div class="nav-bar-body">
+            <button type="button" class="bar-item" id="open-agents-modal-btn">
+              <span>Explorar los 150 especialistas</span>
+              <span class="bar-arrow">→</span>
+            </button>
+            <button type="button" class="bar-item" data-quick-scale="compact">
+              <span>Equipo Rápido (6 agentes)</span>
+            </button>
+            <button type="button" class="bar-item" data-quick-scale="standard">
+              <span>Escuadrón Inteligente (15 agentes)</span>
+            </button>
+            <button type="button" class="bar-item" data-quick-scale="enterprise">
+              <span>Gran Escala (45 agentes)</span>
+            </button>
+            <button type="button" class="bar-item" data-quick-scale="full-fleet">
+              <span>Flota Completa (150 agentes)</span>
+            </button>
+          </div>
+        </details>
 
-      <div class="sidebar-footer">
-        <button type="button" class="pool-footer-btn" id="sidebar-pool-btn" data-open-drawer="providers">
-          <span class="status-dot" id="sidebar-pool-dot"></span>
-          <span class="pool-footer-copy">
-            <strong id="sidebar-pool-title">Motor Local Activo</strong>
-            <small id="sidebar-pool-sub">Conectar APIs LLM gratis</small>
-          </span>
-          <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
+        <!-- BARRA DESPLEGABLE 3: ESPACIO DE TRABAJO -->
+        <details class="nav-bar">
+          <summary class="nav-bar-summary">
+            <span class="nav-bar-title">
+              <svg viewBox="0 0 24 24"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>
+              <span>Espacio de Trabajo</span>
+            </span>
+            <span class="bar-badge" id="sidebar-files-count">0</span>
+          </summary>
+          <div class="nav-bar-body">
+            <button type="button" class="bar-item" data-open-workspace="code">
+              <span>Editor de Código y Archivos</span>
+              <span class="bar-arrow">→</span>
+            </button>
+            <button type="button" class="bar-item" data-open-workspace="terminal">
+              <span>Terminal Interactiva y Salida</span>
+              <span class="bar-arrow">→</span>
+            </button>
+            <button type="button" class="bar-item" data-open-workspace="diagnostics">
+              <span>Diagnósticos y Seguridad</span>
+              <span class="bar-badge" id="sidebar-diag-count">0</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- BARRA DESPLEGABLE 4: APIs LLM GRATIS -->
+        <details class="nav-bar">
+          <summary class="nav-bar-summary">
+            <span class="nav-bar-title">
+              <span class="status-dot" id="sidebar-pool-dot"></span>
+              <span>APIs LLM Gratis</span>
+            </span>
+            <span class="bar-badge" id="sidebar-pool-badge">Local</span>
+          </summary>
+          <div class="nav-bar-body">
+            <p class="bar-hint" id="sidebar-pool-sub">Conecta OpenRouter, Groq, Gemini, Cerebras u Ollama para conversar y construir con IA.</p>
+            <button type="button" class="bar-item accent" data-open-drawer-bar="bar-presets">
+              <span>+ Conectar API gratuita</span>
+              <span class="bar-arrow">→</span>
+            </button>
+            <button type="button" class="bar-item" data-open-drawer-bar="bar-connected">
+              <span>Administrar Pool Multi-LLM</span>
+            </button>
+            <button type="button" class="bar-item" data-open-drawer-bar="bar-routing">
+              <span>Balanceo y 15 divisiones</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- BARRA DESPLEGABLE 5: HERRAMIENTAS, GIT Y AJUSTES -->
+        <details class="nav-bar">
+          <summary class="nav-bar-summary">
+            <span class="nav-bar-title">
+              <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              <span>Herramientas y Git</span>
+            </span>
+          </summary>
+          <div class="nav-bar-body">
+            <button type="button" class="bar-item" data-open-drawer-bar="bar-verify">
+              <span>Sintaxis, OWASP y Pruebas</span>
+            </button>
+            <button type="button" class="bar-item" data-open-drawer-bar="bar-scaffold">
+              <span>Plantillas de Proyecto y Comandos</span>
+            </button>
+            <button type="button" class="bar-item" data-open-drawer-bar="bar-git">
+              <span>Clonar GitHub y Control Git</span>
+            </button>
+            <button type="button" class="bar-item" data-open-drawer-bar="bar-settings">
+              <span>Apariencia y Ajustes</span>
+            </button>
+          </div>
+        </details>
       </div>
     </aside>
 
-    <!-- ==================== CENTER STAGE (TOPBAR + ARENA CHAT + SPLIT WORKSPACE) ==================== -->
+    <!-- ==================== MAIN COLUMN (TOPBAR + CHAT + SPLIT WORKSPACE) ==================== -->
     <div class="main-column">
       <header class="topbar">
         <div class="topbar-left">
           <button type="button" class="icon-btn ghost" id="toggle-sidebar-btn" title="Menú" aria-label="Abrir o cerrar menú">
-            <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
-          <button type="button" class="mode-header-pill" id="header-mode-btn" title="Cambiar equipo o especialista activo">
-            <span class="mode-dot"></span>
-            <span id="header-mode-label">Strata · 150 Agentes</span>
-            <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+
+        <!-- CRYSTAL-CLEAR 2-PHASE SWITCH: PLANIFICAR vs CONSTRUIR -->
+        <div class="phase-switch" role="tablist" aria-label="Fase de trabajo">
+          <button type="button" class="phase-btn is-active" id="phase-plan-btn" data-phase="plan" role="tab" aria-selected="true">
+            <span class="phase-dot plan"></span>
+            <span>Planificar</span>
+          </button>
+          <button type="button" class="phase-btn" id="phase-build-btn" data-phase="build" role="tab" aria-selected="false">
+            <span class="phase-dot build"></span>
+            <span>Construir</span>
           </button>
         </div>
 
         <div class="topbar-right">
-          <button type="button" class="top-action-btn" id="toggle-workspace-btn" title="Abrir código, archivos y terminal">
+          <button type="button" class="icon-pill-btn" id="toggle-workspace-btn" title="Abrir espacio de código y terminal">
             <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>
-            <span>Espacio de trabajo</span>
-            <span class="mini-badge" id="topbar-files-badge">0</span>
+            <span class="mini-count" id="topbar-files-badge">0</span>
           </button>
-          <button type="button" class="icon-btn ghost" id="open-config-btn" data-open-drawer="providers" title="APIs LLM, Herramientas y Ajustes" aria-label="Configuración y herramientas">
+          <button type="button" class="icon-btn ghost" id="open-config-btn" data-open-drawer-bar="bar-presets" title="Herramientas y APIs LLM" aria-label="Herramientas y configuración">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
-          <button type="button" class="icon-btn ghost" id="theme-toggle-btn" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">
+          <button type="button" class="icon-btn ghost" id="theme-toggle-btn" title="Tema claro / oscuro" aria-label="Cambiar tema">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
           </button>
         </div>
       </header>
 
       <div class="stage-split" id="stage-split">
-        <!-- ========== PRIMARY ARENA CONVERSATION PANE ========== -->
+        <!-- ========== PRIMARY CONVERSATION PANE ========== -->
         <main class="chat-pane" id="chat-pane">
           <div class="chat-scroll" id="chat-scroll">
-            <!-- Clean Centered Welcome Screen (Arena style) -->
+
+            <!-- Executive Editorial Welcome Screen -->
             <section class="welcome-hero" id="welcome-hero">
-              <div class="hero-mark" aria-hidden="true">S</div>
-              <h1>¿Qué construimos o depuramos hoy?</h1>
-              <p class="hero-sub">
-                Plataforma de ingeniería con <strong>150 especialistas</strong> en 15 divisiones que programan, verifican sintaxis, auditan seguridad, ejecutan pruebas y corrigen errores sobre código real.
+              <div class="hero-status-chip" id="hero-phase-chip">
+                <span class="phase-dot plan"></span>
+                <span>Modo Planificar · Conversa primero sin modificar archivos</span>
+              </div>
+              <h1>Planifica con claridad.<br>Construye con 150 especialistas.</h1>
+              <p class="hero-lead">
+                Primero conversamos para definir arquitectura, alcance y detalles técnicos. Cuando apruebes el plan, los 150 agentes programan, verifican y depuran el proyecto real.
               </p>
 
-              <div class="starter-grid">
-                <button type="button" class="starter-card" data-starter-prompt="Diseña e implementa una API REST empresarial en Node.js con arquitectura limpia, validación estricta, pruebas unitarias reales y verificación completa de sintaxis y seguridad.">
-                  <strong>Crear proyecto completo</strong>
-                  <span>Arquitectura, código real y pruebas automáticas verificadas</span>
+              <div class="starter-list">
+                <button type="button" class="starter-row" data-starter-prompt="Hola, quiero planificar un proyecto nuevo desde cero. Antes de escribir código, hagamos preguntas clave para definir la arquitectura y el plan.">
+                  <span class="starter-copy">
+                    <strong>Planificar un proyecto nuevo</strong>
+                    <small>Conversa sobre alcance, stack y arquitectura antes de construir</small>
+                  </span>
+                  <span class="starter-arrow">→</span>
                 </button>
-                <button type="button" class="starter-card" data-starter-prompt="Realiza una auditoría completa del workspace actual: cartografía de archivos, verificación de sintaxis multi-lenguaje, auditoría de seguridad OWASP, pruebas y reparación de fallos.">
-                  <strong>Auditar y reparar código</strong>
-                  <span>Detecta bugs, vulnerabilidades y corrige automáticamente</span>
+                <button type="button" class="starter-row" data-starter-prompt="Inspecciona los archivos actuales del workspace en modo solo lectura y propón un plan técnico de mejoras, pruebas y corrección de posibles errores.">
+                  <span class="starter-copy">
+                    <strong>Analizar el proyecto actual y proponer mejoras</strong>
+                    <small>Revisión arquitectónica en solo lectura antes de tocar código</small>
+                  </span>
+                  <span class="starter-arrow">→</span>
                 </button>
-                <button type="button" class="starter-card" data-open-drawer="git">
-                  <strong>Clonar repositorio GitHub</strong>
-                  <span>Importa un proyecto grande para analizarlo y mejorarlo</span>
-                </button>
-                <button type="button" class="starter-card" data-open-drawer="providers">
-                  <strong>Conectar APIs LLM gratis</strong>
-                  <span>OpenRouter, Groq, Gemini, Cerebras, GitHub Models y más</span>
+                <button type="button" class="starter-row" data-open-drawer-bar="bar-presets">
+                  <span class="starter-copy">
+                    <strong>Conectar APIs LLM gratuitas</strong>
+                    <small>OpenRouter (:free), Groq, Google Gemini, Cerebras, GitHub Models…</small>
+                  </span>
+                  <span class="starter-arrow">→</span>
                 </button>
               </div>
             </section>
 
-            <!-- Active Conversation Messages Stream -->
+            <!-- Active Conversation Stream -->
             <div class="messages-stream hidden" id="messages-stream" aria-live="polite"></div>
           </div>
 
-          <!-- Floating Arena-Style Composer -->
+          <!-- Floating Refined Composer -->
           <div class="composer-wrap">
-            <!-- Compact Popover for Fleet / Mode Selection -->
+            <!-- Compact Squad / Specialist Popover -->
             <div class="mode-popover hidden" id="mode-popover" role="menu">
               <div class="popover-head">
-                <strong>Modo de ejecución de los 150 agentes</strong>
-                <button type="button" class="text-link-btn" id="popover-browse-agents-btn">Elegir especialistas (150) →</button>
+                <strong>Equipo para la fase de construcción</strong>
+                <button type="button" class="text-link-btn" id="popover-browse-agents-btn">Ver los 150 →</button>
               </div>
               <div class="mode-options-list">
-                <button type="button" class="mode-option is-selected" data-dispatch-mode="standard">
+                <button type="button" class="mode-option is-selected" data-build-scale="standard">
                   <span><strong>Escuadrón Inteligente · 15 agentes</strong><small>Selección automática por división (recomendado)</small></span>
                 </button>
-                <button type="button" class="mode-option" data-dispatch-mode="compact">
-                  <span><strong>Equipo Rápido · 6 agentes</strong><small>Tareas puntuales, correcciones y archivos concretos</small></span>
+                <button type="button" class="mode-option" data-build-scale="compact">
+                  <span><strong>Equipo Rápido · 6 agentes</strong><small>Ajustes puntuales y entregas rápidas</small></span>
                 </button>
-                <button type="button" class="mode-option" data-dispatch-mode="enterprise">
-                  <span><strong>Proyecto Grande · 45 agentes</strong><small>Arquitectura multi-módulo, seguridad, pruebas y rendimiento</small></span>
+                <button type="button" class="mode-option" data-build-scale="enterprise">
+                  <span><strong>Proyecto Grande · 45 agentes</strong><small>Sistemas multi-módulo, seguridad y pruebas</small></span>
                 </button>
-                <button type="button" class="mode-option" data-dispatch-mode="full-fleet">
-                  <span><strong>Flota Completa · 150 especialistas</strong><small>Despliegue total de las 15 divisiones en oleadas paralelas</small></span>
+                <button type="button" class="mode-option" data-build-scale="full-fleet">
+                  <span><strong>Flota Completa · 150 especialistas</strong><small>Despliegue completo de las 15 divisiones</small></span>
                 </button>
-                <button type="button" class="mode-option" data-dispatch-mode="audit">
-                  <span><strong>Auditoría y Auto-Reparación</strong><small>Sintaxis, OWASP, pruebas reales y corrección de fallos</small></span>
+                <button type="button" class="mode-option" data-build-scale="audit">
+                  <span><strong>Auditoría y Auto-Reparación</strong><small>Sintaxis, seguridad OWASP y corrección automática</small></span>
                 </button>
-                <button type="button" class="mode-option" data-dispatch-mode="single">
-                  <span><strong id="mode-single-label">Especialista 1-a-1 · Strata Agent (AG-141)</strong><small>Conversación directa con un ingeniero concreto</small></span>
+                <button type="button" class="mode-option" data-build-scale="single">
+                  <span><strong id="mode-single-label">Especialista 1-a-1 · Strata Agent (AG-141)</strong><small>Trabajo directo con un ingeniero concreto</small></span>
                 </button>
-                <button type="button" class="mode-option hidden" id="mode-custom-squad-opt" data-dispatch-mode="custom">
-                  <span><strong id="mode-custom-label">Escuadrón Manual</strong><small>Ejecuta solo los especialistas que marcaste</small></span>
+                <button type="button" class="mode-option hidden" id="mode-custom-squad-opt" data-build-scale="custom">
+                  <span><strong id="mode-custom-label">Escuadrón Manual</strong><small>Solo los especialistas que elegiste</small></span>
                 </button>
               </div>
             </div>
 
-            <form class="composer-box" id="composer-form">
+            <form class="composer-card" id="composer-form">
               <textarea
                 id="composer-input"
                 rows="1"
-                placeholder="Describe el proyecto a crear, el error a depurar o qué quieres que construyan los agentes..."
-                aria-label="Instrucción para los agentes"
+                placeholder="Conversa con la IA para planificar tu proyecto, arquitectura o solución…"
+                aria-label="Escribe tu mensaje"
               ></textarea>
-              <div class="composer-toolbar">
-                <div class="composer-tools-left">
-                  <button type="button" class="composer-chip" id="composer-mode-btn" title="Elegir cuántos agentes o qué especialista responde">
-                    <svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    <span id="composer-mode-label">15 agentes</span>
+              <div class="composer-bar">
+                <div class="composer-bar-left">
+                  <button type="button" class="chip-btn" id="composer-squad-btn" title="Elegir equipo de los 150 agentes">
+                    <span class="phase-dot plan" id="composer-phase-dot"></span>
+                    <span id="composer-mode-label">Planificar</span>
+                    <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
-                  <button type="button" class="composer-chip" id="composer-pool-btn" data-open-drawer="providers" title="Configurar APIs LLM gratuitas">
+                  <button type="button" class="chip-btn" id="composer-pool-btn" data-open-drawer-bar="bar-presets" title="APIs LLM gratuitas">
                     <span class="status-dot" id="composer-pool-dot"></span>
-                    <span id="composer-pool-label">Motor Local</span>
+                    <span id="composer-pool-label">Local</span>
                   </button>
-                  <button type="button" class="composer-icon-chip" id="composer-upload-btn" title="Subir archivos al proyecto" aria-label="Subir archivos">
+                  <button type="button" class="chip-icon-btn" id="composer-upload-btn" title="Subir archivos al workspace" aria-label="Subir archivos">
                     <svg viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                   </button>
                 </div>
-                <div class="composer-tools-right">
-                  <button type="submit" class="send-btn" id="composer-send-btn" title="Enviar" aria-label="Enviar mensaje">
+                <div class="composer-bar-right">
+                  <button type="button" class="approve-mini-btn hidden" id="quick-build-from-plan-btn" title="Aprobar lo conversado y empezar a construir">
+                    Construir plan →
+                  </button>
+                  <button type="submit" class="send-circle-btn" id="composer-send-btn" title="Enviar" aria-label="Enviar">
                     <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
                   </button>
                 </div>
               </div>
             </form>
-            <div class="composer-caption" id="composer-caption">
-              Workspace real · Verificación automática de sintaxis, seguridad y pruebas.
-            </div>
           </div>
         </main>
 
-        <!-- ========== RIGHT WORKSPACE / ARTIFACT PANEL (SPLIT ON DESKTOP, FULL SHEET ON MOBILE) ========== -->
-        <aside class="workspace-panel hidden" id="workspace-panel" aria-label="Espacio de trabajo y código">
-          <div class="ws-panel-head">
+        <!-- ========== RIGHT WORKSPACE / ARTIFACT PANEL ========== -->
+        <aside class="workspace-panel hidden" id="workspace-panel" aria-label="Espacio de trabajo">
+          <div class="ws-head">
             <div class="ws-tabs" role="tablist">
               <button type="button" class="ws-tab is-active" data-ws-tab="code">Código</button>
               <button type="button" class="ws-tab" data-ws-tab="terminal">Terminal</button>
               <button type="button" class="ws-tab" data-ws-tab="diagnostics">
-                Diagnósticos <span class="mini-badge" id="ws-diag-badge">0</span>
+                Auditoría <span class="mini-count" id="ws-diag-badge">0</span>
               </button>
             </div>
-            <button type="button" class="icon-btn ghost sm" id="close-workspace-btn" title="Cerrar panel" aria-label="Cerrar espacio de trabajo">
+            <button type="button" class="icon-btn ghost sm" id="close-workspace-btn" title="Cerrar espacio de trabajo" aria-label="Cerrar">
               <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
 
-          <!-- TAB 1: CODE STUDIO -->
+          <!-- CODE -->
           <div class="ws-pane is-active" id="ws-pane-code">
-            <div class="code-topbar">
-              <div class="code-topbar-left">
+            <div class="code-toolbar">
+              <div class="inline-row min-w-0">
                 <button type="button" class="btn btn-subtle btn-xs" id="toggle-tree-btn">Archivos</button>
-                <span class="file-breadcrumb mono" id="active-file-breadcrumb">Sin archivo abierto</span>
+                <span class="breadcrumb mono" id="active-file-breadcrumb">Sin archivo abierto</span>
               </div>
-              <div class="code-topbar-right">
+              <div class="inline-row">
                 <button type="button" class="btn btn-subtle btn-xs" id="verify-file-btn" disabled>Verificar</button>
                 <button type="button" class="btn btn-subtle btn-xs" id="save-file-btn" disabled>Guardar</button>
                 <button type="button" class="btn btn-primary btn-xs" id="run-file-btn" disabled>Ejecutar</button>
@@ -245,38 +334,35 @@
             <div class="code-body" id="code-body">
               <div class="file-drawer" id="file-drawer">
                 <div class="file-drawer-head">
-                  <div class="file-drawer-tabs">
+                  <div class="inline-row gap-2">
                     <button type="button" class="mini-tab is-active" data-tree-tab="files">Archivos</button>
                     <button type="button" class="mini-tab" data-tree-tab="search">Buscar</button>
                     <button type="button" class="mini-tab" data-tree-tab="snapshots">Copias</button>
                   </div>
-                  <div class="file-drawer-actions">
+                  <div class="inline-row gap-2">
                     <button type="button" class="icon-btn ghost xs" id="new-file-btn" title="Nuevo archivo">+</button>
                     <button type="button" class="icon-btn ghost xs" id="new-folder-btn" title="Nueva carpeta">📁</button>
-                    <button type="button" class="icon-btn ghost xs" id="refresh-tree-btn" title="Recargar">↻</button>
+                    <button type="button" class="icon-btn ghost xs" id="refresh-tree-btn" title="Actualizar">↻</button>
                   </div>
                 </div>
-
                 <div class="tree-pane is-active" id="tree-pane-files">
                   <div class="file-tree-list" id="file-tree"></div>
                   <div class="empty-clean hidden" id="tree-empty">
-                    <p>El workspace está vacío.</p>
-                    <button type="button" class="btn btn-subtle btn-sm" id="empty-new-file-btn">Crear primer archivo</button>
-                    <button type="button" class="btn btn-subtle btn-sm" data-open-drawer="tools">Generar proyecto plantilla</button>
+                    <p>Workspace vacío.</p>
+                    <button type="button" class="btn btn-subtle btn-xs" id="empty-new-file-btn">Nuevo archivo</button>
+                    <button type="button" class="btn btn-subtle btn-xs" data-open-drawer-bar="bar-scaffold">Crear plantilla</button>
                   </div>
                 </div>
-
                 <div class="tree-pane" id="tree-pane-search">
-                  <form class="compact-search-form" id="code-search-form">
-                    <input type="search" id="search-query" class="field sm" placeholder="Buscar en el proyecto…" required>
+                  <form class="compact-form" id="code-search-form">
+                    <input type="search" id="search-query" class="field sm" placeholder="Buscar texto o regex…" required>
                     <button type="submit" class="btn btn-primary btn-xs">Ir</button>
                   </form>
                   <div class="search-hits-list" id="search-results"></div>
                 </div>
-
                 <div class="tree-pane" id="tree-pane-snapshots">
                   <div class="snap-bar">
-                    <button type="button" class="btn btn-subtle btn-xs" id="create-snapshot-btn">+ Crear copia</button>
+                    <button type="button" class="btn btn-subtle btn-xs" id="create-snapshot-btn">+ Guardar copia</button>
                   </div>
                   <div class="snap-list" id="snapshot-list"></div>
                 </div>
@@ -288,7 +374,7 @@
                 <div class="monaco-container">
                   <div class="monaco-host hidden" id="monaco-editor"></div>
                   <div class="editor-empty-state" id="editor-empty-state">
-                    <p>Selecciona un archivo en <strong>Archivos</strong> o pide a los agentes en el chat que creen código.</p>
+                    <p>Abre un archivo desde <strong>Archivos</strong> o aprueba un plan en el chat para que los agentes escriban el código.</p>
                     <div class="inline-row">
                       <button type="button" class="btn btn-subtle btn-sm" id="welcome-new-file-btn">Nuevo archivo</button>
                       <button type="button" class="btn btn-subtle btn-sm" id="welcome-upload-btn">Subir archivos</button>
@@ -299,12 +385,12 @@
             </div>
           </div>
 
-          <!-- TAB 2: TERMINAL & RUN OUTPUT -->
+          <!-- TERMINAL -->
           <div class="ws-pane" id="ws-pane-terminal">
             <div class="term-subbar">
               <div class="inline-row">
-                <button type="button" class="mini-tab is-active" data-term-sub="shell">Terminal Interactiva</button>
-                <button type="button" class="mini-tab" data-term-sub="output">Salida de Ejecución</button>
+                <button type="button" class="mini-tab is-active" data-term-sub="shell">Terminal</button>
+                <button type="button" class="mini-tab" data-term-sub="output">Salida</button>
                 <button type="button" class="mini-tab" data-term-sub="procs">Procesos</button>
               </div>
               <div class="inline-row">
@@ -312,7 +398,6 @@
                 <button type="button" class="btn btn-subtle btn-xs" id="clear-terminal-btn">Limpiar</button>
               </div>
             </div>
-
             <div class="term-subpane is-active" id="term-sub-shell">
               <div class="terminal-box" id="terminal-host-wrap"></div>
               <div class="mobile-term-helper">
@@ -322,221 +407,249 @@
                   <button type="button" class="quick-cmd" data-term-cmd="git status">git status</button>
                   <button type="button" class="quick-cmd" data-term-cmd="npm test">npm test</button>
                 </div>
-                <form class="mobile-term-input-row" id="mobile-term-form">
+                <form class="inline-row" id="mobile-term-form">
                   <input type="text" id="mobile-term-input" class="field sm mono" placeholder="Escribe un comando…" autocomplete="off">
                   <button type="submit" class="btn btn-primary btn-xs">Ejecutar</button>
                 </form>
               </div>
             </div>
-
             <div class="term-subpane" id="term-sub-output">
               <div class="output-console" id="run-output">
-                <div class="empty-clean">Ejecuta un archivo o suite de pruebas para ver el resultado aquí.</div>
+                <div class="empty-clean">Ejecuta un archivo o suite de pruebas para ver la salida aquí.</div>
               </div>
             </div>
-
             <div class="term-subpane" id="term-sub-procs">
               <form class="proc-start-bar" id="start-proc-form">
-                <input type="text" id="proc-name-input" class="field sm" placeholder="Nombre (ej. API)" required>
-                <input type="text" id="proc-cmd-input" class="field sm mono" placeholder="Comando (ej. node server.js)" required>
+                <input type="text" id="proc-name-input" class="field sm" placeholder="Nombre" required>
+                <input type="text" id="proc-cmd-input" class="field sm mono" placeholder="Comando (ej. node app.js)" required>
                 <button type="submit" class="btn btn-primary btn-xs">Iniciar</button>
               </form>
               <div class="procs-scroll" id="processes-list"></div>
             </div>
           </div>
 
-          <!-- TAB 3: DIAGNOSTICS & SECURITY -->
+          <!-- DIAGNOSTICS -->
           <div class="ws-pane" id="ws-pane-diagnostics">
             <div class="diag-topbar">
               <span class="muted-xs" id="diagnostics-summary-line">Listo para auditar el proyecto</span>
               <div class="inline-row">
                 <button type="button" class="btn btn-subtle btn-xs" id="rt-run-syntax-btn">Sintaxis</button>
                 <button type="button" class="btn btn-subtle btn-xs" id="rt-run-security-btn">Seguridad</button>
-                <button type="button" class="btn btn-primary btn-xs" id="send-diags-to-debuggers-btn">Reparar con Agentes</button>
+                <button type="button" class="btn btn-primary btn-xs" id="send-diags-to-debuggers-btn">Reparar</button>
               </div>
             </div>
             <div class="diag-scroll" id="diagnostics-list">
-              <div class="empty-clean">Pulsa <strong>Sintaxis</strong> o <strong>Seguridad</strong> para inspeccionar todo el proyecto.</div>
+              <div class="empty-clean">Pulsa <strong>Sintaxis</strong> o <strong>Seguridad</strong> para auditar el workspace.</div>
             </div>
           </div>
         </aside>
       </div>
     </div>
 
-    <!-- ==================== MODAL: 150 SPECIALIST AGENTS DIRECTORY ==================== -->
+    <!-- ==================== OVERLAY BACKDROP ==================== -->
     <div class="overlay-backdrop hidden" id="overlay-backdrop"></div>
+
+    <!-- ==================== MODAL: 150 SPECIALIST AGENTS DIRECTORY ==================== -->
     <section class="sheet-modal hidden" id="agents-modal" aria-label="Directorio de 150 agentes especialistas">
       <div class="sheet-head">
         <div>
           <h2>Flota de 150 Agentes Especialistas</h2>
-          <p class="muted-xs">15 divisiones técnicas · Elige uno para hablar 1-a-1 o arma tu escuadrón personalizado.</p>
+          <p class="muted-xs">15 divisiones técnicas · Selecciona un especialista 1-a-1 o arma tu escuadrón.</p>
         </div>
         <button type="button" class="icon-btn ghost" id="close-agents-modal-btn" aria-label="Cerrar">
           <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
-
       <div class="agents-modal-bar">
-        <input type="search" id="agent-search-input" class="field" placeholder="Buscar especialista por nombre, rol, tecnología o ID (ej. seguridad, python, AG-051)…">
+        <input type="search" id="agent-search-input" class="field" placeholder="Buscar especialista por nombre, área, tecnología o ID (ej. seguridad, python, AG-051)…">
         <div class="division-strip" id="division-pills"></div>
         <div class="squad-status-row">
           <span class="muted-xs" id="agents-filtered-count">150 de 150 especialistas</span>
           <div class="inline-row">
-            <button type="button" class="btn btn-subtle btn-xs hidden" id="clear-squad-btn">Limpiar escuadrón</button>
+            <button type="button" class="btn btn-subtle btn-xs hidden" id="clear-squad-btn">Limpiar</button>
             <button type="button" class="btn btn-primary btn-xs hidden" id="apply-squad-btn">Usar Escuadrón (<span id="squad-count-label">0</span>)</button>
           </div>
         </div>
       </div>
-
       <div class="agents-modal-grid" id="agents-grid"></div>
     </section>
 
-    <!-- ==================== COLLAPSIBLE SLIDE-OVER: TOOLS, MULTI-LLM POOL, GIT & SETTINGS ==================== -->
-    <aside class="config-drawer hidden" id="tools-drawer" aria-label="Herramientas, APIs LLM y configuración">
+    <!-- ==================== SLIDE-OVER DRAWER: ORGANIZED INTO CLEAN COLLAPSIBLE BARS ==================== -->
+    <aside class="config-drawer hidden" id="tools-drawer" aria-label="Centro desplegable de herramientas y configuración">
       <div class="sheet-head">
         <div>
           <h2>Herramientas y Configuración</h2>
-          <p class="muted-xs">Conecta múltiples APIs LLM gratuitas, Git, generador de proyectos y ajustes.</p>
+          <p class="muted-xs">Organizado en barras desplegables: abre solo lo que necesites.</p>
         </div>
         <button type="button" class="icon-btn ghost" id="close-tools-drawer-btn" aria-label="Cerrar panel">
           <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
 
-      <div class="drawer-tabbar" role="tablist">
-        <button type="button" class="drawer-tab is-active" data-drawer-tab="providers">APIs LLM Gratis</button>
-        <button type="button" class="drawer-tab" data-drawer-tab="tools">Herramientas</button>
-        <button type="button" class="drawer-tab" data-drawer-tab="git">Git</button>
-        <button type="button" class="drawer-tab" data-drawer-tab="settings">Ajustes</button>
-      </div>
-
-      <div class="drawer-scroll">
-        <!-- TAB 1: MULTI-LLM FREE POOL -->
-        <section class="drawer-pane is-active" id="drawer-pane-providers">
-          <div class="clean-callout">
-            <strong>Pool Multi-LLM Gratuito (Failover automático)</strong>
-            <p>Agrega varias APIs gratuitas (OpenRouter <code>:free</code>, Groq, Google Gemini, Cerebras, GitHub Models, Mistral, Ollama). Si una recibe error <code>insufficient_quota</code> o límite de peticiones, la plataforma rota automáticamente a la siguiente.</p>
-          </div>
-
-          <div class="group-block">
-            <div class="group-title">Agregar proveedor en 1 clic</div>
+      <div class="drawer-bars-scroll">
+        <!-- BAR 1: ADD FREE LLM PROVIDERS -->
+        <details class="bar-card" id="bar-presets" open>
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>APIs LLM Gratis — Agregar en 1 clic</strong>
+              <small>OpenRouter (:free), Groq, Google Gemini, Cerebras, GitHub Models, Ollama</small>
+            </div>
+            <span class="bar-badge">10 presets</span>
+          </summary>
+          <div class="bar-card-body">
+            <p class="bar-note">
+              Conecta una o varias APIs gratuitas. Si una recibe error <code>insufficient_quota</code> o límite de peticiones, Strata rota automáticamente a la siguiente sin interrumpir tu trabajo.
+            </p>
             <div class="preset-grid" id="provider-presets-grid"></div>
           </div>
+        </details>
 
-          <div class="group-block">
-            <div class="group-head-row">
-              <div class="group-title">Proveedores conectados (<span id="connected-providers-count">0</span>)</div>
-              <div class="inline-row">
-                <button type="button" class="btn btn-subtle btn-xs" id="add-custom-provider-btn">+ Personalizado</button>
-                <button type="button" class="btn btn-primary btn-xs" id="test-all-providers-btn">Probar Pool</button>
-              </div>
+        <!-- BAR 2: CONNECTED PROVIDERS POOL -->
+        <details class="bar-card" id="bar-connected" open>
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Proveedores Conectados y Pruebas</strong>
+              <small>Claves API, catálogo de modelos y verificación de conexión</small>
+            </div>
+            <span class="bar-badge" id="connected-providers-count">0</span>
+          </summary>
+          <div class="bar-card-body">
+            <div class="inline-row justify-between wrap">
+              <button type="button" class="btn btn-subtle btn-xs" id="add-custom-provider-btn">+ API personalizada</button>
+              <button type="button" class="btn btn-primary btn-xs" id="test-all-providers-btn">Probar todo el Pool</button>
             </div>
             <div class="providers-stack" id="providers-list"></div>
           </div>
+        </details>
 
-          <details class="clean-details">
-            <summary>Descubridor rápido de modelos (API individual)</summary>
-            <div class="details-body">
-              <div class="field-col">
-                <label for="setting-base-url">URL Base API</label>
-                <input type="url" id="setting-base-url" class="field sm" value="https://openrouter.ai/api/v1" placeholder="https://openrouter.ai/api/v1">
-              </div>
-              <div class="field-col">
-                <label for="setting-api-key">API Key</label>
-                <div class="inline-row">
-                  <input type="password" id="setting-api-key" class="field sm" placeholder="Pega tu clave API" autocomplete="new-password">
-                  <button type="button" class="btn btn-subtle btn-xs" id="toggle-api-key">Ver</button>
-                </div>
-              </div>
-              <div class="field-col">
-                <label for="setting-model">Modelo</label>
-                <div class="inline-row">
-                  <input type="text" id="setting-model" class="field sm" list="setting-model-options" placeholder="Pulsa Buscar modelos">
-                  <datalist id="setting-model-options"></datalist>
-                  <button type="button" class="btn btn-subtle btn-xs" id="discover-models-button">Buscar modelos</button>
-                </div>
-                <small class="muted-xs" id="model-discovery-note">Elige «OpenRouter: buscar modelos GRATIS» arriba o busca el catálogo de cualquier endpoint.</small>
-              </div>
+        <!-- BAR 3: QUICK MODEL DISCOVERY -->
+        <details class="bar-card" id="bar-discover">
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Descubridor Rápido de Modelos</strong>
+              <small>Explora modelos gratuitos de cualquier endpoint OpenAI-compatible</small>
+            </div>
+          </summary>
+          <div class="bar-card-body">
+            <div class="field-col">
+              <label for="setting-base-url">URL Base API</label>
+              <input type="url" id="setting-base-url" class="field sm" value="https://openrouter.ai/api/v1" placeholder="https://openrouter.ai/api/v1">
+            </div>
+            <div class="field-col">
+              <label for="setting-api-key">API Key</label>
               <div class="inline-row">
-                <button type="button" class="btn btn-subtle btn-xs" id="quick-test-single-btn">Probar</button>
-                <button type="button" class="btn btn-primary btn-xs" id="quick-add-discovered-btn">Añadir al Pool</button>
+                <input type="password" id="setting-api-key" class="field sm" placeholder="Pega tu clave API" autocomplete="new-password">
+                <button type="button" class="btn btn-subtle btn-xs" id="toggle-api-key">Ver</button>
               </div>
-              <div class="status-banner hidden" id="agent-test-result"></div>
             </div>
-          </details>
-
-          <details class="clean-details">
-            <summary>Balanceo de carga y mapa por división (15 divisiones)</summary>
-            <div class="details-body">
-              <div class="two-col">
-                <div class="field-col">
-                  <label for="pool-strategy">Estrategia de reparto</label>
-                  <select id="pool-strategy" class="field sm">
-                    <option value="round-robin">Round-Robin (repartir carga)</option>
-                    <option value="priority-failover">Prioridad + Failover</option>
-                    <option value="least-used">Menor uso</option>
-                    <option value="division-mapped">Mapa por división</option>
-                  </select>
-                </div>
-                <div class="field-col">
-                  <label for="pool-concurrency">Agentes en paralelo</label>
-                  <input type="number" id="pool-concurrency" class="field sm" min="1" max="16" value="4">
-                </div>
-                <div class="field-col">
-                  <label for="pool-max-steps">Pasos por agente</label>
-                  <input type="number" id="pool-max-steps" class="field sm" min="2" max="60" value="18">
-                </div>
-                <div class="field-col">
-                  <label for="pool-temperature">Temperatura</label>
-                  <input type="number" id="pool-temperature" class="field sm" min="0" max="2" step="0.1" value="0.2">
-                </div>
+            <div class="field-col">
+              <label for="setting-model">Modelo</label>
+              <div class="inline-row">
+                <input type="text" id="setting-model" class="field sm" list="setting-model-options" placeholder="Pulsa Buscar modelos">
+                <datalist id="setting-model-options"></datalist>
+                <button type="button" class="btn btn-subtle btn-xs" id="discover-models-button">Buscar modelos</button>
               </div>
-              <label class="switch-row">
-                <span><strong>Herramientas reales del workspace</strong><small>Permitir leer/escribir archivos, ejecutar código, pruebas y Git</small></span>
-                <input type="checkbox" id="pool-tools-enabled" checked>
-              </label>
-              <button type="button" class="btn btn-primary btn-sm" id="save-pool-config-btn">Guardar configuración del Pool</button>
-              <div class="division-matrix" id="division-provider-matrix"></div>
+              <small class="muted-xs" id="model-discovery-note">Usa «OpenRouter: buscar modelos GRATIS» arriba o consulta cualquier endpoint.</small>
             </div>
-          </details>
-        </section>
+            <div class="inline-row">
+              <button type="button" class="btn btn-subtle btn-xs" id="quick-test-single-btn">Probar</button>
+              <button type="button" class="btn btn-primary btn-xs" id="quick-add-discovered-btn">Añadir al Pool</button>
+            </div>
+            <div class="status-banner hidden" id="agent-test-result"></div>
+          </div>
+        </details>
 
-        <!-- TAB 2: ENGINEERING TOOLS & SCAFFOLDING -->
-        <section class="drawer-pane" id="drawer-pane-tools">
-          <div class="group-block">
-            <div class="group-title">Análisis, verificación y pruebas reales</div>
+        <!-- BAR 4: MULTI-LLM ROUTING & 15 DIVISIONS -->
+        <details class="bar-card" id="bar-routing">
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Enrutamiento Multi-LLM y 15 Divisiones</strong>
+              <small>Balanceo de carga, concurrencia y asignación por especialidad</small>
+            </div>
+          </summary>
+          <div class="bar-card-body">
+            <div class="two-col">
+              <div class="field-col">
+                <label for="pool-strategy">Estrategia</label>
+                <select id="pool-strategy" class="field sm">
+                  <option value="round-robin">Round-Robin</option>
+                  <option value="priority-failover">Prioridad + Failover</option>
+                  <option value="least-used">Menor uso</option>
+                  <option value="division-mapped">Mapa por división</option>
+                </select>
+              </div>
+              <div class="field-col">
+                <label for="pool-concurrency">Agentes en paralelo</label>
+                <input type="number" id="pool-concurrency" class="field sm" min="1" max="16" value="4">
+              </div>
+              <div class="field-col">
+                <label for="pool-max-steps">Pasos por agente</label>
+                <input type="number" id="pool-max-steps" class="field sm" min="2" max="60" value="18">
+              </div>
+              <div class="field-col">
+                <label for="pool-temperature">Temperatura</label>
+                <input type="number" id="pool-temperature" class="field sm" min="0" max="2" step="0.1" value="0.2">
+              </div>
+            </div>
+            <label class="switch-row">
+              <span><strong>Herramientas reales del workspace</strong><small>Lectura/escritura atómica, ejecución, pruebas y Git</small></span>
+              <input type="checkbox" id="pool-tools-enabled" checked>
+            </label>
+            <button type="button" class="btn btn-primary btn-sm" id="save-pool-config-btn">Guardar enrutamiento</button>
+            <div class="division-matrix" id="division-provider-matrix"></div>
+          </div>
+        </details>
+
+        <!-- BAR 5: VERIFICATION, SECURITY & TESTS -->
+        <details class="bar-card" id="bar-verify">
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Verificación, Seguridad OWASP y Pruebas</strong>
+              <small>Herramientas reales de auditoría sobre tu proyecto</small>
+            </div>
+          </summary>
+          <div class="bar-card-body">
             <div class="tools-grid">
               <button type="button" class="tool-card" id="tool-verify-syntax">
                 <strong>Verificar sintaxis</strong>
-                <span>JS, Python, JSON, Bash, C/C++, CSS, HTML</span>
+                <span>JS, Python, JSON, Bash, C/C++, CSS</span>
               </button>
               <button type="button" class="tool-card" id="tool-security-audit">
                 <strong>Auditoría OWASP</strong>
-                <span>Detecta secretos y vulnerabilidades</span>
+                <span>Secretos y vulnerabilidades</span>
               </button>
               <button type="button" class="tool-card" id="tool-run-tests">
                 <strong>Ejecutar pruebas</strong>
-                <span>Autodetecta npm test / unittest</span>
+                <span>npm test / node --test / unittest</span>
               </button>
               <button type="button" class="tool-card" id="tool-auto-repair">
                 <strong>Auto-reparar</strong>
-                <span>Corrige JSON y formato de forma segura</span>
+                <span>Ajustes seguros deterministas</span>
               </button>
               <button type="button" class="tool-card" id="tool-cartography">
                 <strong>Cartografía</strong>
-                <span>Resumen completo de archivos y lenguajes</span>
+                <span>Mapa de archivos y lenguajes</span>
               </button>
               <button type="button" class="tool-card" id="tool-list-runtimes">
                 <strong>Runtimes activos</strong>
-                <span>Node, Python, GCC, Git, ripgrep…</span>
+                <span>Compiladores y herramientas CLI</span>
               </button>
             </div>
             <pre class="clean-pre hidden" id="tool-output-preview"></pre>
           </div>
+        </details>
 
-          <div class="group-block">
-            <div class="group-title">Generar proyecto completo en 1 clic</div>
+        <!-- BAR 6: PROJECT SCAFFOLDER, COMMANDS & FILES -->
+        <details class="bar-card" id="bar-scaffold">
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Plantillas de Proyecto, Comandos y Archivos</strong>
+              <small>Crea estructuras listas, ejecuta comandos o sube archivos</small>
+            </div>
+          </summary>
+          <div class="bar-card-body">
             <div class="field-col">
+              <label for="scaffold-template">Generador de arquitectura base</label>
               <select id="scaffold-template" class="field sm">
                 <option value="node-enterprise-api">API Empresarial Node.js + Pruebas</option>
                 <option value="python-service">Servicio Modular Python + Unittest</option>
@@ -544,33 +657,31 @@
               </select>
             </div>
             <div class="inline-row">
-              <input type="text" id="scaffold-dir" class="field sm" placeholder="Subcarpeta (opcional, ej. mi-api)">
+              <input type="text" id="scaffold-dir" class="field sm" placeholder="Carpeta destino (opcional)">
               <button type="button" class="btn btn-primary btn-sm" id="scaffold-create-btn">Crear</button>
             </div>
-          </div>
-
-          <div class="group-block">
-            <div class="group-title">Comando rápido en el workspace</div>
+            <div class="bar-divider"></div>
             <form class="inline-row" id="quick-exec-form">
-              <input type="text" id="quick-exec-input" class="field sm mono" placeholder="ej. npm test" required>
+              <input type="text" id="quick-exec-input" class="field sm mono" placeholder="Comando rápido (ej. npm test)" required>
               <button type="submit" class="btn btn-subtle btn-sm">Ejecutar</button>
             </form>
-          </div>
-
-          <div class="group-block">
-            <div class="group-title">Archivos y copias de seguridad</div>
             <div class="inline-row wrap">
-              <button type="button" class="btn btn-subtle btn-sm" id="drawer-upload-files-btn">Subir archivos</button>
-              <button type="button" class="btn btn-subtle btn-sm" id="drawer-export-bundle-btn">Exportar JSON</button>
-              <button type="button" class="btn btn-subtle btn-sm" id="drawer-create-snapshot-btn">Crear copia</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="drawer-upload-files-btn">Subir archivos</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="drawer-export-bundle-btn">Exportar JSON</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="drawer-create-snapshot-btn">Guardar copia</button>
             </div>
           </div>
-        </section>
+        </details>
 
-        <!-- TAB 3: GIT SUITE -->
-        <section class="drawer-pane" id="drawer-pane-git">
-          <div class="group-block">
-            <div class="group-title">Clonar repositorio GitHub al workspace</div>
+        <!-- BAR 7: GIT & GITHUB -->
+        <details class="bar-card" id="bar-git">
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Git y Clonar Repositorios GitHub</strong>
+              <small>Clona proyectos grandes, consulta diff, historial y commits</small>
+            </div>
+          </summary>
+          <div class="bar-card-body">
             <form class="stack-gap" id="git-clone-form">
               <input type="url" id="git-clone-url" class="field sm" placeholder="https://github.com/usuario/repositorio.git" required>
               <div class="inline-row">
@@ -578,17 +689,12 @@
                 <button type="submit" class="btn btn-primary btn-sm" id="git-clone-btn">Clonar</button>
               </div>
             </form>
-          </div>
-
-          <div class="group-block">
-            <div class="group-head-row">
-              <div class="group-title">Estado Git del workspace</div>
-              <div class="inline-row">
-                <button type="button" class="btn btn-subtle btn-xs" id="git-refresh-btn">Estado</button>
-                <button type="button" class="btn btn-subtle btn-xs" id="git-diff-btn">Diff</button>
-                <button type="button" class="btn btn-subtle btn-xs" id="git-log-btn">Historial</button>
-                <button type="button" class="btn btn-subtle btn-xs" id="git-init-btn">Init</button>
-              </div>
+            <div class="bar-divider"></div>
+            <div class="inline-row wrap">
+              <button type="button" class="btn btn-subtle btn-xs" id="git-refresh-btn">Estado</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="git-diff-btn">Diff</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="git-log-btn">Historial</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="git-init-btn">Init</button>
             </div>
             <pre class="clean-pre" id="git-status-box">Pulsa Estado para consultar Git.</pre>
             <form class="inline-row" id="git-commit-form">
@@ -596,22 +702,27 @@
               <button type="submit" class="btn btn-primary btn-sm">Commit</button>
             </form>
           </div>
-        </section>
+        </details>
 
-        <!-- TAB 4: SETTINGS -->
-        <section class="drawer-pane" id="drawer-pane-settings">
-          <div class="group-block">
-            <div class="group-title">Apariencia y editor</div>
+        <!-- BAR 8: APPEARANCE & SETTINGS -->
+        <details class="bar-card" id="bar-settings">
+          <summary class="bar-card-summary">
+            <div class="bar-card-meta">
+              <strong>Apariencia, Editor y Respaldo</strong>
+              <small>Tema claro/oscuro, fuente, auto-snapshot y exportar ajustes</small>
+            </div>
+          </summary>
+          <div class="bar-card-body">
             <div class="two-col">
               <div class="field-col">
-                <label for="setting-theme">Tema</label>
+                <label for="setting-theme">Tema visual</label>
                 <select id="setting-theme" class="field sm">
                   <option value="light">Claro (Por defecto)</option>
                   <option value="dark">Oscuro (Grafito)</option>
                 </select>
               </div>
               <div class="field-col">
-                <label for="setting-debug-retries">Reintentos de auto-depuración</label>
+                <label for="setting-debug-retries">Reintentos auto-depuración</label>
                 <input type="number" id="setting-debug-retries" class="field sm" min="0" max="5" value="2">
               </div>
             </div>
@@ -620,33 +731,30 @@
               <input type="range" id="setting-font-size" min="12" max="20" value="14">
             </div>
             <label class="switch-row">
-              <span><strong>Snapshot automático antes de misiones</strong><small>Crea respaldo previo para poder deshacer cambios</small></span>
+              <span><strong>Copia automática antes de construir</strong><small>Permite revertir el workspace en cualquier momento</small></span>
               <input type="checkbox" id="setting-auto-snapshot" checked>
             </label>
             <label class="switch-row">
-              <span><strong>Ajuste de línea en el editor</strong><small>Evita desplazamiento horizontal en móvil</small></span>
+              <span><strong>Ajuste de línea en el editor</strong><small>Lectura cómoda en móvil y tablet</small></span>
               <input type="checkbox" id="setting-wordwrap" checked>
             </label>
             <label class="switch-row">
-              <span><strong>Autoguardar al cambiar de archivo</strong><small>Guarda cambios automáticamente</small></span>
+              <span><strong>Autoguardar al cambiar de pestaña</strong><small>Guarda ediciones automáticamente</small></span>
               <input type="checkbox" id="setting-autosave">
             </label>
             <button type="button" class="btn btn-primary btn-sm" id="save-general-settings-btn">Guardar ajustes</button>
-          </div>
-
-          <div class="group-block">
-            <div class="group-title">Respaldo de configuración</div>
+            <div class="bar-divider"></div>
             <div class="inline-row">
-              <button type="button" class="btn btn-subtle btn-sm" id="export-config-btn">Exportar JSON</button>
-              <button type="button" class="btn btn-subtle btn-sm" id="import-config-btn">Importar JSON</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="export-config-btn">Exportar config</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="import-config-btn">Importar config</button>
               <input type="file" id="import-config-file" class="hidden" accept=".json">
             </div>
           </div>
-        </section>
+        </details>
       </div>
     </aside>
 
-    <!-- Hidden inputs & lightweight dialog -->
+    <!-- Hidden inputs & clean dialog -->
     <input type="file" id="hidden-file-upload" class="hidden" multiple>
     <dialog class="clean-dialog" id="prompt-dialog">
       <form method="dialog" id="prompt-form">

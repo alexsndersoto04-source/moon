@@ -86,14 +86,30 @@ async function main() {
       req.setEncoding('utf8');
       req.on('data', (chunk) => { raw += chunk; });
       req.on('end', () => {
-        let model = '';
-        try { model = JSON.parse(raw).model; } catch { /* malformed test request */ }
+        let parsed = {};
+        try { parsed = JSON.parse(raw); } catch { /* malformed test request */ }
+        const model = parsed.model || '';
         if (model === 'quota-model') {
           res.writeHead(429, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' } }));
         } else if (model === 'rate-model') {
           res.writeHead(429, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'Rate limit exceeded.', type: 'rate_limit_exceeded', code: 'rate_limit_exceeded' } }));
+        } else if (model === 'plan-ready-model') {
+          const toolNames = (parsed.tools || []).map((t) => t.function?.name);
+          const hasWriteTool = toolNames.some((n) => ['write_file', 'patch_file', 'delete_path', 'run_shell', 'git_commit'].includes(n));
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: hasWriteTool
+                  ? 'ERROR_WRITE_TOOL_EXPOSED'
+                  : '## Plan de Implementación\n1. Arquitectura modular.\n2. Pruebas automáticas.\n[[PLAN_READY]]'
+              },
+              finish_reason: 'stop'
+            }]
+          }));
         } else {
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] }));
@@ -438,6 +454,47 @@ async function main() {
     await expectStatus(chatResp, 200);
     const chatBody = await chatResp.text();
     check(chatBody.includes('"type":"failover"') && chatBody.includes('"type":"final"'), 'direct specialist chat streams failover and final SSE events');
+
+    // Collaborative Planning phase: strictly read-only tools + planReady detection + clean no-API fallback.
+    const planResp = await request(base, '/api/plan/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({
+        sessionId: 'plan-session-1',
+        message: 'Quiero diseñar una API REST en Node con pruebas.',
+        pool: {
+          strategy: 'priority-failover',
+          providers: [
+            { id: 'plan-llm', name: 'Plan Architect LLM', baseUrl: providerBase, model: 'plan-ready-model', apiKey: 'k-plan', priority: 1, enabled: true }
+          ]
+        }
+      })
+    });
+    await expectStatus(planResp, 200);
+    const planBody = await planResp.text();
+    check(!planBody.includes('ERROR_WRITE_TOOL_EXPOSED'), 'planning mode enforces strictly read-only tools (no write/shell tools exposed)');
+    check(planBody.includes('"planReady":true') && !planBody.includes('[[PLAN_READY]]'), 'planning mode detects planReady and strips internal marker tag');
+
+    const localPlanResp = await request(base, '/api/plan/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({
+        sessionId: 'plan-session-local',
+        message: 'Planifica una web de inventario.',
+        pool: { providers: [] }
+      })
+    });
+    await expectStatus(localPlanResp, 200);
+    const localPlanBody = await localPlanResp.text();
+    check(localPlanBody.includes('"needsApi":true') && localPlanBody.includes('"planReady":false'), 'planning mode gracefully responds with workspace guidance when no LLM API is connected');
+
+    response = await request(base, '/api/plan/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'plan-session-1' })
+    });
+    await expectStatus(response, 200);
+    check((await json(response)).ok === true, 'planning session resets cleanly');
 
     const offlinePort = providerServer.address().port;
     await new Promise((resolve) => {

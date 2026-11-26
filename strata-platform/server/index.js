@@ -455,6 +455,77 @@ function createApp() {
     }
   });
 
+  /* ------------------ Conversational Planning & Architecture ------------------ */
+
+  app.post('/api/plan/reset', (req, res) => {
+    sessions.delete(`plan-${sessionKey(req.body?.sessionId)}`);
+    ok(res);
+  });
+
+  app.post('/api/plan/chat', async (req, res) => {
+    const body = req.body || {};
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    const emit = (payload) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(payload)}\n\n`); };
+    const abort = new AbortController();
+    res.on('close', () => { if (!res.writableEnded) abort.abort(); });
+    const ping = setInterval(() => { if (!res.destroyed) res.write(': ping\n\n'); }, 15000);
+    ping.unref?.();
+
+    try {
+      const key = `plan-${sessionKey(body.sessionId)}`;
+      if (body.reset) sessions.delete(key);
+      const state = session(key);
+      if (!state.messages.length && Array.isArray(body.history) && body.history.length) {
+        for (const h of body.history.slice(-24)) {
+          if (h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string' && h.content.trim()) {
+            state.messages.push({ role: h.role, content: h.content.slice(0, 12000) });
+          }
+        }
+      }
+      const userMsg = String(body.message || '').trim();
+      if (userMsg) state.messages.push({ role: 'user', content: userMsg.slice(0, 30000) });
+      if (!state.messages.length) throw new Error('Escribe tu idea o consulta para planificar.');
+
+      const poolOrConfig = body.pool || body.config;
+      const normalized = providers.normalizePool(poolOrConfig);
+
+      if (!normalized.providers.length) {
+        // Conversational graceful guidance when no external LLM API is connected yet
+        const carto = await analyzer.cartography('').catch(() => ({ totalFiles: 0, totalLines: 0, languages: [] }));
+        const langs = (carto.languages || []).slice(0, 4).map((l) => `${l.language} (${l.files})`).join(', ') || 'workspace vacío';
+        const reply = [
+          'Recibí tu mensaje y estoy listo para **conversar y planificar** contigo antes de tocar ningún archivo.',
+          '',
+          `> **Estado actual del proyecto:** ${carto.totalFiles} archivo(s) · ${carto.totalLines} líneas (${langs}).`,
+          '',
+          'Para conversar conmigo libremente con IA real (hacer preguntas de arquitectura, discutir stack, diseñar módulos y refinar el plan juntos), conecta **al menos una API LLM gratuita** en **Herramientas → APIs LLM Gratis** (por ejemplo **OpenRouter `:free`**, **Groq** o **Google Gemini**).',
+          '',
+          'Una vez conectes una clave gratuita:',
+          '1. Conversamos en **Planificar** sin modificar nada todavía.',
+          '2. Acordamos arquitectura, estructura y pruebas.',
+          '3. Cuando pulses **«Aprobar y construir»**, los **150 agentes especialistas** ejecutan todo el proyecto real.'
+        ].join('\n');
+        state.messages.push({ role: 'assistant', content: reply });
+        emit({ type: 'final', text: reply, planReady: false, needsApi: true });
+      } else {
+        await agent.planLoop(poolOrConfig, state.messages, emit, {
+          openFile: body.openFile || '',
+          signal: abort.signal
+        });
+      }
+    } catch (error) {
+      emit({ type: 'error', text: error.message || String(error) });
+    } finally {
+      clearInterval(ping);
+      emit({ type: 'done' });
+      if (!res.writableEnded) res.end();
+    }
+  });
+
   app.get('/api/*', (_req, res) => res.status(404).json({ ok: false, error: 'Endpoint API no encontrado.' }));
   app.get('*', (req, res, next) => {
     if (req.accepts('html')) return res.sendFile(path.join(PUBLIC_DIR, 'index.html'), (error) => error && next(error));

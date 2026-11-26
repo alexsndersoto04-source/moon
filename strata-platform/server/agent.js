@@ -50,6 +50,35 @@ const TOOLS = [
 ];
 const TOOL_NAMES = new Set(TOOLS.map((item) => item.function.name));
 
+const READ_ONLY_TOOL_NAMES = new Set([
+  'list_files', 'read_file', 'read_many_files', 'find_files', 'search_code',
+  'project_cartography', 'verify_syntax', 'security_audit',
+  'git_status', 'git_diff', 'git_log', 'list_runtimes'
+]);
+const PLAN_TOOLS = TOOLS.filter((item) => READ_ONLY_TOOL_NAMES.has(item.function.name));
+
+function planSystemPrompt(ctx) {
+  return [
+    'Eres el Arquitecto Principal y Director Técnico de Strata Engineering, una plataforma de desarrollo impulsada por 150 agentes especialistas divididos en 15 áreas (Arquitectura, Backend, Frontend, Sistemas, Datos, Depuración, QA, DevOps, Seguridad OWASP, Rendimiento, IA/ML, Móvil, Integraciones, Refactorización y Dirección).',
+    '',
+    'ESTÁS EN MODO PLANIFICACIÓN Y CONVERSACIÓN COLABORATIVA:',
+    '- Tu objetivo en esta fase es CONVERSAR de forma natural, clara, cercana y de altísimo nivel técnico con el usuario ANTES de construir nada.',
+    '- NO modifiques, NO escribas ni borres archivos en esta fase (solo tienes herramientas de lectura e inspección del workspace).',
+    '- Si el usuario saluda o plantea una idea inicial o ambigua: respóndele conversacionalmente, valida su idea, aporta criterio de ingeniería real y haz solo 2 a 4 preguntas concretas y útiles para definir alcance, tecnologías, estructura o diseño.',
+    '- Si el workspace ya tiene archivos y es relevante para la conversación, inspecciónalos en silencio con tus herramientas de solo lectura antes de opinar.',
+    '- Cuando ya haya suficiente claridad (o cuando el usuario pida el plan o diga que está listo para construir), presenta un plan claro y bien estructurado bajo el título `## Plan de Implementación` que incluya:',
+    '  1. Arquitectura y stack técnico acordado',
+    '  2. Estructura de carpetas y archivos que se crearán o modificarán',
+    '  3. Divisiones de los 150 agentes que participarán y sus responsabilidades',
+    '  4. Verificación real (sintaxis, seguridad OWASP y pruebas automáticas)',
+    '- SOLO cuando presentes ese plan completo listo para que el usuario lo apruebe y comience la construcción, agrega exactamente en la última línea (sin texto después): [[PLAN_READY]]',
+    '- Si todavía estás conversando o esperando respuestas a tus preguntas, NO pongas [[PLAN_READY]].',
+    '- Responde siempre en español claro, conciso, bien organizado y sin relleno corporativo innecesario.',
+    ctx?.openFile ? `\nArchivo abierto actualmente en el editor: ${ctx.openFile}` : '',
+    ctx?.treeSummary ? `\nEstado actual del workspace:\n${ctx.treeSummary}` : ''
+  ].filter(Boolean).join('\n');
+}
+
 function systemPrompt(ctx) {
   return catalog.buildAgentSystemPrompt(ctx?.agent || null, ctx || {});
 }
@@ -339,15 +368,120 @@ async function loop(poolOrConfig, history, emit, options = {}) {
   }
 }
 
+/**
+ * Read-only collaborative planning & architecture conversation loop.
+ * Converses naturally with the user across turns, inspects workspace read-only
+ * when needed, and detects [[PLAN_READY]] when a build plan is ready for approval.
+ */
+async function planLoop(poolOrConfig, history, emit, options = {}) {
+  const pool = providers.normalizePool(poolOrConfig);
+  const maxSteps = Math.min(Math.max(Number.parseInt(options.maxSteps || 8, 10) || 8, 1), 16);
+  const treeSummary = await fsx.treeText(120).catch(() => '(workspace vacío)');
+  const system = {
+    role: 'system',
+    content: planSystemPrompt({ openFile: options.openFile || '', treeSummary })
+  };
+  const convo = [system, ...history];
+  let useTools = poolOrConfig?.tools !== false && pool.defaults.tools !== false;
+  let tokens = 0;
+  let lastProvider = null;
+
+  try {
+    for (let step = 1; step <= maxSteps; step++) {
+      if (options.signal?.aborted) return { ok: false, cancelled: true };
+      let response;
+      try {
+        response = await providers.callPoolLLM(poolOrConfig, convo, PLAN_TOOLS, {
+          useTools,
+          signal: options.signal,
+          agentId: 'AG-001',
+          divisionId: 'architecture',
+          onFailover: (info) => emitSafely(emit, { type: 'failover', from: info.from, to: info.to, reason: info.reason })
+        });
+        lastProvider = response.provider;
+        emitSafely(emit, { type: 'provider', provider: response.provider, latencyMs: response.latencyMs });
+      } catch (error) {
+        const message = String(error.message || error);
+        if (useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function/i.test(message)) {
+          useTools = false;
+          continue;
+        }
+        emitSafely(emit, { type: 'error', text: message });
+        return { ok: false, error: message, tokens, provider: lastProvider };
+      }
+
+      if (response.usage) {
+        tokens += Number(response.usage.total_tokens) || 0;
+        emitSafely(emit, { type: 'usage', usage: response.usage, total: tokens });
+      }
+      const message = response.message || {};
+      const text = typeof message.content === 'string' ? message.content.trim() : '';
+      const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+
+      if (calls.length && useTools) {
+        const normalized = calls.map((call, index) => ({
+          id: call.id || `plan-${step}-${index}`,
+          type: 'function',
+          function: { name: call.function?.name || '', arguments: call.function?.arguments || '{}' }
+        }));
+        convo.push({ role: 'assistant', content: message.content || null, tool_calls: normalized });
+        history.push({ role: 'assistant', content: message.content || null, tool_calls: normalized });
+        if (text) emitSafely(emit, { type: 'assistant_text', text });
+        for (const call of normalized) {
+          if (options.signal?.aborted) return { ok: false, cancelled: true };
+          const name = call.function.name;
+          let args;
+          try { args = JSON.parse(call.function.arguments || '{}'); } catch { args = {}; }
+          if (!args || typeof args !== 'object' || Array.isArray(args)) args = {};
+          emitSafely(emit, { type: 'tool_start', id: call.id, name, args });
+          let output;
+          if (!READ_ONLY_TOOL_NAMES.has(name)) {
+            output = { result: { error: 'Modo planificación: solo se permiten herramientas de lectura/inspección hasta que el usuario apruebe construir.' } };
+          } else {
+            try { output = await execute(name, args, { allowDangerous: false }); }
+            catch (error) { output = { result: { error: error.message || String(error) } }; }
+          }
+          const result = preview(output.result, 8000);
+          emitSafely(emit, { type: 'tool_end', id: call.id, name, preview: preview(output.result, 320) });
+          const toolResult = { role: 'tool', tool_call_id: call.id, content: result };
+          convo.push(toolResult);
+          history.push(toolResult);
+        }
+        continue;
+      }
+
+      const rawText = text || 'Cuéntame qué tienes en mente y lo diseñamos juntos antes de empezar a construir.';
+      const hasMarker = /\[\[PLAN_READY\]\]/i.test(rawText);
+      const hasPlanHeading = /^#{1,3}\s+plan\s+de\s+implementaci[oó]n/im.test(rawText);
+      const cleanText = rawText.replace(/\s*\[\[PLAN_READY\]\]\s*/gi, '').trim();
+      const planReady = hasMarker || hasPlanHeading;
+
+      convo.push({ role: 'assistant', content: cleanText });
+      history.push({ role: 'assistant', content: cleanText });
+      emitSafely(emit, { type: 'final', text: cleanText, planReady, provider: lastProvider });
+      return { ok: true, text: cleanText, planReady, tokens, provider: lastProvider };
+    }
+    const fallback = 'Ya tengo suficiente contexto. ¿Quieres que presente el Plan de Implementación final para aprobarlo?';
+    emitSafely(emit, { type: 'final', text: fallback, planReady: false, provider: lastProvider });
+    return { ok: true, text: fallback, planReady: false, tokens, provider: lastProvider };
+  } finally {
+    if (history.length > 60) history.splice(0, history.length - 60);
+  }
+}
+
 async function probe(config) {
   return providers.probe(config, TOOLS);
 }
 
 module.exports = {
   TOOLS,
+  PLAN_TOOLS,
+  READ_ONLY_TOOL_NAMES,
   loop,
+  planLoop,
   execute,
   systemPrompt,
+  planSystemPrompt,
   parseTextCalls,
   probe,
   callLLM: (config, messages, withTools, signal) => providers.callLLM(config, messages, withTools ? TOOLS : false, signal),
