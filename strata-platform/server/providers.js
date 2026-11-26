@@ -197,6 +197,45 @@ function isOpenRouterUrl(url) {
   return /openrouter\.ai/i.test(String(url || ''));
 }
 
+function isLocalProviderUrl(url) {
+  try {
+    const host = new URL(String(url || '')).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0' || /^192\.168\./.test(host) || /^10\./.test(host);
+  } catch {
+    return false;
+  }
+}
+
+function cleanApiKey(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .replace(/[\s\u200B-\u200D\uFEFF\r\n]+/g, '');
+}
+
+const NON_CHAT_MODEL_RE = /embed|whisper|tts|dall-e|imagen|veo|moderation|guard|audio|rerank|transcribe|realtime|speech|aqa|babbage|davinci|ocr|vision-preview/i;
+
+function pickLiveChatCandidates(models = [], excludeModel = '', baseUrl = '') {
+  const isOR = isOpenRouterUrl(baseUrl);
+  const pool = models
+    .filter((m) => m && m.id && m.id !== excludeModel && !NON_CHAT_MODEL_RE.test(m.id))
+    .filter((m) => !isOR || m.free || /:free$/i.test(m.id) || m.id === 'openrouter/free');
+  const score = (id) => {
+    let s = 0;
+    if (id === 'openrouter/free') s += 100;
+    if (/gemini.*flash/i.test(id) && !/thinking|lite-preview|exp/i.test(id)) s += 90;
+    if (/llama-3\.3-70b|gpt-oss-120b|qwen.*coder|deepseek-r1|deepseek-v|mistral-small|nemotron.*super/i.test(id)) s += 80;
+    if (/llama-3\.1-8b|flash-lite|gemma-3|qwen-3|qwen3/i.test(id)) s += 65;
+    if (/instruct|versatile|chat|latest/i.test(id)) s += 20;
+    if (/preview|exp|beta/i.test(id)) s -= 15;
+    return s;
+  };
+  return pool
+    .sort((a, b) => score(b.id) - score(a.id) || a.id.localeCompare(b.id))
+    .map((m) => m.id);
+}
+
 function parseRetryAfterSec(headers) {
   if (!headers) return 0;
   const retryAfter = headers.get?.('retry-after');
@@ -229,7 +268,7 @@ function providerError(raw, status, url, headers = null) {
     ? details
     : String(details.message || payload?.message || '');
   const upstreamRaw = typeof details === 'object' ? String(details.metadata?.raw || details.metadata?.provider_name || '') : '';
-  const combinedDetail = [baseMessage, upstreamRaw].filter(Boolean).join(' — ').slice(0, 320);
+  const combinedDetail = [baseMessage, upstreamRaw].filter(Boolean).join(' — ').slice(0, 360);
   const code = String(typeof details === 'object'
     ? (details.code || details.type || payload?.code || '')
     : '');
@@ -238,11 +277,21 @@ function providerError(raw, status, url, headers = null) {
   const quotaError = /insufficient_quota|credit_balance_exhausted|no credits remaining|negative balance/i.test(hay);
   const dailyLimit = status === 429 && /free-models-per-day|requests per day|tokens per day|daily limit|\bRPD\b|\bTPD\b|per-day/i.test(hay);
   const upstreamCongested = status === 429 && !dailyLimit && /upstream|temporarily rate-limited|provider returned error|overloaded|capacity/i.test(hay);
+  const dataPolicyBlocked = isOpenRouterUrl(url) && /data policy|free model publication/i.test(hay);
+  const modelNotFound = !dataPolicyBlocked && (
+    status === 404
+    || (status === 400 && /model.*not found|does not exist|decommissioned|deprecated|invalid model|unknown model|not supported/i.test(hay))
+  );
+  const authError = status === 401 || status === 403;
   const retryAfterSec = status === 429 ? parseRetryAfterSec(headers) : 0;
 
   let friendly;
   if (quotaError) {
     friendly = 'La API indica que esta clave no tiene saldo/créditos disponibles. Si es una clave de OpenAI, cambiar a otro modelo de OpenAI no lo soluciona: recarga saldo o cambia a otro proveedor usando una API key de ese proveedor. Los modelos GRATIS solo aplican en proveedores que los ofrezcan.';
+  } else if (dataPolicyBlocked) {
+    friendly = `OpenRouter bloqueó los modelos :free por tu política de privacidad. Abre https://openrouter.ai/settings/privacy y activa "Enable free endpoints that may publish prompts", luego vuelve a pulsar Probar.${combinedDetail ? ` [Detalle: ${combinedDetail}]` : ''}`;
+  } else if (authError) {
+    friendly = `Clave API inválida, expirada o sin permisos en este proveedor (verifica que copiaste la clave correcta para esta URL y sin espacios).${combinedDetail ? ` [Detalle: ${combinedDetail}]` : ''}`;
   } else if (dailyLimit) {
     const extra = isOpenRouterUrl(url)
       ? ' OpenRouter limita los modelos :free a 50 solicitudes/día por cuenta (crear otra clave en la misma cuenta comparte ese tope). Agrega otro proveedor gratuito como Groq, Google Gemini, NVIDIA NIM o Mistral en el Pool LLM.'
@@ -262,6 +311,9 @@ function providerError(raw, status, url, headers = null) {
   error.isQuota = quotaError;
   error.isDailyLimit = dailyLimit;
   error.isUpstreamCongested = upstreamCongested;
+  error.isDataPolicyBlocked = dataPolicyBlocked;
+  error.isModelNotFound = modelNotFound;
+  error.isAuthError = authError;
   error.isRateLimit = status === 429 && !quotaError;
   error.retryAfterSec = retryAfterSec;
   error.retryable = status === 429 || status === 402 || status >= 500;
@@ -293,7 +345,8 @@ async function listModels(config = {}) {
     throw Object.assign(new Error('La URL del proveedor debe usar HTTP o HTTPS.'), { status: 400 });
   }
   const headers = { Accept: 'application/json', ...(config.headers && typeof config.headers === 'object' ? config.headers : {}) };
-  if (config.apiKey) headers.Authorization = 'Bearer ' + String(config.apiKey);
+  const apiKey = cleanApiKey(config.apiKey);
+  if (apiKey) headers.Authorization = 'Bearer ' + apiKey;
   if (/models\.github\.ai/i.test(parsed.hostname)) {
     headers['X-GitHub-Api-Version'] = '2022-11-28';
   }
@@ -342,28 +395,58 @@ async function listModels(config = {}) {
 
 function sanitizeMessagesForProvider(messages, useTools) {
   if (!Array.isArray(messages)) return [];
-  const clean = [];
+  const rawClean = [];
+  let expectedToolIds = null;
+
   for (const m of messages) {
     if (!m || !m.role) continue;
     if (!useTools && m.role === 'tool') {
-      clean.push({ role: 'user', content: `Resultado de herramienta:\n${String(m.content || '')}` });
+      rawClean.push({ role: 'user', content: `Resultado de herramienta:\n${String(m.content || '')}` });
+      expectedToolIds = null;
       continue;
     }
     if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
       if (useTools) {
-        clean.push({ role: 'assistant', content: m.content == null ? '' : String(m.content), tool_calls: m.tool_calls });
+        expectedToolIds = new Set(m.tool_calls.map((c) => String(c.id || '')));
+        rawClean.push({ role: 'assistant', content: m.content == null ? '' : String(m.content), tool_calls: m.tool_calls });
       } else if (m.content) {
-        clean.push({ role: 'assistant', content: String(m.content) });
+        expectedToolIds = null;
+        rawClean.push({ role: 'assistant', content: String(m.content) });
       }
       continue;
     }
     if (m.role === 'tool') {
-      clean.push({ role: 'tool', tool_call_id: String(m.tool_call_id || 'call_0'), content: String(m.content || '') });
+      const id = String(m.tool_call_id || '');
+      if (expectedToolIds && expectedToolIds.has(id)) {
+        rawClean.push({ role: 'tool', tool_call_id: id, content: String(m.content || '') });
+      } else {
+        rawClean.push({ role: 'user', content: `Resultado previo:\n${String(m.content || '')}` });
+      }
       continue;
     }
-    clean.push({ role: m.role, content: String(m.content || '') });
+    expectedToolIds = null;
+    const content = String(m.content || '').trim();
+    if (!content) continue;
+    rawClean.push({ role: m.role, content });
   }
-  return clean;
+
+  // Merge consecutive user/user or assistant/assistant turns (strictly required by Gemini, Mistral & Cohere)
+  const merged = [];
+  for (const msg of rawClean) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev
+      && prev.role === msg.role
+      && (msg.role === 'user' || msg.role === 'assistant')
+      && !prev.tool_calls
+      && !msg.tool_calls
+    ) {
+      prev.content = `${prev.content}\n\n${msg.content}`;
+    } else {
+      merged.push(msg);
+    }
+  }
+  return merged;
 }
 
 async function callLLM(config, messages, toolsOrFlag, signal) {
@@ -380,7 +463,8 @@ async function callLLM(config, messages, toolsOrFlag, signal) {
   if (/models\.github\.ai/i.test(parsed.hostname)) {
     headers['X-GitHub-Api-Version'] = headers['X-GitHub-Api-Version'] || '2022-11-28';
   }
-  if (config.apiKey) headers.Authorization = 'Bearer ' + String(config.apiKey);
+  const apiKey = cleanApiKey(config.apiKey);
+  if (apiKey) headers.Authorization = 'Bearer ' + apiKey;
 
   const hasTools = Array.isArray(toolsOrFlag) && toolsOrFlag.length > 0;
   const body = {
@@ -518,12 +602,14 @@ function metricFor(provider) {
 function normalizePool(poolOrConfig) {
   if (!poolOrConfig) return { providers: [], strategy: 'round-robin', divisionMap: {}, agentMap: {}, defaults: {} };
   if (!Array.isArray(poolOrConfig.providers)) {
-    const single = poolOrConfig.model ? [{
+    const key = cleanApiKey(poolOrConfig.apiKey);
+    const base = poolOrConfig.baseUrl || 'https://api.openai.com/v1';
+    const single = (poolOrConfig.model && (key || isLocalProviderUrl(base))) ? [{
       id: poolOrConfig.id || 'primary',
       name: poolOrConfig.name || 'Proveedor principal',
-      baseUrl: poolOrConfig.baseUrl || 'https://api.openai.com/v1',
-      model: poolOrConfig.model,
-      apiKey: poolOrConfig.apiKey || '',
+      baseUrl: base,
+      model: String(poolOrConfig.model).trim(),
+      apiKey: key,
       enabled: true,
       priority: 1,
       temperature: poolOrConfig.temperature,
@@ -545,19 +631,26 @@ function normalizePool(poolOrConfig) {
     };
   }
   const active = poolOrConfig.providers
-    .filter((p) => p && p.enabled !== false && p.model && String(p.model).trim())
-    .map((p, idx) => ({
-      id: p.id || `prov-${idx + 1}`,
-      name: p.name || p.model,
-      baseUrl: p.baseUrl || 'https://api.openai.com/v1',
-      model: String(p.model).trim(),
-      apiKey: p.apiKey || '',
-      priority: Number(p.priority) || (idx + 1),
-      temperature: p.temperature,
-      maxTokens: p.maxTokens,
-      tools: p.tools !== false,
-      headers: p.headers
-    }));
+    .map((p, idx) => {
+      if (!p || p.enabled === false || !p.model || !String(p.model).trim()) return null;
+      const baseUrl = p.baseUrl || 'https://api.openai.com/v1';
+      const apiKey = cleanApiKey(p.apiKey);
+      // Skip remote placeholder cards that don't have an API key pasted yet!
+      if (!apiKey && !isLocalProviderUrl(baseUrl)) return null;
+      return {
+        id: p.id || `prov-${idx + 1}`,
+        name: p.name || p.model,
+        baseUrl,
+        model: String(p.model).trim(),
+        apiKey,
+        priority: Number(p.priority) || (idx + 1),
+        temperature: p.temperature,
+        maxTokens: p.maxTokens,
+        tools: p.tools !== false,
+        headers: p.headers
+      };
+    })
+    .filter(Boolean);
   return {
     providers: active,
     strategy: poolOrConfig.strategy || 'round-robin',
@@ -620,14 +713,35 @@ function selectProviderOrder(pool, context = {}) {
   return ordered;
 }
 
-function openRouterModelAlternates(currentModel) {
-  return OPENROUTER_FALLBACK_MODELS.filter((m) => m !== currentModel).slice(0, 2);
+const liveModelsCache = new Map();
+const LIVE_MODELS_TTL = 5 * 60 * 1000;
+
+async function discoverFallbackModels(provider, excludeModel) {
+  const cacheKey = `${stripEndpoint(provider.baseUrl)}|${cleanApiKey(provider.apiKey).slice(-8)}`;
+  const cached = liveModelsCache.get(cacheKey);
+  let models = cached && (Date.now() - cached.ts < LIVE_MODELS_TTL) ? cached.models : null;
+  if (!models) {
+    try {
+      const res = await listModels({ ...provider, requestTimeout: 15000 });
+      models = res.models || [];
+      liveModelsCache.set(cacheKey, { ts: Date.now(), models });
+    } catch {
+      models = [];
+    }
+  }
+  const picked = pickLiveChatCandidates(models, excludeModel, provider.baseUrl);
+  if (isOpenRouterUrl(provider.baseUrl)) {
+    for (const fallback of OPENROUTER_FALLBACK_MODELS) {
+      if (fallback !== excludeModel && !picked.includes(fallback)) picked.push(fallback);
+    }
+  }
+  return picked.slice(0, 3);
 }
 
 async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
   const pool = normalizePool(poolOrConfig);
   if (!pool.providers.length) {
-    throw Object.assign(new Error('No hay proveedores LLM activos en el Pool. Agrega al menos un proveedor gratuito en Herramientas y Config → APIs LLM Gratis.'), { status: 400 });
+    throw Object.assign(new Error('No hay proveedores LLM con API key activa en el Pool. Pega al menos una clave gratuita en Herramientas y Config → APIs LLM Gratis.'), { status: 400 });
   }
 
   const maxTransientRounds = options.max429Retries != null ? Number(options.max429Retries) : 2;
@@ -643,8 +757,7 @@ async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
       const metric = metricFor(provider);
       const now = Date.now();
 
-      // If this provider hit a daily cap / quota and other non-exhausted providers exist, skip it cleanly
-      if (round === 0 && (metric.status === 'daily_limit' || metric.status === 'quota_exhausted') && metric.cooldownUntil > now && i < ordered.length - 1) {
+      if (round === 0 && (metric.status === 'daily_limit' || metric.status === 'quota_exhausted' || metric.status === 'auth_error') && metric.cooldownUntil > now && i < ordered.length - 1) {
         continue;
       }
 
@@ -655,8 +768,6 @@ async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
         maxTokens: provider.maxTokens || pool.defaults.maxTokens
       };
       const useTools = options.useTools !== false && callConfig.tools !== false ? toolsList : false;
-
-      // Throttle per-provider concurrency gently to prevent self-inflicted 429 bursts
       const slotLimit = metric.rateLimits > 0 ? 1 : 2;
 
       const attemptProvider = async (modelOverride = null, toolsForCall = useTools) => {
@@ -666,8 +777,7 @@ async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
         return withProviderSlot(metric.id, slotLimit, options.signal, () => callLLM(cfg, messages, toolsForCall, options.signal));
       };
 
-      try {
-        const res = await attemptProvider();
+      const recordSuccess = (res, modelUsed, label = provider.name) => {
         metric.successes++;
         metric.status = 'ready';
         metric.cooldownUntil = 0;
@@ -676,66 +786,68 @@ async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
           ? Math.round((metric.avgLatencyMs * 0.7) + (res.latencyMs * 0.3))
           : res.latencyMs;
         if (res.usage?.total_tokens) metric.totalTokens += Number(res.usage.total_tokens) || 0;
-        return { ...res, provider: { id: provider.id, name: provider.name, model: provider.model, baseUrl: provider.baseUrl } };
+        return { ...res, provider: { id: provider.id, name: label, model: modelUsed, baseUrl: provider.baseUrl } };
+      };
+
+      try {
+        const res = await attemptProvider();
+        return recordSuccess(res, provider.model);
       } catch (error) {
         lastError = error;
         if (options.signal?.aborted) throw error;
 
         const isToolUnsupported = Boolean(
-          useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function/i.test(String(error.message))
+          useTools && error.status && [400, 404, 422, 500].includes(error.status)
+          && /tool|function|schema|additionalProperties|parameters|tool_choice|endpoint|unsupported/i.test(String(error.message))
         );
 
-        // If native tool calling isn't supported on this model: try next tool-capable provider first, or let caller fall back
-        if (isToolUnsupported) {
-          if (i < ordered.length - 1) {
-            metric.failovers++;
-            options.onFailover?.({
-              from: { id: provider.id, name: provider.name, model: provider.model },
-              to: { id: ordered[i + 1].id, name: ordered[i + 1].name, model: ordered[i + 1].model },
-              reason: 'Modelo sin soporte nativo de herramientas — cambiando a proveedor compatible.'
-            });
-            continue;
+        // Immediately retry THIS provider WITHOUT native tools so models that dislike tool schemas STILL work!
+        if (isToolUnsupported && !error.isDataPolicyBlocked) {
+          try {
+            const plainRes = await attemptProvider(null, false);
+            return recordSuccess(plainRes, provider.model);
+          } catch (plainErr) {
+            lastError = plainErr;
           }
-          throw error;
         }
 
-        // OpenRouter :free upstream model congestion auto-recovery: try openrouter/free or alternate :free model BEFORE failing!
-        if (
-          isOpenRouterUrl(provider.baseUrl)
-          && error.isRateLimit
-          && !error.isDailyLimit
-          && (/:free$/i.test(provider.model) || provider.model === 'openrouter/free')
-        ) {
-          for (const altModel of openRouterModelAlternates(provider.model)) {
-            if (options.signal?.aborted) throw error;
+        // Retired/deprecated model (404/400) on ANY provider OR congested OpenRouter :free model -> auto-discover live working models!
+        const shouldAutoRecoverModel = !lastError.isDailyLimit && !lastError.isQuota && !lastError.isAuthError && !lastError.isDataPolicyBlocked && (
+          lastError.isModelNotFound
+          || (isOpenRouterUrl(provider.baseUrl) && lastError.isRateLimit && (/:free$/i.test(provider.model) || provider.model === 'openrouter/free'))
+        );
+
+        if (shouldAutoRecoverModel) {
+          const candidates = await discoverFallbackModels(provider, provider.model);
+          for (const altModel of candidates) {
+            if (options.signal?.aborted) throw lastError;
             try {
               options.onFailover?.({
                 from: { id: provider.id, name: provider.name, model: provider.model },
                 to: { id: provider.id, name: provider.name, model: altModel },
-                reason: `Modelo ${provider.model} saturado (429) — probando ruta libre ${altModel}`
+                reason: `Modelo ${provider.model} no disponible (${lastError.status}) — usando modelo activo ${altModel}`
               });
-              const altRes = await attemptProvider(altModel, useTools);
-              metric.successes++;
-              metric.status = 'ready';
-              metric.cooldownUntil = 0;
-              metric.lastError = '';
-              return { ...altRes, provider: { id: provider.id, name: `${provider.name} (auto)`, model: altModel, baseUrl: provider.baseUrl } };
+              const altRes = await attemptProvider(altModel, false);
+              return recordSuccess(altRes, altModel, `${provider.name} (auto)`);
             } catch (altErr) {
               lastError = altErr;
-              if (altErr.isDailyLimit || altErr.isQuota) break;
+              if (altErr.isDailyLimit || altErr.isQuota || altErr.isAuthError || altErr.isDataPolicyBlocked) break;
             }
           }
         }
 
         metric.errors++;
         metric.lastError = lastError.message;
-        if (lastError.isDailyLimit) {
+        if (lastError.isAuthError) {
+          metric.status = 'auth_error';
+          metric.cooldownUntil = Date.now() + 300000;
+        } else if (lastError.isDailyLimit) {
           metric.rateLimits++;
           metric.status = 'daily_limit';
-          metric.cooldownUntil = Date.now() + 900000; // 15 minutes
+          metric.cooldownUntil = Date.now() + 900000;
         } else if (lastError.isQuota) {
           metric.status = 'quota_exhausted';
-          metric.cooldownUntil = Date.now() + 600000; // 10 minutes
+          metric.cooldownUntil = Date.now() + 600000;
         } else if (lastError.isRateLimit) {
           metric.rateLimits++;
           metric.status = 'rate_limited';
@@ -761,7 +873,6 @@ async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
       }
     }
 
-    // Only auto-wait & retry if every provider suffered a transient per-minute 429 (NOT daily limit or quota!)
     if (anyTransientRateLimit && round < maxTransientRounds && !options.signal?.aborted) {
       const delayMs = options.retryDelayMs != null ? Number(options.retryDelayMs) : (shortestWaitMs || (2200 * (round + 1)));
       const seconds = Math.max(1, Math.round(delayMs / 1000));
@@ -777,19 +888,44 @@ async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
 }
 
 async function probe(config, toolsSample = null) {
-  const message = [{ role: 'user', content: 'Responde solo: ok' }];
-  let tools = true;
-  let result;
-  try {
-    result = await callLLM({ ...config, requestTimeout: 45000 }, message, toolsSample || false);
-  } catch (error) {
-    if (toolsSample && error.status && /tool|function/i.test(String(error.message))) {
-      tools = false;
-      result = await callLLM({ ...config, requestTimeout: 45000 }, message, false);
-    } else throw error;
+  const apiKey = cleanApiKey(config.apiKey);
+  if (!apiKey && !isLocalProviderUrl(config.baseUrl)) {
+    throw Object.assign(new Error('Falta pegar tu API key en esta tarjeta antes de probar.'), { status: 400 });
   }
-  const reply = (result.message.content || '').trim();
-  return { ok: true, model: config.model, tools, latencyMs: result.latencyMs, reply: reply.slice(0, 200) };
+  const cleanCfg = { ...config, apiKey, maxTokens: 24, requestTimeout: 35000 };
+  const message = [{ role: 'user', content: 'Responde solo: ok' }];
+  try {
+    // Always test with a tiny plain request (no bloated 24-tool JSON schema!) so Groq/Gemini/Mistral/OpenRouter connect reliably
+    const result = await callLLM(cleanCfg, message, false);
+    const reply = (result.message.content || '').trim();
+    return { ok: true, model: cleanCfg.model, tools: true, latencyMs: result.latencyMs, reply: reply.slice(0, 200) };
+  } catch (error) {
+    // Auto-discover & switch to a live active model when the preset model is deprecated/404 OR OpenRouter :free model is temporarily 429
+    const canAutoDiscover = !error.isAuthError && !error.isQuota && !error.isDailyLimit && !error.isDataPolicyBlocked && (
+      error.isModelNotFound
+      || (isOpenRouterUrl(cleanCfg.baseUrl) && error.isRateLimit)
+    );
+    if (canAutoDiscover) {
+      const candidates = await discoverFallbackModels(cleanCfg, cleanCfg.model);
+      for (const candidate of candidates) {
+        try {
+          const altResult = await callLLM({ ...cleanCfg, model: candidate }, message, false);
+          const reply = (altResult.message.content || '').trim();
+          return {
+            ok: true,
+            model: candidate,
+            autoSwitchedFrom: cleanCfg.model,
+            tools: true,
+            latencyMs: altResult.latencyMs,
+            reply: reply.slice(0, 200)
+          };
+        } catch (altErr) {
+          if (altErr.isAuthError || altErr.isQuota || altErr.isDailyLimit || altErr.isDataPolicyBlocked) throw altErr;
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 async function testPool(providers = [], toolsSample = null) {
@@ -799,8 +935,11 @@ async function testPool(providers = [], toolsSample = null) {
     if (!provider.model) {
       return { id: provider.id, name: provider.name, ok: false, error: 'Falta especificar el ID del modelo.' };
     }
+    if (!cleanApiKey(provider.apiKey) && !isLocalProviderUrl(provider.baseUrl)) {
+      return { id: provider.id, name: provider.name, model: provider.model, ok: false, skipped: true, error: 'Sin API key pegada (omitido del Pool activo).' };
+    }
     try {
-      const res = await probe(provider, toolsSample);
+      const res = await probe(provider, null);
       const m = metricFor(provider);
       m.status = 'ready';
       m.cooldownUntil = 0;
@@ -809,7 +948,7 @@ async function testPool(providers = [], toolsSample = null) {
       return { id: provider.id, name: provider.name, ...res };
     } catch (error) {
       const m = metricFor(provider);
-      m.status = error.isDailyLimit ? 'daily_limit' : error.isRateLimit ? 'rate_limited' : 'error';
+      m.status = error.isAuthError ? 'auth_error' : error.isDailyLimit ? 'daily_limit' : error.isRateLimit ? 'rate_limited' : 'error';
       m.lastError = error.message;
       return { id: provider.id, name: provider.name, model: provider.model, ok: false, status: error.status || 500, error: error.message, latencyMs: Date.now() - started };
     }
@@ -833,6 +972,9 @@ function getHealthSnapshot() {
 module.exports = {
   PROVIDER_PRESETS,
   OPENROUTER_FALLBACK_MODELS,
+  cleanApiKey,
+  isLocalProviderUrl,
+  sanitizeMessagesForProvider,
   normalizeBase,
   normalizeModelsUrl,
   providerError,

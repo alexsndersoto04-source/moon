@@ -240,7 +240,7 @@ function createApp() {
   }));
   app.post('/api/providers/test-pool', wrap(async (req, res) => {
     const list = (req.body || {}).providers || [];
-    ok(res, await providers.testPool(list, agent.TOOLS));
+    ok(res, await providers.testPool(list, null));
   }));
 
   /* ------------------- 150 Agents Fleet & Direct Chat -------------------- */
@@ -290,10 +290,13 @@ function createApp() {
     const ping = setInterval(() => { if (!res.destroyed) res.write(': ping\n\n'); }, 15000);
     ping.unref?.();
 
+    let state = null;
+    let prevLen = 0;
     try {
       const key = sessionKey(`${body.sessionId || 'default'}-${agentObj.id}`);
       if (body.reset) sessions.delete(key);
-      const state = session(key);
+      state = session(key);
+      prevLen = state.messages.length;
       if (body.message != null && String(body.message).trim()) {
         state.messages.push({ role: 'user', content: String(body.message).slice(0, 30000) });
       }
@@ -301,7 +304,7 @@ function createApp() {
       const poolOrConfig = body.pool || body.config;
       const normalized = providers.normalizePool(poolOrConfig);
       if (!normalized.providers.length) {
-        throw new Error('Conecta al menos un modelo LLM gratuito en Herramientas y Config → APIs LLM Gratis para chatear con los especialistas.');
+        throw new Error('Conecta al menos un modelo LLM gratuito con API key válida en Herramientas y Config → APIs LLM Gratis para chatear con los especialistas.');
       }
       orchestrator.updateAgentState(agentObj.id, { status: 'working', currentTask: String(body.message || '').slice(0, 120) });
       const result = await agent.loop(poolOrConfig, state.messages, emit, {
@@ -313,8 +316,11 @@ function createApp() {
       orchestrator.updateAgentState(agentObj.id, { status: 'idle', currentTask: '' });
       if (result.ok) {
         emit({ type: 'meta', filesTouched: result.filesTouched || [], provider: result.provider || null });
+      } else {
+        state.messages.length = prevLen;
       }
     } catch (error) {
+      if (state) state.messages.length = prevLen;
       orchestrator.updateAgentState(agentObj.id, { status: 'idle', currentTask: '' });
       emit({ type: 'error', text: error.message || String(error) });
     } finally {
@@ -475,10 +481,12 @@ function createApp() {
     const ping = setInterval(() => { if (!res.destroyed) res.write(': ping\n\n'); }, 15000);
     ping.unref?.();
 
+    let state = null;
+    let prevLen = 0;
     try {
       const key = `plan-${sessionKey(body.sessionId)}`;
       if (body.reset) sessions.delete(key);
-      const state = session(key);
+      state = session(key);
       if (!state.messages.length && Array.isArray(body.history) && body.history.length) {
         for (const h of body.history.slice(-24)) {
           if (h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string' && h.content.trim()) {
@@ -486,6 +494,7 @@ function createApp() {
           }
         }
       }
+      prevLen = state.messages.length;
       const userMsg = String(body.message || '').trim();
       if (userMsg) state.messages.push({ role: 'user', content: userMsg.slice(0, 30000) });
       if (!state.messages.length) throw new Error('Escribe tu idea o consulta para planificar.');
@@ -502,9 +511,9 @@ function createApp() {
           '',
           `> **Estado actual del proyecto:** ${carto.totalFiles} archivo(s) · ${carto.totalLines} líneas (${langs}).`,
           '',
-          'Para conversar conmigo libremente con IA real (hacer preguntas de arquitectura, discutir stack, diseñar módulos y refinar el plan juntos), conecta **al menos una API LLM gratuita** en **Herramientas → APIs LLM Gratis** (por ejemplo **OpenRouter `:free`**, **Groq** o **Google Gemini**).',
+          'Para conversar conmigo libremente con IA real (hacer preguntas de arquitectura, discutir stack, diseñar módulos y refinar el plan juntos), conecta **al menos una API LLM gratuita con su API key** en **Herramientas → APIs LLM Gratis** (por ejemplo **Groq**, **Google Gemini**, **NVIDIA NIM** o **OpenRouter**).',
           '',
-          'Una vez conectes una clave gratuita:',
+          'Una vez pegues una clave gratuita y pulses **Probar conexión**:',
           '1. Conversamos en **Planificar** sin modificar nada todavía.',
           '2. Acordamos arquitectura, estructura y pruebas.',
           '3. Cuando pulses **«Aprobar y construir»**, los **150 agentes especialistas** ejecutan todo el proyecto real.'
@@ -512,12 +521,14 @@ function createApp() {
         state.messages.push({ role: 'assistant', content: reply });
         emit({ type: 'final', text: reply, planReady: false, needsApi: true });
       } else {
-        await agent.planLoop(poolOrConfig, state.messages, emit, {
+        const result = await agent.planLoop(poolOrConfig, state.messages, emit, {
           openFile: body.openFile || '',
           signal: abort.signal
         });
+        if (!result?.ok) state.messages.length = prevLen;
       }
     } catch (error) {
+      if (state) state.messages.length = prevLen;
       emit({ type: 'error', text: error.message || String(error) });
     } finally {
       clearInterval(ping);

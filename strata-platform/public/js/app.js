@@ -205,9 +205,24 @@
     }
   }
 
+  function cleanKey(raw) {
+    return String(raw || '').trim().replace(/^["'`]+|["'`]+$/g, '').replace(/^Bearer\s+/i, '').replace(/[\s\u200B-\u200D\uFEFF\r\n]+/g, '');
+  }
+
+  function isLocalUrl(url) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.|10\.)/i.test(String(url || '').trim());
+  }
+
+  function isProviderActive(p) {
+    if (!p || p.enabled === false || !p.model || !String(p.model).trim()) return false;
+    return Boolean(cleanKey(p.apiKey) || isLocalUrl(p.baseUrl));
+  }
+
   function buildPoolPayload() {
     return {
-      providers: state.config.providers.filter((p) => p.enabled !== false && p.model && p.model.trim()),
+      providers: state.config.providers
+        .filter(isProviderActive)
+        .map((p) => ({ ...p, apiKey: cleanKey(p.apiKey), model: String(p.model).trim() })),
       strategy: state.config.strategy || 'round-robin',
       temperature: Number(state.config.temperature ?? 0.2),
       maxSteps: Number(state.config.maxSteps || 18),
@@ -218,15 +233,15 @@
   }
 
   function updatePoolStatusUI() {
-    const active = state.config.providers.filter((p) => p.enabled !== false && p.model && p.model.trim());
+    const active = state.config.providers.filter(isProviderActive);
     const count = active.length;
-    $('#connected-providers-count').textContent = String(state.config.providers.length);
+    $('#connected-providers-count').textContent = `${count}/${state.config.providers.length}`;
     $('#sidebar-pool-dot').classList.toggle('is-ready', count > 0);
     $('#composer-pool-dot').classList.toggle('is-ready', count > 0);
     $('#sidebar-pool-badge').textContent = count > 0 ? `${count} API${count > 1 ? 's' : ''}` : 'Local';
     $('#sidebar-pool-sub').textContent = count > 0
-      ? `Activas: ${active.slice(0, 3).map((p) => p.name).join(', ')}`
-      : 'Conecta OpenRouter, Groq, Gemini, Cerebras u Ollama para conversar y construir con IA.';
+      ? `Activas con clave: ${active.slice(0, 3).map((p) => p.name).join(', ')}`
+      : 'Pega al menos una clave gratuita (Groq, Gemini, NVIDIA, Mistral u OpenRouter) para activar IA.';
     $('#composer-pool-label').textContent = count > 0 ? `${count} API${count > 1 ? 's' : ''}` : 'Local';
   }
 
@@ -779,7 +794,7 @@
     state.activeAbort = controller;
     const history = thread.messages
       .slice(0, -2)
-      .filter((m) => (m.role === 'user' && m.text) || (m.role === 'assistant' && m.content))
+      .filter((m) => (m.role === 'user' && m.text) || (m.role === 'assistant' && m.content && m.status !== 'error' && m.status !== 'cancelled'))
       .map((m) => ({ role: m.role, content: m.role === 'user' ? m.text : m.content }));
 
     let acc = '';
@@ -1135,15 +1150,15 @@
   function updateOpenRouterWarning() {
     const box = $('#openrouter-dup-warning');
     if (!box) return;
-    const enabled = state.config.providers.filter((p) => p.enabled !== false);
-    const orCount = enabled.filter((p) => /openrouter\.ai/i.test(p.baseUrl || '')).length;
-    const others = enabled.length - orCount;
+    const active = state.config.providers.filter(isProviderActive);
+    const orCount = active.filter((p) => /openrouter\.ai/i.test(p.baseUrl || '')).length;
+    const others = active.length - orCount;
     if (orCount >= 2 && others === 0) {
       box.classList.remove('hidden');
       box.innerHTML = '<strong>Aviso Anti-429:</strong> Tienes varias claves de OpenRouter sin otro proveedor. OpenRouter aplica su tope de <strong>50 req/día en :free por cuenta</strong> (no por clave). Agrega arriba <strong>Groq, Google Gemini, NVIDIA NIM o Mistral</strong> para tener cuotas independientes y failover automático.';
     } else if (orCount >= 1 && others === 0) {
       box.classList.remove('hidden');
-      box.innerHTML = '<strong>Consejo Anti-429:</strong> Solo tienes OpenRouter conectado (tope 50 req/día en <code>:free</code>). Usa modelo <code>openrouter/free</code> y agrega arriba <strong>Groq, Gemini, NVIDIA NIM o Mistral</strong> gratis para no quedar bloqueado nunca.';
+      box.innerHTML = '<strong>Consejo Anti-429:</strong> Solo tienes OpenRouter activo (tope 50 req/día en <code>:free</code>). Usa <code>openrouter/free</code> y agrega también <strong>Groq, Google Gemini, NVIDIA NIM o Mistral</strong> gratis para no quedarte sin cuota.';
     } else {
       box.classList.add('hidden');
     }
@@ -1268,12 +1283,26 @@
       const sync = () => {
         p.enabled = $('.p-en', card).checked;
         p.baseUrl = $('.p-url', card).value.trim();
-        p.apiKey = $('.p-key', card).value.trim();
+        p.apiKey = cleanKey($('.p-key', card).value);
         p.model = $('.p-model', card).value.trim();
         $$('.model-chip', card).forEach((ch) => ch.classList.toggle('is-active', ch.dataset.pickModel === p.model));
+        const badge = $('.p-state-badge', card);
+        if (badge) {
+          const activeNow = isProviderActive(p);
+          badge.textContent = activeNow ? 'Activo' : 'Sin clave';
+          badge.className = `bar-badge p-state-badge ${activeNow ? 'is-ready' : ''}`;
+        }
         saveConfig();
         updateOpenRouterWarning();
       };
+      const headActions = $('.provider-card-head > .inline-row:last-child', card);
+      if (headActions) {
+        const badge = document.createElement('span');
+        const activeNow = isProviderActive(p);
+        badge.className = `bar-badge p-state-badge ${activeNow ? 'is-ready' : ''}`;
+        badge.textContent = activeNow ? 'Activo' : 'Sin clave';
+        headActions.prepend(badge);
+      }
       ['.p-en', '.p-url', '.p-key', '.p-model'].forEach((s) => {
         $(s, card).addEventListener('change', sync);
         $(s, card).addEventListener('input', sync);
@@ -1296,24 +1325,47 @@
       $('.p-disc', card).addEventListener('click', async (e) => {
         sync();
         const btn = e.currentTarget; const msg = $('.provider-msg', card); btn.disabled = true;
+        msg.className = 'provider-msg'; msg.textContent = 'Consultando modelos disponibles…';
         try {
           const r = await api('/api/providers/models', { method: 'POST', body: { config: p } });
           const dl = $(`#${dlId}`, card); dl.replaceChildren();
+          const liveIds = [];
           for (const m of r.models || []) {
             const opt = document.createElement('option'); opt.value = m.id; opt.label = m.free ? 'GRATIS' : ''; dl.append(opt);
+            if (liveIds.length < 6 && !/embed|whisper|tts|dall-e|audio|moderation|guard|imagen|veo/i.test(m.id)) {
+              liveIds.push(m.id);
+            }
           }
-          const best = r.models?.find((m) => m.free) || r.models?.[0];
-          if (best && !p.model) { $('.p-model', card).value = best.id; sync(); }
-          msg.className = 'provider-msg ok'; msg.textContent = `${r.models.length} modelos encontrados (${r.freeCount} gratis).`;
+          if (liveIds.length) {
+            p.suggestedModels = liveIds;
+            const chipsBox = $('.model-chips', card);
+            if (chipsBox) {
+              chipsBox.innerHTML = liveIds.map((m) => `<button type="button" class="model-chip ${p.model === m ? 'is-active' : ''}" data-pick-model="${esc(m)}">${esc(m)}</button>`).join('');
+              $$('.model-chip', chipsBox).forEach((ch) => ch.addEventListener('click', () => { $('.p-model', card).value = ch.dataset.pickModel; sync(); }));
+            }
+          }
+          const best = liveIds[0] || r.models?.[0]?.id;
+          if (best && !p.model) { $('.p-model', card).value = best; sync(); }
+          saveConfig();
+          msg.className = 'provider-msg ok'; msg.textContent = `✓ ${r.models.length} modelos encontrados (${r.freeCount} gratis). Toca un chip o escribe el ID.`;
         } catch (err) { msg.className = 'provider-msg err'; msg.textContent = err.message; }
         finally { btn.disabled = false; }
       });
       $('.p-test', card).addEventListener('click', async (e) => {
         sync();
         const btn = e.currentTarget; const msg = $('.provider-msg', card); btn.disabled = true;
+        msg.className = 'provider-msg'; msg.textContent = 'Probando conexión…';
         try {
           const r = await api('/api/providers/test', { method: 'POST', body: { config: p } });
-          msg.className = 'provider-msg ok'; msg.textContent = `✓ Conectado · ${r.model} · ${r.latencyMs || 0} ms`;
+          if (r.model && r.model !== p.model) {
+            p.model = r.model;
+            $('.p-model', card).value = r.model;
+            sync();
+          }
+          msg.className = 'provider-msg ok';
+          msg.textContent = r.autoSwitchedFrom
+            ? `✓ Conectado · Auto-seleccionado ${r.model} (${r.latencyMs || 0} ms)`
+            : `✓ Conectado · ${r.model} · ${r.latencyMs || 0} ms`;
         } catch (err) { msg.className = 'provider-msg err'; msg.textContent = err.message; }
         finally { btn.disabled = false; }
       });
@@ -1801,22 +1853,35 @@
     $('#add-free-pack-btn').addEventListener('click', addRecommendedFreePack);
     $('#add-custom-provider-btn').addEventListener('click', () => addProvider(null));
     $('#test-all-providers-btn').addEventListener('click', async () => {
-      const active = state.config.providers.filter((p) => p.enabled !== false);
-      if (!active.length) return toast('Agrega primero una API.', 'warning');
+      const ready = state.config.providers.filter(isProviderActive);
+      if (!ready.length) return toast('Pega primero al menos una API key en alguna tarjeta.', 'warning');
       const btn = $('#test-all-providers-btn');
       btn.disabled = true;
       btn.textContent = 'Probando…';
       try {
-        const r = await api('/api/providers/test-pool', { method: 'POST', body: { providers: active } });
+        const r = await api('/api/providers/test-pool', {
+          method: 'POST',
+          body: { providers: ready.map((p) => ({ ...p, apiKey: cleanKey(p.apiKey) })) }
+        });
+        let updatedModel = false;
         for (const item of r.results || []) {
+          const prov = state.config.providers.find((x) => x.id === item.id);
           const card = $(`.provider-card[data-provider-id="${item.id}"]`);
+          if (item.ok && item.model && prov && prov.model !== item.model) {
+            prov.model = item.model;
+            if (card) $('.p-model', card).value = item.model;
+            updatedModel = true;
+          }
           const msg = card && $('.provider-msg', card);
           if (!msg) continue;
           msg.className = `provider-msg ${item.ok ? 'ok' : 'err'}`;
           msg.textContent = item.ok
-            ? `✓ Conectado · ${item.model} · ${item.latencyMs || 0} ms`
+            ? (item.autoSwitchedFrom
+              ? `✓ Conectado · Auto-seleccionado ${item.model} (${item.latencyMs || 0} ms)`
+              : `✓ Conectado · ${item.model} · ${item.latencyMs || 0} ms`)
             : (item.error || 'Error de conexión');
         }
+        if (updatedModel) saveConfig();
         toast(`Pool: ${r.healthy} de ${r.total} operativas.`, r.healthy === r.total ? 'success' : 'warning');
       } finally {
         btn.disabled = false;

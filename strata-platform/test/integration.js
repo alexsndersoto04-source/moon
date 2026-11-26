@@ -93,6 +93,17 @@ async function main() {
         if (model === 'quota-model') {
           res.writeHead(429, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' } }));
+        } else if (model === 'retired-404-model') {
+          res.writeHead(404, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'Model retired-404-model does not exist.', code: 'model_not_found' } }));
+        } else if (model === 'no-tools-model') {
+          if (Array.isArray(parsed.tools) && parsed.tools.length) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: { message: 'Failed to call a function (tool_use_failed).', code: 'tool_use_failed' } }));
+          } else {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok-without-tools' }, finish_reason: 'stop' }] }));
+          }
         } else if (model === 'daily-limit-model') {
           res.writeHead(429, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'Rate limit exceeded: free-models-per-day.', code: 429 } }));
@@ -535,6 +546,56 @@ async function main() {
       onRetryWait: (ev) => transientRetryEvents.push(ev)
     });
     check(recoveredRes.message.content === 'recovered-after-429' && transientRetryEvents.length === 1, 'transient HTTP 429 automatically waits and recovers on retry');
+
+    // Cross-provider compatibility regressions (Gemini, Groq, Mistral, NVIDIA, mobile copy-paste)
+    const agentMod = require('../server/agent');
+    check(
+      agentMod.TOOLS.every((t) => !('additionalProperties' in t.function.parameters) && Object.keys(t.function.parameters.properties || {}).length > 0),
+      'all tool schemas omit additionalProperties and empty properties for Gemini/Mistral/Groq compatibility'
+    );
+    check(
+      providersMod.cleanApiKey('  "Bearer sk-test-123\r\n\u200B" ') === 'sk-test-123',
+      'cleanApiKey strips Bearer prefix, quotes, newlines, and zero-width spaces from mobile pastes'
+    );
+    const filteredPool = providersMod.normalizePool({
+      providers: [
+        { id: 'blank-groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', apiKey: '' },
+        { id: 'valid-groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', apiKey: 'gsk_valid' },
+        { id: 'local-ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5-coder:7b', apiKey: '' }
+      ]
+    });
+    check(
+      filteredPool.providers.length === 2 && !filteredPool.providers.some((p) => p.id === 'blank-groq'),
+      'normalizePool skips remote placeholder cards with empty API keys while preserving local Ollama'
+    );
+    const mergedMsgs = providersMod.sanitizeMessagesForProvider([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'first' },
+      { role: 'user', content: 'second' },
+      { role: 'tool', tool_call_id: 'orphan', content: 'stray' }
+    ], true);
+    check(
+      mergedMsgs.length === 2 && mergedMsgs[1].role === 'user' && mergedMsgs[1].content.includes('first') && mergedMsgs[1].content.includes('second'),
+      'sanitizeMessagesForProvider merges consecutive user turns and neutralizes orphaned tool messages'
+    );
+
+    const autoSwitchedProbe = await providersMod.probe({
+      baseUrl: providerBase,
+      model: 'retired-404-model',
+      apiKey: 'k-test'
+    });
+    check(
+      autoSwitchedProbe.ok && autoSwitchedProbe.autoSwitchedFrom === 'retired-404-model' && autoSwitchedProbe.model !== 'retired-404-model',
+      'probe auto-discovers and switches to a live active model when a preset model returns 404'
+    );
+
+    const noToolsRecovered = await providersMod.callPoolLLM({
+      providers: [{ id: 'groq-notools', name: 'Groq Test', baseUrl: providerBase, model: 'no-tools-model', apiKey: 'k1', enabled: true }]
+    }, [{ role: 'user', content: 'hola' }], agentMod.PLAN_TOOLS, { useTools: true });
+    check(
+      noToolsRecovered.message.content === 'ok-without-tools',
+      'callPoolLLM transparently retries without native tools when a provider rejects tool schemas (400 tool_use_failed)'
+    );
 
     const offlinePort = providerServer.address().port;
     await new Promise((resolve) => {

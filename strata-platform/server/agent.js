@@ -15,7 +15,7 @@ const tool = (name, description, properties, required = []) => ({
   function: {
     name,
     description,
-    parameters: { type: 'object', properties, required, additionalProperties: false }
+    parameters: { type: 'object', properties, required }
   }
 });
 const str = (description) => ({ type: 'string', description });
@@ -44,16 +44,15 @@ const TOOLS = [
   tool('git_diff', 'Obtiene el diff real de cambios en el workspace o en un archivo específico.', { path: str('Archivo opcional.'), dir: str('Subcarpeta opcional.') }),
   tool('git_log', 'Consulta los últimos commits del repositorio Git del workspace.', { limit: int('Número de commits (1–100).'), dir: str('Subcarpeta opcional.') }),
   tool('open_in_editor', 'Abre un archivo en el editor y salta a una línea opcional.', { path: str('Ruta relativa.'), line: int('Número de línea.') }, ['path']),
-  tool('list_runtimes', 'Lista runtimes, compiladores y herramientas instalados en el servidor.', {}),
+  tool('list_runtimes', 'Lista runtimes, compiladores y herramientas instalados en el servidor.', { filter: str('Filtro opcional por nombre de runtime.') }),
   tool('snapshot', 'Guarda una copia de seguridad del workspace antes de cambios masivos.', { label: str('Etiqueta del snapshot.') }),
   tool('restore_snapshot', 'Restaura un snapshot guardado (crea copia de seguridad previa automáticamente).', { id: str('Id de snapshot.') }, ['id'])
 ];
 const TOOL_NAMES = new Set(TOOLS.map((item) => item.function.name));
 
 const READ_ONLY_TOOL_NAMES = new Set([
-  'list_files', 'read_file', 'read_many_files', 'find_files', 'search_code',
-  'project_cartography', 'verify_syntax', 'security_audit',
-  'git_status', 'git_diff', 'git_log', 'list_runtimes'
+  'list_files', 'read_file', 'find_files', 'search_code',
+  'project_cartography', 'verify_syntax'
 ]);
 const PLAN_TOOLS = TOOLS.filter((item) => READ_ONLY_TOOL_NAMES.has(item.function.name));
 
@@ -283,7 +282,7 @@ async function loop(poolOrConfig, history, emit, options = {}) {
         emitSafely(emit, { type: 'provider', provider: response.provider, latencyMs: response.latencyMs, agentId: options.agent?.id || null });
       } catch (error) {
         const message = String(error.message || error);
-        if (useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function/i.test(message)) {
+        if (useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function|schema|additionalProperties|parameters|tool_choice|endpoint/i.test(message)) {
           emitSafely(emit, { type: 'notice', text: 'El proveedor no admite llamadas de herramientas nativas; se cambiará al protocolo JSON estructurado.' });
           useTools = false;
           continue;
@@ -303,7 +302,7 @@ async function loop(poolOrConfig, history, emit, options = {}) {
       if (calls.length && useTools) {
         usedTools = true;
         const normalized = calls.map((call, index) => ({
-          id: call.id || `strata-${step}-${index}`,
+          id: call.id || `s${String(step).padStart(2, '0')}${String(index).padStart(6, '0')}`,
           type: 'function',
           function: { name: call.function?.name || '', arguments: call.function?.arguments || '{}' }
         }));
@@ -386,12 +385,13 @@ async function planLoop(poolOrConfig, history, emit, options = {}) {
   const pool = providers.normalizePool(poolOrConfig);
   const maxSteps = Math.min(Math.max(Number.parseInt(options.maxSteps || 8, 10) || 8, 1), 16);
   const treeSummary = await fsx.treeText(120).catch(() => '(workspace vacío)');
+  const workspaceHasFiles = Boolean(treeSummary && !/^\(workspace vacío\)$/i.test(treeSummary.trim()));
   const system = {
     role: 'system',
     content: planSystemPrompt({ openFile: options.openFile || '', treeSummary })
   };
   const convo = [system, ...history];
-  let useTools = poolOrConfig?.tools !== false && pool.defaults.tools !== false;
+  let useTools = workspaceHasFiles && poolOrConfig?.tools !== false && pool.defaults.tools !== false;
   let tokens = 0;
   let lastProvider = null;
 
@@ -412,7 +412,7 @@ async function planLoop(poolOrConfig, history, emit, options = {}) {
         emitSafely(emit, { type: 'provider', provider: response.provider, latencyMs: response.latencyMs });
       } catch (error) {
         const message = String(error.message || error);
-        if (useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function/i.test(message)) {
+        if (useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function|schema|additionalProperties|parameters|tool_choice|endpoint/i.test(message)) {
           useTools = false;
           continue;
         }
@@ -430,7 +430,7 @@ async function planLoop(poolOrConfig, history, emit, options = {}) {
 
       if (calls.length && useTools) {
         const normalized = calls.map((call, index) => ({
-          id: call.id || `plan-${step}-${index}`,
+          id: call.id || `p${String(step).padStart(2, '0')}${String(index).padStart(6, '0')}`,
           type: 'function',
           function: { name: call.function?.name || '', arguments: call.function?.arguments || '{}' }
         }));
@@ -480,7 +480,7 @@ async function planLoop(poolOrConfig, history, emit, options = {}) {
 }
 
 async function probe(config) {
-  return providers.probe(config, TOOLS);
+  return providers.probe(config, null);
 }
 
 module.exports = {

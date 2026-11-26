@@ -272,6 +272,7 @@ code {
   color: var(--muted);
   flex-shrink: 0;
 }
+.bar-badge.is-ready { background: var(--plan-soft); color: var(--plan); }
 .nav-bar-body {
   padding: 4px 8px 9px;
   border-top: 1px solid var(--border);
