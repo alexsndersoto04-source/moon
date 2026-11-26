@@ -444,10 +444,11 @@ async function executeMission(mission, options = {}) {
       const waveSlots = activeSlots.filter((slot) => wave.phases.has(slot.phase));
       if (!waveSlots.length) continue;
 
+      const waveConcurrency = Math.min(concurrency, Math.max(1, normalizedPool.providers.length * 2));
       mission.phase = wave.id;
-      emitMission(mission, { type: 'phase', phase: wave.id, label: `${wave.label} (${waveSlots.length} especialista/s)` });
+      emitMission(mission, { type: 'phase', phase: wave.id, label: `${wave.label} (${waveSlots.length} especialista/s · ${waveConcurrency} en paralelo)` });
 
-      await runWithConcurrency(waveSlots, concurrency, signal, async (slot) => {
+      await runWithConcurrency(waveSlots, waveConcurrency, signal, async (slot) => {
         if (signal.aborted) return;
         executedIds.add(slot.id);
         const agentObj = catalog.getAgent(slot.id);
@@ -465,6 +466,8 @@ async function executeMission(mission, options = {}) {
             emitMission(mission, { type: 'tool_end', agentId: slot.id, agentName: slot.name, name: ev.name, preview: ev.preview });
           } else if (ev.type === 'failover') {
             emitMission(mission, { type: 'failover', agentId: slot.id, from: ev.from, to: ev.to, reason: ev.reason });
+          } else if (ev.type === 'retry_wait') {
+            emitMission(mission, { type: 'retry_wait', agentId: slot.id, seconds: ev.seconds, round: ev.round, maxRounds: ev.maxRounds });
           } else if (ev.type === 'provider') {
             updateAgentState(slot.id, { lastProvider: `${ev.provider.name} (${ev.provider.model})` }, mission);
           } else if (ev.type === 'ui') {

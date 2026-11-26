@@ -268,6 +268,15 @@ async function loop(poolOrConfig, history, emit, options = {}) {
               to: info.to,
               reason: info.reason
             });
+          },
+          onRetryWait: (info) => {
+            emitSafely(emit, {
+              type: 'retry_wait',
+              agentId: options.agent?.id || null,
+              seconds: info.seconds,
+              round: info.round,
+              maxRounds: info.maxRounds
+            });
           }
         });
         lastProvider = response.provider;
@@ -396,7 +405,8 @@ async function planLoop(poolOrConfig, history, emit, options = {}) {
           signal: options.signal,
           agentId: 'AG-001',
           divisionId: 'architecture',
-          onFailover: (info) => emitSafely(emit, { type: 'failover', from: info.from, to: info.to, reason: info.reason })
+          onFailover: (info) => emitSafely(emit, { type: 'failover', from: info.from, to: info.to, reason: info.reason }),
+          onRetryWait: (info) => emitSafely(emit, { type: 'retry_wait', seconds: info.seconds, round: info.round, maxRounds: info.maxRounds })
         });
         lastProvider = response.provider;
         emitSafely(emit, { type: 'provider', provider: response.provider, latencyMs: response.latencyMs });

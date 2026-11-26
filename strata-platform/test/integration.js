@@ -64,6 +64,7 @@ async function main() {
   const base = `http://127.0.0.1:${address.port}`;
   const wsBase = `ws://127.0.0.1:${address.port}`;
   let providerAuthorization = '';
+  let flaky429Hits = 0;
   const providerServer = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/v1/models') {
       providerAuthorization = req.headers.authorization || '';
@@ -92,6 +93,18 @@ async function main() {
         if (model === 'quota-model') {
           res.writeHead(429, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' } }));
+        } else if (model === 'daily-limit-model') {
+          res.writeHead(429, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'Rate limit exceeded: free-models-per-day.', code: 429 } }));
+        } else if (model === 'flaky-429-once') {
+          flaky429Hits++;
+          if (flaky429Hits === 1) {
+            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '1' });
+            res.end(JSON.stringify({ error: { message: 'Temporarily rate-limited upstream.', code: 429 } }));
+          } else {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'recovered-after-429' }, finish_reason: 'stop' }] }));
+          }
         } else if (model === 'rate-model') {
           res.writeHead(429, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: { message: 'Rate limit exceeded.', type: 'rate_limit_exceeded', code: 'rate_limit_exceeded' } }));
@@ -495,6 +508,33 @@ async function main() {
     });
     await expectStatus(response, 200);
     check((await json(response)).ok === true, 'planning session resets cleanly');
+
+    // Anti-429 & Multi-Provider Free Tier Resilience
+    const providersMod = require('../server/providers');
+    check(providersMod.PROVIDER_PRESETS.length >= 12 && providersMod.PROVIDER_PRESETS.some((p) => p.id === 'nvidia-nim-free') && providersMod.PROVIDER_PRESETS.some((p) => p.id === 'cohere-free'), 'provider catalog exposes 12+ free providers including Groq, Gemini, NVIDIA NIM, Mistral, GitHub Models, Cohere, and OpenRouter');
+    check(providersMod.normalizeBase('https://models.github.ai/inference') === 'https://models.github.ai/inference/chat/completions', 'GitHub Models endpoint does not erroneously append /v1');
+    check(providersMod.normalizeBase('https://generativelanguage.googleapis.com/v1beta/openai') === 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', 'Google Gemini OpenAI-compatible endpoint normalizes cleanly');
+
+    const dailyFailoverRes = await providersMod.callPoolLLM({
+      strategy: 'priority-failover',
+      providers: [
+        { id: 'or-daily-hit', name: 'OpenRouter Daily Hit', baseUrl: providerBase, model: 'daily-limit-model', apiKey: 'k1', priority: 1, enabled: true },
+        { id: 'groq-backup', name: 'Groq Backup', baseUrl: providerBase, model: 'healthy-free-model', apiKey: 'k2', priority: 2, enabled: true }
+      ]
+    }, [{ role: 'user', content: 'ping' }], false, { retryDelayMs: 50 });
+    check(dailyFailoverRes.provider.id === 'groq-backup', 'daily-limit HTTP 429 fails over immediately to the next healthy free provider');
+
+    const transientRetryEvents = [];
+    const recoveredRes = await providersMod.callPoolLLM({
+      strategy: 'priority-failover',
+      providers: [
+        { id: 'transient-429', name: 'Flaky Free Provider', baseUrl: providerBase, model: 'flaky-429-once', apiKey: 'k1', priority: 1, enabled: true }
+      ]
+    }, [{ role: 'user', content: 'ping' }], false, {
+      retryDelayMs: 50,
+      onRetryWait: (ev) => transientRetryEvents.push(ev)
+    });
+    check(recoveredRes.message.content === 'recovered-after-429' && transientRetryEvents.length === 1, 'transient HTTP 429 automatically waits and recovers on retry');
 
     const offlinePort = providerServer.address().port;
     await new Promise((resolve) => {

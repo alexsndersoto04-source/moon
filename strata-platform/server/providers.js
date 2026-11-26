@@ -1,98 +1,152 @@
 'use strict';
 
 /*
- * Multi-LLM Free Provider Pool, Catalog Auto-Discovery, Routing & Failover Engine.
- * Supports connecting multiple free OpenAI-compatible APIs simultaneously for 150 agents.
+ * Multi-LLM Free Provider Pool, Catalog Auto-Discovery, Anti-429 Resilience,
+ * Smart Routing & Instant Multi-Provider Failover Engine.
  */
+
+const OPENROUTER_FALLBACK_MODELS = [
+  'openrouter/free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'mistralai/mistral-small-3.1-24b-instruct:free',
+  'google/gemma-3-27b-it:free',
+  'qwen/qwen3-coder:free'
+];
 
 const PROVIDER_PRESETS = [
   {
-    id: 'openrouter-free',
-    name: 'OpenRouter (Modelos Gratis :free)',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'qwen/qwen3-coder:free',
-    tier: 'Gratis (:free)',
-    requiresKey: true,
-    docsUrl: 'https://openrouter.ai/keys',
-    description: 'Decenas de modelos gratuitos (:free) como Qwen Coder, DeepSeek, Llama 3.3 y Mistral. Pulsa "Buscar modelos" para ver los activos hoy.',
-    extraHeaders: { 'HTTP-Referer': 'https://strata-engineering.local', 'X-Title': 'Strata Engineering 150 Agents' }
-  },
-  {
     id: 'groq-free',
-    name: 'Groq Cloud (Free Tier Ultrarrápido)',
+    name: 'Groq Cloud (Gratis Ultrarrápido)',
     baseUrl: 'https://api.groq.com/openai/v1',
     defaultModel: 'llama-3.3-70b-versatile',
-    tier: 'Gratis (Alta velocidad)',
+    suggestedModels: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'qwen/qwen3-32b', 'llama-3.1-8b-instant'],
+    tier: 'Gratis sin tarjeta · Muy rápido',
+    recommended: true,
     requiresKey: true,
     docsUrl: 'https://console.groq.com/keys',
-    description: 'Inferencia LPU de bajísima latencia ideal para programar, depurar y ejecutar flujos paralelos de múltiples agentes.'
+    description: 'Inferencia LPU ultrarrápida gratuita (1K–14K req/día según modelo). Ideal como motor principal para evitar 429.'
   },
   {
     id: 'gemini-free',
-    name: 'Google Gemini (AI Studio Free Tier)',
+    name: 'Google Gemini (AI Studio Gratis)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     defaultModel: 'gemini-2.5-flash',
-    tier: 'Gratis (Gran contexto)',
+    suggestedModels: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
+    tier: 'Gratis sin tarjeta · Gran contexto',
+    recommended: true,
     requiresKey: true,
     docsUrl: 'https://aistudio.google.com/apikey',
-    description: 'Ventana de contexto masiva ideal para arquitectura, análisis de proyectos enormes y revisión de código.'
+    description: 'Ventana de contexto masiva gratuita directa de Google AI Studio. Excelente para planificar y revisar proyectos enteros.'
+  },
+  {
+    id: 'nvidia-nim-free',
+    name: 'NVIDIA NIM (build.nvidia.com Gratis)',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    defaultModel: 'meta/llama-3.3-70b-instruct',
+    suggestedModels: ['meta/llama-3.3-70b-instruct', 'qwen/qwen2.5-coder-32b-instruct', 'deepseek-ai/deepseek-r1', 'mistralai/mistral-small-24b-instruct'],
+    tier: 'Gratis sin tarjeta · Muchos modelos',
+    recommended: true,
+    requiresKey: true,
+    docsUrl: 'https://build.nvidia.com/explore/discover',
+    description: 'Acceso gratuito a Llama 3.3, Qwen Coder 32B y DeepSeek R1 desde el catálogo oficial de NVIDIA.'
+  },
+  {
+    id: 'mistral-free',
+    name: 'Mistral AI (Plan Experiment Gratis)',
+    baseUrl: 'https://api.mistral.ai/v1',
+    defaultModel: 'mistral-small-latest',
+    suggestedModels: ['mistral-small-latest', 'codestral-latest', 'devstral-small-latest', 'open-mistral-nemo'],
+    tier: 'Gratis sin tarjeta · Ideal código',
+    recommended: true,
+    requiresKey: true,
+    docsUrl: 'https://console.mistral.ai/api-keys',
+    description: 'Plan Experiment gratuito con Mistral Small, Codestral y Devstral especializados en programación.'
   },
   {
     id: 'cerebras-free',
-    name: 'Cerebras Cloud (Free Tier)',
+    name: 'Cerebras Cloud (Gratis Alta Velocidad)',
     baseUrl: 'https://api.cerebras.ai/v1',
     defaultModel: 'llama-3.3-70b',
-    tier: 'Gratis (Alto throughput)',
+    suggestedModels: ['llama-3.3-70b', 'qwen-3-32b', 'gpt-oss-120b', 'llama3.1-8b'],
+    tier: 'Gratis · Throughput extremo',
     requiresKey: true,
     docsUrl: 'https://cloud.cerebras.ai/',
-    description: 'Generación ultrarrápida gratuita compatible con OpenAI para escuadrones de desarrollo paralelo.'
+    description: 'Generación ultrarrápida compatible con OpenAI para escuadrones paralelos.'
   },
   {
     id: 'github-models',
     name: 'GitHub Models (Gratis con Token GitHub)',
-    baseUrl: 'https://models.inference.ai.azure.com',
-    defaultModel: 'gpt-4o-mini',
-    tier: 'Gratis (GitHub PAT)',
+    baseUrl: 'https://models.github.ai/inference',
+    defaultModel: 'openai/gpt-4o-mini',
+    suggestedModels: ['openai/gpt-4o-mini', 'meta/llama-3.3-70b-instruct', 'deepseek/deepseek-r1', 'mistral-ai/codestral-2501'],
+    tier: 'Gratis con cuenta GitHub',
     requiresKey: true,
-    docsUrl: 'https://github.com/marketplace/models',
-    description: 'Acceso gratuito a GPT-4o-mini, Llama, DeepSeek y Mistral usando un Personal Access Token de GitHub.'
+    docsUrl: 'https://github.com/settings/tokens',
+    description: 'Usa un Personal Access Token de GitHub (permiso models:read) para acceder gratis a GPT-4o-mini, Llama y DeepSeek.'
   },
   {
-    id: 'mistral-free',
-    name: 'Mistral AI (Free Experiment Tier)',
-    baseUrl: 'https://api.mistral.ai/v1',
-    defaultModel: 'codestral-latest',
-    tier: 'Gratis (Plan Experiment)',
+    id: 'openrouter-free',
+    name: 'OpenRouter (Auto-Router :free)',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    defaultModel: 'openrouter/free',
+    suggestedModels: OPENROUTER_FALLBACK_MODELS,
+    tier: 'Gratis (50 req/día por cuenta)',
     requiresKey: true,
-    docsUrl: 'https://console.mistral.ai/api-keys',
-    description: 'Modelos Codestral y Mistral Small especializados en ingeniería de software y refactorización.'
+    docsUrl: 'https://openrouter.ai/keys',
+    description: 'Usa "openrouter/free" para enrutamiento automático. Nota: OpenRouter limita :free a 50 req/día y 20/min por cuenta; combínalo con Groq, Gemini o NVIDIA.',
+    extraHeaders: { 'HTTP-Referer': 'https://strata-engineering.local', 'X-Title': 'Strata Engineering 150 Agents' }
+  },
+  {
+    id: 'cohere-free',
+    name: 'Cohere (Trial API Gratis)',
+    baseUrl: 'https://api.cohere.ai/compatibility/v1',
+    defaultModel: 'command-a-03-2025',
+    suggestedModels: ['command-a-03-2025', 'command-r-plus-08-2024', 'command-r7b-12-2024'],
+    tier: 'Gratis sin tarjeta (Trial)',
+    requiresKey: true,
+    docsUrl: 'https://dashboard.cohere.com/api-keys',
+    description: 'API Trial gratuita compatible con OpenAI para arquitectura, razonamiento y código.'
+  },
+  {
+    id: 'huggingface-free',
+    name: 'Hugging Face Router (Gratis HF Token)',
+    baseUrl: 'https://router.huggingface.co/v1',
+    defaultModel: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+    suggestedModels: ['Qwen/Qwen2.5-Coder-32B-Instruct', 'meta-llama/Llama-3.3-70B-Instruct', 'deepseek-ai/DeepSeek-R1'],
+    tier: 'Gratis (HF Token)',
+    requiresKey: true,
+    docsUrl: 'https://huggingface.co/settings/tokens',
+    description: 'Router oficial OpenAI-compatible hacia modelos open-source de programación.'
   },
   {
     id: 'sambanova-free',
     name: 'SambaNova Cloud (Free Tier)',
     baseUrl: 'https://api.sambanova.ai/v1',
     defaultModel: 'Meta-Llama-3.3-70B-Instruct',
-    tier: 'Gratis',
+    suggestedModels: ['Meta-Llama-3.3-70B-Instruct', 'Qwen2.5-Coder-32B-Instruct', 'DeepSeek-R1-Distill-Llama-70B'],
+    tier: 'Gratis sin tarjeta',
     requiresKey: true,
     docsUrl: 'https://cloud.sambanova.ai/apis',
-    description: 'Modelos Llama 3.3 y Qwen Coder gratuitos de alto rendimiento.'
+    description: 'Modelos Llama 3.3 y Qwen Coder gratuitos de respaldo.'
   },
   {
-    id: 'huggingface-free',
-    name: 'Hugging Face Router (Free Inference)',
-    baseUrl: 'https://router.huggingface.co/v1',
-    defaultModel: 'Qwen/Qwen2.5-Coder-32B-Instruct',
-    tier: 'Gratis (HF Token)',
+    id: 'cloudflare-free',
+    name: 'Cloudflare Workers AI (Gratis 10K/día)',
+    baseUrl: 'https://api.cloudflare.com/client/v4/accounts/TU_ACCOUNT_ID/ai/v1',
+    defaultModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    suggestedModels: ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/qwen/qwen2.5-coder-32b-instruct', '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b'],
+    tier: 'Gratis (10K neuronas/día)',
     requiresKey: true,
-    docsUrl: 'https://huggingface.co/settings/tokens',
-    description: 'Router OpenAI-compatible hacia modelos open-source de programación.'
+    docsUrl: 'https://dash.cloudflare.com/',
+    description: 'Reemplaza TU_ACCOUNT_ID en la URL por tu ID de cuenta de Cloudflare y pega tu API Token.'
   },
   {
     id: 'ollama-local',
     name: 'Ollama / LM Studio (Local Sin Límites)',
     baseUrl: 'http://127.0.0.1:11434/v1',
     defaultModel: 'qwen2.5-coder:14b',
-    tier: '100% Local Gratis',
+    suggestedModels: ['qwen2.5-coder:14b', 'qwen2.5-coder:7b', 'llama3.2:latest'],
+    tier: '100% Local Sin 429',
     requiresKey: false,
     docsUrl: 'https://ollama.com',
     description: 'Ejecución local sin límites de cuota ni API key externa.'
@@ -102,16 +156,18 @@ const PROVIDER_PRESETS = [
     name: 'Proveedor OpenAI-Compatible Personalizado',
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: '',
+    suggestedModels: [],
     tier: 'Personalizado',
     requiresKey: true,
     docsUrl: '',
-    description: 'Conecta cualquier API compatible con /chat/completions y /models.'
+    description: 'Conecta cualquier API compatible con /chat/completions y /models (DeepSeek, Together, Fireworks, Chutes, etc.).'
   }
 ];
 
 // Endpoints that already expose /chat/completions directly without appending /v1
 const NO_V1_SUFFIX_PATTERNS = [
   /generativelanguage\.googleapis\.com\/v\d+(?:beta\d*)?\/openai$/i,
+  /models\.github\.ai\/inference$/i,
   /models\.inference\.ai\.azure\.com$/i,
   /\/openai$/i
 ];
@@ -133,30 +189,81 @@ function normalizeModelsUrl(url) {
   let raw = String(url || '').trim().replace(/\/+$/, '');
   if (!raw) raw = 'https://api.openai.com/v1';
   if (/\/models$/i.test(raw)) return raw;
+  if (/models\.github\.ai(?:\/inference)?$/i.test(raw)) return 'https://models.github.ai/catalog/models';
   return stripEndpoint(raw) + '/models';
 }
 
-function providerError(raw, status, url) {
+function isOpenRouterUrl(url) {
+  return /openrouter\.ai/i.test(String(url || ''));
+}
+
+function parseRetryAfterSec(headers) {
+  if (!headers) return 0;
+  const retryAfter = headers.get?.('retry-after');
+  if (retryAfter) {
+    const num = Number(retryAfter);
+    if (Number.isFinite(num) && num > 0) return Math.min(Math.ceil(num), 120);
+    const ts = Date.parse(retryAfter);
+    if (Number.isFinite(ts)) {
+      const diff = Math.ceil((ts - Date.now()) / 1000);
+      if (diff > 0) return Math.min(diff, 120);
+    }
+  }
+  const reset = headers.get?.('x-ratelimit-reset');
+  if (reset) {
+    const num = Number(reset);
+    if (Number.isFinite(num) && num > 0) {
+      const resetMs = num > 1e12 ? num : num > 1e9 ? num * 1000 : Date.now() + num * 1000;
+      const diff = Math.ceil((resetMs - Date.now()) / 1000);
+      if (diff > 0 && diff <= 300) return diff;
+    }
+  }
+  return 0;
+}
+
+function providerError(raw, status, url, headers = null) {
   let payload = {};
   try { payload = JSON.parse(raw); } catch { /* provider returned plain text */ }
   const details = payload?.error || payload || {};
-  const message = typeof details === 'string'
+  const baseMessage = typeof details === 'string'
     ? details
     : String(details.message || payload?.message || '');
+  const upstreamRaw = typeof details === 'object' ? String(details.metadata?.raw || details.metadata?.provider_name || '') : '';
+  const combinedDetail = [baseMessage, upstreamRaw].filter(Boolean).join(' — ').slice(0, 320);
   const code = String(typeof details === 'object'
     ? (details.code || details.type || payload?.code || '')
     : '');
-  const quotaError = /insufficient_quota|credit_balance_exhausted|no credits remaining/i.test(`${code} ${message}`);
-  const friendly = quotaError
-    ? 'La API indica que esta clave no tiene saldo/créditos disponibles. Si es una clave de OpenAI, cambiar a otro modelo de OpenAI no lo soluciona: recarga saldo o cambia a otro proveedor usando una API key de ese proveedor. Los modelos GRATIS solo aplican en proveedores que los ofrezcan.'
-    : status === 429
-      ? 'El proveedor aplicó un límite de solicitudes (HTTP 429); este código por sí solo no indica falta de saldo. Espera un momento o activa el failover multi-proveedor en el Pool LLM.'
-      : message || raw.slice(0, 500) || `Error HTTP ${status}`;
+  const hay = `${code} ${baseMessage} ${upstreamRaw}`;
+
+  const quotaError = /insufficient_quota|credit_balance_exhausted|no credits remaining|negative balance/i.test(hay);
+  const dailyLimit = status === 429 && /free-models-per-day|requests per day|tokens per day|daily limit|\bRPD\b|\bTPD\b|per-day/i.test(hay);
+  const upstreamCongested = status === 429 && !dailyLimit && /upstream|temporarily rate-limited|provider returned error|overloaded|capacity/i.test(hay);
+  const retryAfterSec = status === 429 ? parseRetryAfterSec(headers) : 0;
+
+  let friendly;
+  if (quotaError) {
+    friendly = 'La API indica que esta clave no tiene saldo/créditos disponibles. Si es una clave de OpenAI, cambiar a otro modelo de OpenAI no lo soluciona: recarga saldo o cambia a otro proveedor usando una API key de ese proveedor. Los modelos GRATIS solo aplican en proveedores que los ofrezcan.';
+  } else if (dailyLimit) {
+    const extra = isOpenRouterUrl(url)
+      ? ' OpenRouter limita los modelos :free a 50 solicitudes/día por cuenta (crear otra clave en la misma cuenta comparte ese tope). Agrega otro proveedor gratuito como Groq, Google Gemini, NVIDIA NIM o Mistral en el Pool LLM.'
+      : ' Alcanzaste el tope diario gratuito de este proveedor. Agrega otros proveedores gratuitos (Groq, Gemini, NVIDIA NIM, Mistral) para failover automático.';
+    friendly = `Límite diario gratuito alcanzado (HTTP 429).${extra}${combinedDetail ? ` [Detalle: ${combinedDetail}]` : ''}`;
+  } else if (status === 429) {
+    const detailSuffix = combinedDetail ? ` [Detalle: ${combinedDetail}]` : '';
+    friendly = `El proveedor aplicó un límite de solicitudes temporal (HTTP 429); este código por sí solo no indica falta de saldo. Agrega más proveedores gratuitos (Groq, Gemini, NVIDIA NIM, Mistral) en el Pool LLM para failover instantáneo.${detailSuffix}`;
+  } else {
+    friendly = combinedDetail || raw.slice(0, 500) || `Error HTTP ${status}`;
+  }
+
   const error = new Error(`HTTP ${status} del proveedor: ${friendly}${url ? ` (${url})` : ''}`);
   error.status = status;
   error.providerCode = code;
+  error.rawDetail = combinedDetail;
   error.isQuota = quotaError;
+  error.isDailyLimit = dailyLimit;
+  error.isUpstreamCongested = upstreamCongested;
   error.isRateLimit = status === 429 && !quotaError;
+  error.retryAfterSec = retryAfterSec;
   error.retryable = status === 429 || status === 402 || status >= 500;
   return error;
 }
@@ -174,7 +281,7 @@ function freeModel(item, id) {
   const zeroPricing = pricing && isZeroPrice(inputPrice) && isZeroPrice(outputPrice);
   const advertisedFree = [item?.free, item?.is_free, item?.metadata?.free]
     .some((value) => value === true || value === 'true');
-  return advertisedFree || /:free$/i.test(id) || Boolean(zeroPricing);
+  return advertisedFree || /:free$/i.test(id) || id === 'openrouter/free' || Boolean(zeroPricing);
 }
 
 async function listModels(config = {}) {
@@ -187,6 +294,9 @@ async function listModels(config = {}) {
   }
   const headers = { Accept: 'application/json', ...(config.headers && typeof config.headers === 'object' ? config.headers : {}) };
   if (config.apiKey) headers.Authorization = 'Bearer ' + String(config.apiKey);
+  if (/models\.github\.ai/i.test(parsed.hostname)) {
+    headers['X-GitHub-Api-Version'] = '2022-11-28';
+  }
   const controller = new AbortController();
   const timeoutMs = Math.min(Math.max(Number(config.requestTimeout) || 30000, 5000), 90000);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -201,7 +311,7 @@ async function listModels(config = {}) {
       : `No se pudo conectar con el catálogo de modelos en ${url}: ${error.message}`;
     throw Object.assign(new Error(message), { status: 502, code: 'PROVIDER_CONNECTION_FAILED' });
   } finally { clearTimeout(timer); }
-  if (!response.ok) throw providerError(raw, response.status, url);
+  if (!response.ok) throw providerError(raw, response.status, url, response.headers);
   let payload;
   try { payload = JSON.parse(raw); }
   catch { throw Object.assign(new Error('El endpoint de modelos no devolvió JSON válido.'), { status: 502 }); }
@@ -209,20 +319,51 @@ async function listModels(config = {}) {
     ? payload
     : Array.isArray(payload?.data) ? payload.data
       : Array.isArray(payload?.models) ? payload.models : [];
+  const isGemini = /generativelanguage\.googleapis\.com/i.test(parsed.hostname);
   const models = source.map((item) => {
-    const id = typeof item === 'string' ? item : String(item?.id || item?.name || '');
+    let id = typeof item === 'string' ? item : String(item?.id || item?.name || '');
     if (!id) return null;
+    if (isGemini) id = id.replace(/^models\//i, '');
     return { id, free: typeof item === 'object' && item ? freeModel(item, id) : /:free$/i.test(id) };
   }).filter(Boolean);
+  if (isOpenRouterUrl(url) && !models.some((m) => m.id === 'openrouter/free')) {
+    models.unshift({ id: 'openrouter/free', free: true });
+  }
   const byId = new Map();
   for (const model of models) {
     const existing = byId.get(model.id);
     byId.set(model.id, { id: model.id, free: model.free || Boolean(existing?.free) });
   }
   const unique = [...byId.values()]
-    .sort((a, b) => Number(b.free) - Number(a.free) || a.id.localeCompare(b.id))
+    .sort((a, b) => Number(b.free) - Number(a.free) || (a.id === 'openrouter/free' ? -1 : b.id === 'openrouter/free' ? 1 : a.id.localeCompare(b.id)))
     .slice(0, 1000);
   return { models: unique, freeCount: unique.filter((model) => model.free).length, source: url };
+}
+
+function sanitizeMessagesForProvider(messages, useTools) {
+  if (!Array.isArray(messages)) return [];
+  const clean = [];
+  for (const m of messages) {
+    if (!m || !m.role) continue;
+    if (!useTools && m.role === 'tool') {
+      clean.push({ role: 'user', content: `Resultado de herramienta:\n${String(m.content || '')}` });
+      continue;
+    }
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      if (useTools) {
+        clean.push({ role: 'assistant', content: m.content == null ? '' : String(m.content), tool_calls: m.tool_calls });
+      } else if (m.content) {
+        clean.push({ role: 'assistant', content: String(m.content) });
+      }
+      continue;
+    }
+    if (m.role === 'tool') {
+      clean.push({ role: 'tool', tool_call_id: String(m.tool_call_id || 'call_0'), content: String(m.content || '') });
+      continue;
+    }
+    clean.push({ role: m.role, content: String(m.content || '') });
+  }
+  return clean;
 }
 
 async function callLLM(config, messages, toolsOrFlag, signal) {
@@ -236,13 +377,18 @@ async function callLLM(config, messages, toolsOrFlag, signal) {
     headers['HTTP-Referer'] = headers['HTTP-Referer'] || 'https://strata-engineering.local';
     headers['X-Title'] = headers['X-Title'] || 'Strata Engineering 150 Agents';
   }
+  if (/models\.github\.ai/i.test(parsed.hostname)) {
+    headers['X-GitHub-Api-Version'] = headers['X-GitHub-Api-Version'] || '2022-11-28';
+  }
   if (config.apiKey) headers.Authorization = 'Bearer ' + String(config.apiKey);
+
+  const hasTools = Array.isArray(toolsOrFlag) && toolsOrFlag.length > 0;
   const body = {
     model: String(config.model),
-    messages,
+    messages: sanitizeMessagesForProvider(messages, hasTools),
     temperature: config.temperature == null ? 0.2 : Math.min(Math.max(Number(config.temperature), 0), 2)
   };
-  if (Array.isArray(toolsOrFlag) && toolsOrFlag.length) {
+  if (hasTools) {
     body.tools = toolsOrFlag;
     body.tool_choice = 'auto';
   }
@@ -270,7 +416,7 @@ async function callLLM(config, messages, toolsOrFlag, signal) {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
   }
-  if (!response.ok) throw providerError(raw, response.status, url);
+  if (!response.ok) throw providerError(raw, response.status, url, response.headers);
   let data;
   try { data = JSON.parse(raw); } catch { throw new Error('El proveedor devolvió una respuesta que no es JSON: ' + raw.slice(0, 400)); }
   const choice = data.choices?.[0];
@@ -283,10 +429,61 @@ async function callLLM(config, messages, toolsOrFlag, signal) {
   };
 }
 
-/* --------------------- Multi-Provider Pool & Telemetry -------------------- */
+/* --------------------- Multi-Provider Pool, Anti-429 & Telemetry -------------------- */
 
 const providerMetrics = new Map();
+const providerInFlight = new Map();
 let roundRobinCursor = 0;
+
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('La solicitud del agente fue cancelada.'));
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error('La solicitud del agente fue cancelada.'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function withProviderSlot(key, maxConcurrent, signal, fn) {
+  let slot = providerInFlight.get(key);
+  if (!slot) {
+    slot = { active: 0, queue: [] };
+    providerInFlight.set(key, slot);
+  }
+  if (slot.active >= maxConcurrent) {
+    await new Promise((resolve, reject) => {
+      const entry = { resolve, reject };
+      const onAbort = () => {
+        const idx = slot.queue.indexOf(entry);
+        if (idx >= 0) slot.queue.splice(idx, 1);
+        reject(new Error('La solicitud del agente fue cancelada.'));
+      };
+      if (signal) {
+        if (signal.aborted) return reject(new Error('La solicitud del agente fue cancelada.'));
+        signal.addEventListener('abort', onAbort, { once: true });
+        entry.cleanup = () => signal.removeEventListener('abort', onAbort);
+      }
+      slot.queue.push(entry);
+    });
+  }
+  slot.active++;
+  try {
+    return await fn();
+  } finally {
+    slot.active--;
+    const next = slot.queue.shift();
+    if (next) {
+      next.cleanup?.();
+      next.resolve();
+    }
+  }
+}
 
 function metricFor(provider) {
   const key = String(provider.id || `${provider.baseUrl}|${provider.model}`);
@@ -301,6 +498,7 @@ function metricFor(provider) {
       requests: 0,
       successes: 0,
       errors: 0,
+      rateLimits: 0,
       failovers: 0,
       totalTokens: 0,
       avgLatencyMs: 0,
@@ -319,7 +517,6 @@ function metricFor(provider) {
 
 function normalizePool(poolOrConfig) {
   if (!poolOrConfig) return { providers: [], strategy: 'round-robin', divisionMap: {}, agentMap: {}, defaults: {} };
-  // Legacy single-provider config compatibility
   if (!Array.isArray(poolOrConfig.providers)) {
     const single = poolOrConfig.model ? [{
       id: poolOrConfig.id || 'primary',
@@ -381,7 +578,6 @@ function selectProviderOrder(pool, context = {}) {
   if (!candidates.length) return [];
   const now = Date.now();
 
-  // Check explicit per-agent or per-division pin
   const pinnedId = (context.agentId && pool.agentMap?.[context.agentId])
     || (context.divisionId && pool.divisionMap?.[context.divisionId])
     || context.preferredProviderId;
@@ -405,16 +601,18 @@ function selectProviderOrder(pool, context = {}) {
         return (ma.requests - mb.requests) || (ma.avgLatencyMs - mb.avgLatencyMs);
       });
     }
-    // round-robin (default — spreads load cleanly across all free APIs!)
     if (bucket.length <= 1) return bucket;
     const offset = roundRobinCursor++ % bucket.length;
     return [...bucket.slice(offset), ...bucket.slice(0, offset)];
   };
 
-  let ordered = [...sortBucket(ready), ...sortBucket(cooling)];
+  // Sort cooling bucket by soonest cooldown expiry so transient 429s beat exhausted daily caps!
+  cooling.sort((a, b) => metricFor(a).cooldownUntil - metricFor(b).cooldownUntil);
+
+  const ordered = [...sortBucket(ready), ...cooling];
   if (pinnedId) {
     const idx = ordered.findIndex((p) => p.id === pinnedId);
-    if (idx > 0) {
+    if (idx > 0 && metricFor(ordered[idx]).cooldownUntil <= now) {
       const [pinned] = ordered.splice(idx, 1);
       ordered.unshift(pinned);
     }
@@ -422,72 +620,159 @@ function selectProviderOrder(pool, context = {}) {
   return ordered;
 }
 
+function openRouterModelAlternates(currentModel) {
+  return OPENROUTER_FALLBACK_MODELS.filter((m) => m !== currentModel).slice(0, 2);
+}
+
 async function callPoolLLM(poolOrConfig, messages, toolsList, options = {}) {
   const pool = normalizePool(poolOrConfig);
-  const ordered = selectProviderOrder(pool, options);
-  if (!ordered.length) {
+  if (!pool.providers.length) {
     throw Object.assign(new Error('No hay proveedores LLM activos en el Pool. Agrega al menos un proveedor gratuito en Herramientas y Config → APIs LLM Gratis.'), { status: 400 });
   }
 
+  const maxTransientRounds = options.max429Retries != null ? Number(options.max429Retries) : 2;
   let lastError = null;
-  for (let i = 0; i < ordered.length; i++) {
-    const provider = ordered[i];
-    const metric = metricFor(provider);
-    metric.requests++;
-    metric.lastUsedAt = Date.now();
-    const callConfig = {
-      ...pool.defaults,
-      ...provider,
-      temperature: provider.temperature ?? pool.defaults.temperature,
-      maxTokens: provider.maxTokens || pool.defaults.maxTokens
-    };
-    const useTools = options.useTools !== false && callConfig.tools !== false ? toolsList : false;
 
-    try {
-      const res = await callLLM(callConfig, messages, useTools, options.signal);
-      metric.successes++;
-      metric.status = 'ready';
-      metric.cooldownUntil = 0;
-      metric.lastError = '';
-      metric.avgLatencyMs = metric.avgLatencyMs
-        ? Math.round((metric.avgLatencyMs * 0.7) + (res.latencyMs * 0.3))
-        : res.latencyMs;
-      if (res.usage?.total_tokens) metric.totalTokens += Number(res.usage.total_tokens) || 0;
-      return { ...res, provider: { id: provider.id, name: provider.name, model: provider.model, baseUrl: provider.baseUrl } };
-    } catch (error) {
-      lastError = error;
-      if (options.signal?.aborted) throw error;
+  for (let round = 0; round <= maxTransientRounds; round++) {
+    const ordered = selectProviderOrder(pool, options);
+    let anyTransientRateLimit = false;
+    let shortestWaitMs = 0;
 
-      // Tool-calling incompatibility on this provider -> let caller retry without native tools
-      if (useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function/i.test(String(error.message))) {
-        throw error;
-      }
+    for (let i = 0; i < ordered.length; i++) {
+      const provider = ordered[i];
+      const metric = metricFor(provider);
+      const now = Date.now();
 
-      metric.errors++;
-      metric.lastError = error.message;
-      if (error.isRateLimit) {
-        metric.status = 'rate_limited';
-        metric.cooldownUntil = Date.now() + 25000;
-      } else if (error.isQuota) {
-        metric.status = 'quota_exhausted';
-        metric.cooldownUntil = Date.now() + 120000;
-      } else {
-        metric.status = 'error';
-        metric.cooldownUntil = Date.now() + 15000;
-      }
-
-      if (i < ordered.length - 1) {
-        metric.failovers++;
-        options.onFailover?.({
-          from: { id: provider.id, name: provider.name, model: provider.model },
-          to: { id: ordered[i + 1].id, name: ordered[i + 1].name, model: ordered[i + 1].model },
-          reason: error.message
-        });
+      // If this provider hit a daily cap / quota and other non-exhausted providers exist, skip it cleanly
+      if (round === 0 && (metric.status === 'daily_limit' || metric.status === 'quota_exhausted') && metric.cooldownUntil > now && i < ordered.length - 1) {
         continue;
       }
-      throw error;
+
+      const callConfig = {
+        ...pool.defaults,
+        ...provider,
+        temperature: provider.temperature ?? pool.defaults.temperature,
+        maxTokens: provider.maxTokens || pool.defaults.maxTokens
+      };
+      const useTools = options.useTools !== false && callConfig.tools !== false ? toolsList : false;
+
+      // Throttle per-provider concurrency gently to prevent self-inflicted 429 bursts
+      const slotLimit = metric.rateLimits > 0 ? 1 : 2;
+
+      const attemptProvider = async (modelOverride = null, toolsForCall = useTools) => {
+        metric.requests++;
+        metric.lastUsedAt = Date.now();
+        const cfg = modelOverride ? { ...callConfig, model: modelOverride } : callConfig;
+        return withProviderSlot(metric.id, slotLimit, options.signal, () => callLLM(cfg, messages, toolsForCall, options.signal));
+      };
+
+      try {
+        const res = await attemptProvider();
+        metric.successes++;
+        metric.status = 'ready';
+        metric.cooldownUntil = 0;
+        metric.lastError = '';
+        metric.avgLatencyMs = metric.avgLatencyMs
+          ? Math.round((metric.avgLatencyMs * 0.7) + (res.latencyMs * 0.3))
+          : res.latencyMs;
+        if (res.usage?.total_tokens) metric.totalTokens += Number(res.usage.total_tokens) || 0;
+        return { ...res, provider: { id: provider.id, name: provider.name, model: provider.model, baseUrl: provider.baseUrl } };
+      } catch (error) {
+        lastError = error;
+        if (options.signal?.aborted) throw error;
+
+        const isToolUnsupported = Boolean(
+          useTools && error.status && [400, 404, 422, 500].includes(error.status) && /tool|function/i.test(String(error.message))
+        );
+
+        // If native tool calling isn't supported on this model: try next tool-capable provider first, or let caller fall back
+        if (isToolUnsupported) {
+          if (i < ordered.length - 1) {
+            metric.failovers++;
+            options.onFailover?.({
+              from: { id: provider.id, name: provider.name, model: provider.model },
+              to: { id: ordered[i + 1].id, name: ordered[i + 1].name, model: ordered[i + 1].model },
+              reason: 'Modelo sin soporte nativo de herramientas — cambiando a proveedor compatible.'
+            });
+            continue;
+          }
+          throw error;
+        }
+
+        // OpenRouter :free upstream model congestion auto-recovery: try openrouter/free or alternate :free model BEFORE failing!
+        if (
+          isOpenRouterUrl(provider.baseUrl)
+          && error.isRateLimit
+          && !error.isDailyLimit
+          && (/:free$/i.test(provider.model) || provider.model === 'openrouter/free')
+        ) {
+          for (const altModel of openRouterModelAlternates(provider.model)) {
+            if (options.signal?.aborted) throw error;
+            try {
+              options.onFailover?.({
+                from: { id: provider.id, name: provider.name, model: provider.model },
+                to: { id: provider.id, name: provider.name, model: altModel },
+                reason: `Modelo ${provider.model} saturado (429) — probando ruta libre ${altModel}`
+              });
+              const altRes = await attemptProvider(altModel, useTools);
+              metric.successes++;
+              metric.status = 'ready';
+              metric.cooldownUntil = 0;
+              metric.lastError = '';
+              return { ...altRes, provider: { id: provider.id, name: `${provider.name} (auto)`, model: altModel, baseUrl: provider.baseUrl } };
+            } catch (altErr) {
+              lastError = altErr;
+              if (altErr.isDailyLimit || altErr.isQuota) break;
+            }
+          }
+        }
+
+        metric.errors++;
+        metric.lastError = lastError.message;
+        if (lastError.isDailyLimit) {
+          metric.rateLimits++;
+          metric.status = 'daily_limit';
+          metric.cooldownUntil = Date.now() + 900000; // 15 minutes
+        } else if (lastError.isQuota) {
+          metric.status = 'quota_exhausted';
+          metric.cooldownUntil = Date.now() + 600000; // 10 minutes
+        } else if (lastError.isRateLimit) {
+          metric.rateLimits++;
+          metric.status = 'rate_limited';
+          const waitSec = lastError.retryAfterSec ? Math.min(Math.max(lastError.retryAfterSec, 2), 30) : 20;
+          metric.cooldownUntil = Date.now() + waitSec * 1000;
+          anyTransientRateLimit = true;
+          const retryMs = Math.min(Math.max((lastError.retryAfterSec || (2 + round * 2)) * 1000, 1500), 6000);
+          if (!shortestWaitMs || retryMs < shortestWaitMs) shortestWaitMs = retryMs;
+        } else {
+          metric.status = 'error';
+          metric.cooldownUntil = Date.now() + 15000;
+        }
+
+        if (i < ordered.length - 1) {
+          metric.failovers++;
+          options.onFailover?.({
+            from: { id: provider.id, name: provider.name, model: provider.model },
+            to: { id: ordered[i + 1].id, name: ordered[i + 1].name, model: ordered[i + 1].model },
+            reason: lastError.message
+          });
+          continue;
+        }
+      }
     }
+
+    // Only auto-wait & retry if every provider suffered a transient per-minute 429 (NOT daily limit or quota!)
+    if (anyTransientRateLimit && round < maxTransientRounds && !options.signal?.aborted) {
+      const delayMs = options.retryDelayMs != null ? Number(options.retryDelayMs) : (shortestWaitMs || (2200 * (round + 1)));
+      const seconds = Math.max(1, Math.round(delayMs / 1000));
+      options.onRetryWait?.({ round: round + 1, maxRounds: maxTransientRounds, seconds });
+      if (delayMs > 0) await sleep(delayMs, options.signal);
+      continue;
+    }
+
+    throw lastError || new Error('Todos los proveedores del pool fallaron.');
   }
+
   throw lastError || new Error('Todos los proveedores del pool fallaron.');
 }
 
@@ -518,12 +803,13 @@ async function testPool(providers = [], toolsSample = null) {
       const res = await probe(provider, toolsSample);
       const m = metricFor(provider);
       m.status = 'ready';
+      m.cooldownUntil = 0;
       m.avgLatencyMs = res.latencyMs || (Date.now() - started);
       m.lastError = '';
       return { id: provider.id, name: provider.name, ...res };
     } catch (error) {
       const m = metricFor(provider);
-      m.status = error.isRateLimit ? 'rate_limited' : 'error';
+      m.status = error.isDailyLimit ? 'daily_limit' : error.isRateLimit ? 'rate_limited' : 'error';
       m.lastError = error.message;
       return { id: provider.id, name: provider.name, model: provider.model, ok: false, status: error.status || 500, error: error.message, latencyMs: Date.now() - started };
     }
@@ -546,6 +832,7 @@ function getHealthSnapshot() {
 
 module.exports = {
   PROVIDER_PRESETS,
+  OPENROUTER_FALLBACK_MODELS,
   normalizeBase,
   normalizeModelsUrl,
   providerError,

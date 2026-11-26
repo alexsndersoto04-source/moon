@@ -492,14 +492,16 @@
           <summary class="bar-card-summary">
             <div class="bar-card-meta">
               <strong>APIs LLM Gratis — Agregar en 1 clic</strong>
-              <small>OpenRouter (:free), Groq, Google Gemini, Cerebras, GitHub Models, Ollama</small>
+              <small>Groq, Google Gemini, NVIDIA NIM, Mistral, Cerebras, GitHub Models, OpenRouter…</small>
             </div>
-            <span class="bar-badge">10 presets</span>
+            <span class="bar-badge" id="presets-count-badge">13 gratis</span>
           </summary>
           <div class="bar-card-body">
-            <p class="bar-note">
-              Conecta una o varias APIs gratuitas. Si una recibe error <code>insufficient_quota</code> o límite de peticiones, Strata rota automáticamente a la siguiente sin interrumpir tu trabajo.
-            </p>
+            <div class="anti429-banner">
+              <strong>¿Te sale error HTTP 429 en OpenRouter?</strong>
+              <p>OpenRouter limita <code>:free</code> a <strong>50 req/día y 20/min por cuenta</strong> (crear otra API key en la misma cuenta comparte el mismo tope). Conecta <strong>2 o más proveedores distintos gratis</strong> (Groq, Google Gemini, NVIDIA NIM, Mistral, Cerebras o GitHub Models) y Strata rotará automáticamente con failover instantáneo anti-429 y sin errores <code>insufficient_quota</code>.</p>
+              <button type="button" class="btn btn-primary btn-xs" id="add-free-pack-btn">+ Agregar Pack Top 4 Gratis (Groq + Gemini + NVIDIA + Mistral)</button>
+            </div>
             <div class="preset-grid" id="provider-presets-grid"></div>
           </div>
         </details>
@@ -509,11 +511,12 @@
           <summary class="bar-card-summary">
             <div class="bar-card-meta">
               <strong>Proveedores Conectados y Pruebas</strong>
-              <small>Claves API, catálogo de modelos y verificación de conexión</small>
+              <small>Claves API, modelos sugeridos, estado en vivo y verificación</small>
             </div>
             <span class="bar-badge" id="connected-providers-count">0</span>
           </summary>
           <div class="bar-card-body">
+            <div class="status-banner warn hidden" id="openrouter-dup-warning"></div>
             <div class="inline-row justify-between wrap">
               <button type="button" class="btn btn-subtle btn-xs" id="add-custom-provider-btn">+ API personalizada</button>
               <button type="button" class="btn btn-primary btn-xs" id="test-all-providers-btn">Probar todo el Pool</button>

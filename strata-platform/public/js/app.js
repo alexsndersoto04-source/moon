@@ -818,7 +818,10 @@
           } else if (ev.type === 'tool_end') {
             msg.steps.push({ kind: 'ok', text: `${ev.name} completado` });
           } else if (ev.type === 'failover') {
-            msg.steps.push({ kind: 'warn', text: `Failover ${ev.from?.name} → ${ev.to?.name}` });
+            msg.steps.push({ kind: 'warn', text: `Failover ${ev.from?.name || ''} (${ev.from?.model || ''}) → ${ev.to?.name || ''} (${ev.to?.model || ''})` });
+          } else if (ev.type === 'retry_wait') {
+            msg.phaseLabel = `Reintentando en ${ev.seconds}s…`;
+            msg.steps.push({ kind: 'warn', text: `Límite temporal 429 — esperando ${ev.seconds}s y reintentando (${ev.round}/${ev.maxRounds})…` });
           } else if (ev.type === 'assistant_text') {
             acc += (acc ? '\n\n' : '') + (ev.text || '');
             msg.content = acc;
@@ -830,6 +833,7 @@
           } else if (ev.type === 'error') {
             msg.status = 'error';
             msg.content = `**Error:** ${ev.text}`;
+            if (/429|quota|límite/i.test(String(ev.text || ''))) msg.needsApiCta = true;
           }
           updateMessageInDOM(msg);
         }
@@ -905,7 +909,9 @@
         } else if (ev.type === 'tool_end') {
           msg.steps.push({ kind: 'ok', text: `${ev.agentId || ''} ${ev.name}: ${String(ev.preview || 'ok').slice(0, 120)}` });
         } else if (ev.type === 'failover') {
-          msg.steps.push({ kind: 'warn', text: `Failover ${ev.from?.name} → ${ev.to?.name}` });
+          msg.steps.push({ kind: 'warn', text: `Failover ${ev.from?.name || ''} (${ev.from?.model || ''}) → ${ev.to?.name || ''} (${ev.to?.model || ''})` });
+        } else if (ev.type === 'retry_wait') {
+          msg.steps.push({ kind: 'warn', text: `${ev.agentId || ''} límite 429 — reintentando en ${ev.seconds}s (${ev.round}/${ev.maxRounds})…` });
         } else if (ev.type === 'file_changed') {
           if (!msg.files.includes(ev.path)) msg.files.push(ev.path);
           refreshTree().catch(() => {});
@@ -975,7 +981,10 @@
           } else if (ev.type === 'tool_end') {
             msg.steps.push({ kind: 'ok', text: `${ev.name}: ${String(ev.preview || 'ok').slice(0, 120)}` });
           } else if (ev.type === 'failover') {
-            msg.steps.push({ kind: 'warn', text: `Failover ${ev.from?.name} → ${ev.to?.name}` });
+            msg.steps.push({ kind: 'warn', text: `Failover ${ev.from?.name || ''} (${ev.from?.model || ''}) → ${ev.to?.name || ''} (${ev.to?.model || ''})` });
+          } else if (ev.type === 'retry_wait') {
+            msg.phaseLabel = `Reintentando en ${ev.seconds}s…`;
+            msg.steps.push({ kind: 'warn', text: `Límite temporal 429 — esperando ${ev.seconds}s (${ev.round}/${ev.maxRounds})…` });
           } else if (ev.type === 'ui' && ev.ui?.kind === 'file' && ev.ui.path) {
             if (!msg.files.includes(ev.ui.path)) msg.files.push(ev.ui.path);
             refreshTree().catch(() => {});
@@ -988,6 +997,7 @@
           } else if (ev.type === 'error') {
             msg.status = 'error';
             msg.content = `**Error:** ${ev.text}`;
+            if (/429|quota|límite/i.test(String(ev.text || ''))) msg.needsApiCta = true;
           }
           updateMessageInDOM(msg);
         }
@@ -1113,62 +1123,128 @@
 
   /* ===================== MULTI-LLM POOL UI ===================== */
 
-  function renderProviderPresets() {
-    const grid = $('#provider-presets-grid');
-    grid.replaceChildren();
-    for (const preset of state.presets) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'preset-btn';
-      btn.innerHTML = `<strong>${esc(preset.id === 'openrouter-free' ? 'OpenRouter: buscar modelos GRATIS' : preset.name)}</strong><span>${esc(preset.tier || 'OpenAI-compatible')}</span>`;
-      btn.addEventListener('click', () => addProvider(preset));
-      grid.append(btn);
+  function findPresetForProvider(p) {
+    return state.presets.find((pr) => pr.id === p.presetId)
+      || state.presets.find((pr) => p.baseUrl && pr.baseUrl && String(p.baseUrl).toLowerCase().includes(String(pr.baseUrl).toLowerCase().replace(/^https?:\/\//, '').split('/')[0]));
+  }
+
+  function updateOpenRouterWarning() {
+    const box = $('#openrouter-dup-warning');
+    if (!box) return;
+    const enabled = state.config.providers.filter((p) => p.enabled !== false);
+    const orCount = enabled.filter((p) => /openrouter\.ai/i.test(p.baseUrl || '')).length;
+    const others = enabled.length - orCount;
+    if (orCount >= 2 && others === 0) {
+      box.classList.remove('hidden');
+      box.innerHTML = '<strong>Aviso Anti-429:</strong> Tienes varias claves de OpenRouter sin otro proveedor. OpenRouter aplica su tope de <strong>50 req/día en :free por cuenta</strong> (no por clave). Agrega arriba <strong>Groq, Google Gemini, NVIDIA NIM o Mistral</strong> para tener cuotas independientes y failover automático.';
+    } else if (orCount >= 1 && others === 0) {
+      box.classList.remove('hidden');
+      box.innerHTML = '<strong>Consejo Anti-429:</strong> Solo tienes OpenRouter conectado (tope 50 req/día en <code>:free</code>). Usa modelo <code>openrouter/free</code> y agrega arriba <strong>Groq, Gemini, NVIDIA NIM o Mistral</strong> gratis para no quedar bloqueado nunca.';
+    } else {
+      box.classList.add('hidden');
     }
   }
 
-  function addProvider(preset) {
+  function renderProviderPresets() {
+    const grid = $('#provider-presets-grid');
+    $('#presets-count-badge').textContent = `${state.presets.length} opciones`;
+    grid.replaceChildren();
+    for (const preset of state.presets) {
+      const card = document.createElement('div');
+      card.className = `preset-card ${preset.recommended ? 'is-rec' : ''}`;
+      const label = preset.id === 'openrouter-free' ? 'OpenRouter: buscar modelos GRATIS' : preset.name;
+      card.innerHTML = `
+        <div class="preset-card-top">
+          <strong>${esc(label)}</strong>
+          <span>${esc(preset.tier || 'OpenAI-compatible')}</span>
+        </div>
+        <div class="preset-card-actions">
+          <button type="button" class="btn btn-subtle btn-xs add-preset-btn">+ Agregar</button>
+          ${preset.docsUrl ? `<a class="preset-link" href="${esc(preset.docsUrl)}" target="_blank" rel="noopener">Clave gratis ↗</a>` : ''}
+        </div>
+      `;
+      $('.add-preset-btn', card).addEventListener('click', () => addProvider(preset));
+      grid.append(card);
+    }
+  }
+
+  function addProvider(preset, silent = false) {
     const id = `prov-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
     const item = {
       id,
+      presetId: preset?.id || '',
       name: preset ? preset.name : `API #${state.config.providers.length + 1}`,
-      baseUrl: preset ? preset.baseUrl : 'https://openrouter.ai/api/v1',
+      baseUrl: preset ? preset.baseUrl : 'https://api.groq.com/openai/v1',
       model: preset ? (preset.defaultModel || '') : '',
+      suggestedModels: Array.isArray(preset?.suggestedModels) ? [...preset.suggestedModels] : [],
       apiKey: '',
       enabled: true,
       priority: state.config.providers.length + 1,
       docsUrl: preset?.docsUrl || ''
     };
     state.config.providers.push(item);
+    if (!silent) {
+      saveConfig();
+      renderProvidersList();
+      $('#bar-connected').open = true;
+      toast(`Añadido: ${item.name}. Pega tu clave API y pulsa Probar.`);
+    }
+    return item;
+  }
+
+  function addRecommendedFreePack() {
+    const wanted = ['groq-free', 'gemini-free', 'nvidia-nim-free', 'mistral-free'];
+    let added = 0;
+    for (const pid of wanted) {
+      const preset = state.presets.find((p) => p.id === pid);
+      if (!preset) continue;
+      const host = preset.baseUrl.replace(/^https?:\/\//, '').split('/')[0].toLowerCase();
+      const exists = state.config.providers.some((p) => String(p.baseUrl || '').toLowerCase().includes(host));
+      if (!exists) { addProvider(preset, true); added++; }
+    }
     saveConfig();
     renderProvidersList();
     $('#bar-connected').open = true;
-    toast(`Añadido: ${item.name}. Pega tu clave API y pulsa Probar.`);
+    setTimeout(() => $('#bar-connected').scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
+    toast(added > 0
+      ? `Pack añadido (${added} proveedor${added === 1 ? '' : 'es'} gratis). Abre "Obtener gratis ↗" en cada tarjeta, pega tus claves y pulsa Probar.`
+      : 'Ya tienes los 4 proveedores recomendados en tu Pool.', 'success', 4500);
   }
 
   function renderProvidersList() {
+    updateOpenRouterWarning();
     const list = $('#providers-list');
     list.replaceChildren();
     if (!state.config.providers.length) {
-      list.innerHTML = '<div class="empty-clean">Sin APIs conectadas aún. Elige arriba un proveedor gratuito (OpenRouter, Groq o Gemini).</div>';
+      list.innerHTML = '<div class="empty-clean">Sin APIs conectadas aún. Pulsa arriba <strong>+ Agregar Pack Top 4 Gratis</strong> o elige cualquier proveedor gratuito.</div>';
       return;
     }
     for (const p of state.config.providers) {
+      const preset = findPresetForProvider(p);
+      const suggested = (Array.isArray(p.suggestedModels) && p.suggestedModels.length)
+        ? p.suggestedModels
+        : (preset?.suggestedModels || []);
+      const docsUrl = p.docsUrl || preset?.docsUrl || '';
       const card = document.createElement('div');
       card.className = 'provider-card';
+      card.dataset.providerId = p.id;
       const dlId = `dl-${p.id}`;
       card.innerHTML = `
         <div class="provider-card-head">
           <label class="inline-row"><input type="checkbox" class="p-en" ${p.enabled !== false ? 'checked' : ''}><strong>${esc(p.name)}</strong></label>
-          <button type="button" class="btn btn-subtle btn-xs p-del">Quitar</button>
+          <div class="inline-row">
+            ${docsUrl ? `<a class="preset-link" href="${esc(docsUrl)}" target="_blank" rel="noopener">Clave gratis ↗</a>` : ''}
+            <button type="button" class="btn btn-subtle btn-xs p-del">Quitar</button>
+          </div>
         </div>
         <div class="field-col">
           <label>URL Base API</label>
           <input type="url" class="field sm p-url" value="${esc(p.baseUrl || '')}">
         </div>
         <div class="field-col">
-          <label>API Key ${p.docsUrl ? `<a href="${esc(p.docsUrl)}" target="_blank" rel="noopener" style="color:var(--build);margin-left:6px;">Obtener gratis ↗</a>` : ''}</label>
+          <label>API Key</label>
           <div class="inline-row">
-            <input type="password" class="field sm p-key" value="${esc(p.apiKey || '')}" placeholder="Pega tu clave API" autocomplete="new-password">
+            <input type="password" class="field sm p-key" value="${esc(p.apiKey || '')}" placeholder="Pega tu clave API aquí" autocomplete="new-password">
             <button type="button" class="btn btn-subtle btn-xs p-vis">Ver</button>
           </div>
         </div>
@@ -1179,6 +1255,7 @@
             <datalist id="${dlId}"></datalist>
             <button type="button" class="btn btn-subtle btn-xs p-disc">Modelos</button>
           </div>
+          ${suggested.length ? `<div class="model-chips">${suggested.map((m) => `<button type="button" class="model-chip ${p.model === m ? 'is-active' : ''}" data-pick-model="${esc(m)}">${esc(m)}</button>`).join('')}</div>` : ''}
         </div>
         <div class="inline-row">
           <button type="button" class="btn btn-primary btn-xs p-test">Probar conexión</button>
@@ -1190,11 +1267,19 @@
         p.baseUrl = $('.p-url', card).value.trim();
         p.apiKey = $('.p-key', card).value.trim();
         p.model = $('.p-model', card).value.trim();
+        $$('.model-chip', card).forEach((ch) => ch.classList.toggle('is-active', ch.dataset.pickModel === p.model));
         saveConfig();
+        updateOpenRouterWarning();
       };
       ['.p-en', '.p-url', '.p-key', '.p-model'].forEach((s) => {
         $(s, card).addEventListener('change', sync);
         $(s, card).addEventListener('input', sync);
+      });
+      $$('.model-chip', card).forEach((ch) => {
+        ch.addEventListener('click', () => {
+          $('.p-model', card).value = ch.dataset.pickModel;
+          sync();
+        });
       });
       $('.p-vis', card).addEventListener('click', (e) => {
         const inp = $('.p-key', card);
@@ -1216,7 +1301,7 @@
           }
           const best = r.models?.find((m) => m.free) || r.models?.[0];
           if (best && !p.model) { $('.p-model', card).value = best.id; sync(); }
-          msg.className = 'provider-msg ok'; msg.textContent = `${r.models.length} modelos (${r.freeCount} gratis).`;
+          msg.className = 'provider-msg ok'; msg.textContent = `${r.models.length} modelos encontrados (${r.freeCount} gratis).`;
         } catch (err) { msg.className = 'provider-msg err'; msg.textContent = err.message; }
         finally { btn.disabled = false; }
       });
@@ -1699,12 +1784,30 @@
     });
 
     // Multi-LLM Pool & Tools Drawer Bars
+    $('#add-free-pack-btn').addEventListener('click', addRecommendedFreePack);
     $('#add-custom-provider-btn').addEventListener('click', () => addProvider(null));
     $('#test-all-providers-btn').addEventListener('click', async () => {
       const active = state.config.providers.filter((p) => p.enabled !== false);
       if (!active.length) return toast('Agrega primero una API.', 'warning');
-      const r = await api('/api/providers/test-pool', { method: 'POST', body: { providers: active } });
-      toast(`Pool: ${r.healthy} de ${r.total} operativas.`, r.healthy === r.total ? 'success' : 'warning');
+      const btn = $('#test-all-providers-btn');
+      btn.disabled = true;
+      btn.textContent = 'Probando…';
+      try {
+        const r = await api('/api/providers/test-pool', { method: 'POST', body: { providers: active } });
+        for (const item of r.results || []) {
+          const card = $(`.provider-card[data-provider-id="${item.id}"]`);
+          const msg = card && $('.provider-msg', card);
+          if (!msg) continue;
+          msg.className = `provider-msg ${item.ok ? 'ok' : 'err'}`;
+          msg.textContent = item.ok
+            ? `✓ Conectado · ${item.model} · ${item.latencyMs || 0} ms`
+            : (item.error || 'Error de conexión');
+        }
+        toast(`Pool: ${r.healthy} de ${r.total} operativas.`, r.healthy === r.total ? 'success' : 'warning');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Probar todo el Pool';
+      }
     });
     $('#save-pool-config-btn').addEventListener('click', () => {
       state.config.strategy = $('#pool-strategy').value;
