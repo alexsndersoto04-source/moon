@@ -7,7 +7,7 @@
   <meta name="description" content="Strata Engineering — Plataforma conversacional de alto nivel para planificar con IA y construir proyectos complejos con 150 agentes especialistas.">
   <title>Strata · Planificación y 150 Agentes de Ingeniería</title>
   <link rel="stylesheet" href="/vendor/xterm-css/xterm.css">
-  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/app.css?v=4">
 </head>
 <body>
   <div class="strata-app" id="strata-app">
@@ -507,7 +507,7 @@
         </details>
 
         <!-- BAR 2: CONNECTED PROVIDERS POOL -->
-        <details class="bar-card" id="bar-connected" open>
+        <details class="bar-card" id="bar-connected">
           <summary class="bar-card-summary">
             <div class="bar-card-meta">
               <strong>Proveedores Conectados y Pruebas</strong>
@@ -517,9 +517,10 @@
           </summary>
           <div class="bar-card-body">
             <div class="status-banner warn hidden" id="openrouter-dup-warning"></div>
-            <div class="inline-row justify-between wrap">
-              <button type="button" class="btn btn-subtle btn-xs" id="add-custom-provider-btn">+ API personalizada</button>
-              <button type="button" class="btn btn-primary btn-xs" id="test-all-providers-btn">Probar todo el Pool</button>
+            <div class="inline-row wrap">
+              <button type="button" class="btn btn-subtle btn-xs" id="jump-to-presets-btn">+ Ver 13 APIs gratis</button>
+              <button type="button" class="btn btn-subtle btn-xs" id="add-custom-provider-btn">+ Personalizada</button>
+              <button type="button" class="btn btn-primary btn-xs" id="test-all-providers-btn">Probar todo</button>
             </div>
             <div class="providers-stack" id="providers-list"></div>
           </div>
@@ -782,6 +783,6 @@
   <script src="/vendor/xterm/xterm.js"></script>
   <script src="/vendor/xterm-fit/addon-fit.js"></script>
   <script src="/vendor/monaco/vs/loader.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=4"></script>
 </body>
 </html>

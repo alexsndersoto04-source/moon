@@ -355,20 +355,24 @@
     $('#mode-popover').classList.add('hidden');
   }
 
+  function focusDrawerBar(barId) {
+    const drawer = $('#tools-drawer');
+    $$('.bar-card', drawer).forEach((el) => { el.open = el.id === barId; });
+    const target = document.getElementById(barId);
+    const scroller = $('.drawer-bars-scroll', drawer);
+    if (scroller && target) {
+      requestAnimationFrame(() => {
+        scroller.scrollTop = Math.max(0, target.offsetTop - 10);
+      });
+    }
+  }
+
   function openToolsDrawerBar(barId = 'bar-presets') {
     if (isMobile()) closeSidebar();
     closeAllOverlays();
     $('#overlay-backdrop').classList.remove('hidden');
     $('#tools-drawer').classList.remove('hidden');
-    $$('.bar-card', $('#tools-drawer')).forEach((el) => {
-      if (barId === 'bar-presets') {
-        el.open = el.id === 'bar-presets' || el.id === 'bar-connected';
-      } else {
-        el.open = el.id === barId;
-      }
-    });
-    const target = document.getElementById(barId);
-    if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
+    focusDrawerBar(barId);
     if (barId === 'bar-git') refreshGitStatus().catch(() => {});
   }
 
@@ -1186,7 +1190,7 @@
     if (!silent) {
       saveConfig();
       renderProvidersList();
-      $('#bar-connected').open = true;
+      focusDrawerBar('bar-connected');
       toast(`Añadido: ${item.name}. Pega tu clave API y pulsa Probar.`);
     }
     return item;
@@ -1204,10 +1208,9 @@
     }
     saveConfig();
     renderProvidersList();
-    $('#bar-connected').open = true;
-    setTimeout(() => $('#bar-connected').scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
+    focusDrawerBar('bar-connected');
     toast(added > 0
-      ? `Pack añadido (${added} proveedor${added === 1 ? '' : 'es'} gratis). Abre "Obtener gratis ↗" en cada tarjeta, pega tus claves y pulsa Probar.`
+      ? `Pack añadido (${added} proveedor${added === 1 ? '' : 'es'} gratis). Abre "Clave gratis ↗" en cada tarjeta, pega tus claves y pulsa Probar.`
       : 'Ya tienes los 4 proveedores recomendados en tu Pool.', 'success', 4500);
   }
 
@@ -1784,6 +1787,17 @@
     });
 
     // Multi-LLM Pool & Tools Drawer Bars
+    $$('.bar-card', $('#tools-drawer')).forEach((bar) => {
+      bar.addEventListener('toggle', () => {
+        if (!bar.open) return;
+        $$('.bar-card', $('#tools-drawer')).forEach((other) => {
+          if (other !== bar && other.open) other.open = false;
+        });
+        const scroller = $('.drawer-bars-scroll', $('#tools-drawer'));
+        if (scroller) requestAnimationFrame(() => { scroller.scrollTop = Math.max(0, bar.offsetTop - 10); });
+      });
+    });
+    $('#jump-to-presets-btn').addEventListener('click', () => focusDrawerBar('bar-presets'));
     $('#add-free-pack-btn').addEventListener('click', addRecommendedFreePack);
     $('#add-custom-provider-btn').addEventListener('click', () => addProvider(null));
     $('#test-all-providers-btn').addEventListener('click', async () => {
@@ -1806,7 +1820,7 @@
         toast(`Pool: ${r.healthy} de ${r.total} operativas.`, r.healthy === r.total ? 'success' : 'warning');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Probar todo el Pool';
+        btn.textContent = 'Probar todo';
       }
     });
     $('#save-pool-config-btn').addEventListener('click', () => {
