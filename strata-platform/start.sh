@@ -4,12 +4,22 @@ cd "$(dirname "$0")"
 
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   if command -v pkg >/dev/null 2>&1; then
-    echo "Termux detectado: instalando Node.js LTS..."
-    pkg update -y
+    echo "Termux detectado: actualizando librerías base e instalando Node.js LTS..."
+    apt update
+    apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
     pkg install -y nodejs-lts
   else
     echo "Error: Node.js (>= 18.18) y npm son necesarios para ejecutar Strata Engineering."
     exit 1
+  fi
+fi
+
+# Verify node binary links cleanly (handles outdated libc++ on Termux)
+if ! node -v >/dev/null 2>&1; then
+  if command -v pkg >/dev/null 2>&1; then
+    echo "Actualizando librerías del sistema Termux (libc++ / openssl) para Node.js..."
+    apt update
+    apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
   fi
 fi
 
