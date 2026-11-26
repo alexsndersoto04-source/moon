@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="Strata Engineering — Plataforma corporativa independiente de 150 agentes especialistas de ingeniería, pool multi-LLM gratuito, depuración, verificación y ejecución real.">
+  <title>Strata Engineering · Plataforma de 150 Agentes Especialistas</title>
+  <link rel="stylesheet" href="/vendor/xterm-css/xterm.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="enterprise-shell" id="app-shell">
+    <!-- Top Executive Header -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand-mark" aria-hidden="true">SE</div>
+        <div class="brand-copy">
+          <div class="brand-title">Strata <span class="brand-badge">Engineering</span></div>
+          <div class="brand-subtitle">
+            <span class="dot-live" id="health-dot"></span>
+            <span id="workspace-name">workspace</span>
+            <span class="sep">·</span>
+            <span id="fleet-header-stat">150 especialistas listos</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <button type="button" class="pill-indicator" id="pool-status-pill" title="Configurar Pool de Modelos LLM Gratuitos">
+          <span class="pill-dot" id="pool-status-dot"></span>
+          <span id="pool-status-text">Pool LLM: Sin APIs (Motor Local)</span>
+        </button>
+        <div class="pill-indicator subtle" id="runtime-pill" title="Runtimes detectados en el servidor">
+          <span id="runtime-status">Detectando runtimes…</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <button type="button" class="icon-btn" id="theme-toggle-btn" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.2m0 14.6v2.2M4.7 4.7l1.6 1.6m11.4 11.4 1.6 1.6M2.5 12h2.2m14.6 0h2.2M4.7 19.3l1.6-1.6m11.4-11.4 1.6-1.6"/></svg>
+        </button>
+        <button type="button" class="btn btn-primary drawer-trigger" id="open-tools-drawer-btn" aria-expanded="false" aria-controls="tools-drawer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="17" r="2" fill="currentColor"/></svg>
+          <span>Herramientas y Config</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Body: Desktop Left Rail + Workspace Views -->
+    <div class="main-layout">
+      <aside class="nav-rail" aria-label="Navegación principal">
+        <nav class="nav-list">
+          <div class="nav-group-label">PLATAFORMA</div>
+          <button type="button" class="nav-item is-active" data-nav="missions">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h14"/><circle cx="18" cy="12" r="2.5"/></svg>
+            <span>Centro de Misiones</span>
+          </button>
+          <button type="button" class="nav-item" data-nav="agents">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 19c.6-3.4 2.8-5 6-5s5.4 1.6 6 5"/><circle cx="17" cy="9" r="2.3"/><path d="M16.5 14.2c2.2.4 3.8 1.8 4.3 4.8"/></svg>
+            <span>150 Especialistas</span>
+            <span class="nav-count" id="nav-agents-count">150</span>
+          </button>
+          <button type="button" class="nav-item" data-nav="code">
+            <svg viewBox="0 0 24 24"><path d="m8.5 7.5-5 4.5 5 4.5m7-9 5 4.5-5 4.5m-2.2-11-2.6 13"/></svg>
+            <span>Estudio de Código</span>
+            <span class="nav-count" id="nav-files-count">0</span>
+          </button>
+          <button type="button" class="nav-item" data-nav="runtime">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3.5 3L7 15m5.5 0H17"/></svg>
+            <span>Terminal y Auditoría</span>
+          </button>
+        </nav>
+
+        <div class="nav-divider"></div>
+
+        <div class="nav-quick-box">
+          <div class="nav-group-label">ACCESOS RÁPIDOS</div>
+          <button type="button" class="nav-sub-btn" data-open-drawer="providers">
+            <span>Conectar APIs LLM Gratis</span>
+            <span class="arrow">→</span>
+          </button>
+          <button type="button" class="nav-sub-btn" data-open-drawer="tools">
+            <span>Caja de Herramientas</span>
+            <span class="arrow">→</span>
+          </button>
+          <button type="button" class="nav-sub-btn" data-open-drawer="git">
+            <span>Git y Clonar Repo</span>
+            <span class="arrow">→</span>
+          </button>
+          <button type="button" class="nav-sub-btn" id="rail-direct-agent-btn">
+            <span>Strata Agent (1 a 1)</span>
+            <span class="arrow">→</span>
+          </button>
+        </div>
+
+        <div class="nav-footer-meta">
+          <div class="meta-row"><span>Divisiones</span><strong>15 áreas</strong></div>
+          <div class="meta-row"><span>Herramientas reales</span><strong>24 activas</strong></div>
+          <div class="meta-row"><span>Estado</span><strong id="rail-status-label">Operativo</strong></div>
+        </div>
+      </aside>
+
+      <main class="workspace-stage" id="workspace-stage">
+        <!-- ===================== VIEW 1: MISSION COMMAND CENTER ===================== -->
+        <section class="page-view is-active" id="view-missions" aria-label="Centro de Misiones">
+          <div class="page-container">
+            <div class="page-header">
+              <div>
+                <h1>Centro de Orquestación de Ingeniería</h1>
+                <p class="page-lead">Despliega hasta 150 especialistas reales para programar, analizar, depurar, auditar seguridad, corregir errores y ejecutar proyectos complejos de gran escala.</p>
+              </div>
+              <div class="page-header-actions">
+                <button type="button" class="btn btn-secondary" id="quick-audit-btn">Auditoría y Verificación</button>
+                <button type="button" class="btn btn-secondary" data-open-drawer="providers">Configurar APIs Gratis</button>
+              </div>
+            </div>
+
+            <!-- Executive KPI Strip -->
+            <div class="kpi-grid">
+              <article class="kpi-card">
+                <div class="kpi-label">Flota de Especialistas</div>
+                <div class="kpi-value" id="kpi-fleet">150</div>
+                <div class="kpi-meta" id="kpi-fleet-sub">15 divisiones · 0 en ejecución</div>
+              </article>
+              <article class="kpi-card clickable" data-open-drawer="providers">
+                <div class="kpi-label">Pool Multi-LLM Gratuito</div>
+                <div class="kpi-value" id="kpi-pool">0 APIs</div>
+                <div class="kpi-meta" id="kpi-pool-sub">Motor Local activo · Toca para conectar</div>
+              </article>
+              <article class="kpi-card clickable" data-nav-jump="runtime">
+                <div class="kpi-label">Salud del Proyecto</div>
+                <div class="kpi-value" id="kpi-health">—</div>
+                <div class="kpi-meta" id="kpi-health-sub">Archivos, sintaxis y seguridad</div>
+              </article>
+              <article class="kpi-card">
+                <div class="kpi-label">Misiones Ejecutadas</div>
+                <div class="kpi-value" id="kpi-missions">0</div>
+                <div class="kpi-meta" id="kpi-missions-sub">Con verificación automática real</div>
+              </article>
+            </div>
+
+            <!-- Mission Launcher Card -->
+            <section class="card mission-composer-card">
+              <div class="card-header">
+                <div>
+                  <h2>Nueva Misión de Ingeniería a Gran Escala</h2>
+                  <p class="card-sub">Describe el proyecto completo, refactorización masiva o depuración crítica. Los agentes trabajan sobre archivos reales con verificación automática.</p>
+                </div>
+                <span class="badge badge-neutral" id="selected-squad-badge">Selección inteligente</span>
+              </div>
+
+              <form id="mission-form" class="mission-form">
+                <div class="preset-chips" aria-label="Plantillas de misión rápida">
+                  <button type="button" class="chip" data-mission-preset="Analiza todo el proyecto, verifica sintaxis multi-lenguaje, ejecuta la suite de pruebas, audita seguridad OWASP, encuentra todos los errores reales y corrígelos profesionalmente hasta dejar todo en verde.">Auditoría, Depuración y Auto-Corrección</button>
+                  <button type="button" class="chip" data-mission-preset="Diseña y construye un sistema empresarial modular completo con API REST robusta, validación estricta, manejo de errores, documentación técnica y suite de pruebas automatizadas ejecutadas y verificadas.">Construir Sistema Empresarial Completo</button>
+                  <button type="button" class="chip" data-mission-preset="Refactoriza la arquitectura actual para mejorar escalabilidad, rendimiento, seguridad y mantenibilidad sin romper compatibilidad, verificando con pruebas reales.">Refactorización y Optimización a Escala</button>
+                  <button type="button" class="chip" data-mission-preset="Crea una suite completa de pruebas unitarias y de integración que cubra casos críticos y casos borde, ejecútala y corrige cualquier defecto descubierto.">Suite de Pruebas y Verificación QA</button>
+                </div>
+
+                <label class="sr-only" for="mission-objective">Objetivo de la misión</label>
+                <textarea id="mission-objective" class="textarea-lg" rows="4" placeholder="Ejemplo: Crea una plataforma backend + frontend completa de gestión de inventario multi-sucursal con API REST, pruebas automatizadas, auditoría de seguridad y documentación, ejecuta todo y corrige cualquier error…" required></textarea>
+
+                <div class="mission-controls-grid">
+                  <div class="field-group">
+                    <label for="mission-mode">Modo de Operación</label>
+                    <select id="mission-mode" class="select-field">
+                      <option value="full-lifecycle">Ciclo Completo Autónomo (Plan → Código → Depuración → Pruebas)</option>
+                      <option value="audit-and-heal">Auditoría Total, Depuración y Auto-Reparación</option>
+                      <option value="squad-dispatch">Despliegue de Escuadrón / División Específica</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <label for="mission-scale">Escala de Flota</label>
+                    <select id="mission-scale" class="select-field">
+                      <option value="compact">Escuadrón Enfocado (6 especialistas clave)</option>
+                      <option value="standard" selected>Equipo Completo (15 especialistas · 1 por división)</option>
+                      <option value="enterprise">División Masiva (45 especialistas)</option>
+                      <option value="full-fleet">Flota Completa (150 especialistas)</option>
+                      <option value="custom">Selección Manual del Directorio</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <label for="mission-division-filter">Enfoque de División (Opcional)</label>
+                    <select id="mission-division-filter" class="select-field">
+                      <option value="">Todas las divisiones relevantes (Automático)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="mission-submit-bar">
+                  <div class="mission-meta-hint" id="mission-engine-hint">
+                    Motor actual: <strong>Local Determinista</strong> (ejecuta análisis, sintaxis, seguridad y tests; conecta APIs LLM gratis para escritura autónoma con IA).
+                  </div>
+                  <div class="mission-submit-actions">
+                    <button type="button" class="btn btn-danger hidden" id="cancel-mission-btn">Detener Misión</button>
+                    <button type="submit" class="btn btn-primary btn-lg" id="launch-mission-btn">
+                      <svg viewBox="0 0 24 24"><path d="m7 5 13 7-13 7z" fill="currentColor" stroke="none"/></svg>
+                      <span>Desplegar Agentes y Ejecutar</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <!-- Active / Selected Mission Live Monitor -->
+            <section class="card mission-monitor-card hidden" id="mission-monitor-card">
+              <div class="card-header">
+                <div>
+                  <div class="monitor-title-row">
+                    <h2 id="monitor-mission-title">Misión activa</h2>
+                    <span class="badge" id="monitor-status-badge">En curso</span>
+                    <span class="badge badge-neutral" id="monitor-engine-badge">Motor</span>
+                  </div>
+                  <p class="card-sub" id="monitor-mission-objective"></p>
+                </div>
+                <div class="monitor-counters">
+                  <span id="monitor-agents-stat">0/0 agentes</span>
+                  <span id="monitor-files-stat">0 archivos</span>
+                </div>
+              </div>
+
+              <!-- Lifecycle Phase Stepper -->
+              <div class="phase-stepper" id="phase-stepper">
+                <div class="phase-step" data-phase="analyze"><span>1</span>Cartografía y Análisis</div>
+                <div class="phase-step" data-phase="plan"><span>2</span>Planificación</div>
+                <div class="phase-step" data-phase="implement"><span>3</span>Implementación</div>
+                <div class="phase-step" data-phase="verify"><span>4</span>Verificación y Depuración</div>
+                <div class="phase-step" data-phase="completed"><span>5</span>Entrega</div>
+              </div>
+
+              <div class="monitor-grid">
+                <div class="monitor-col">
+                  <div class="sub-section-head">
+                    <h3>Especialistas Desplegados</h3>
+                    <span class="muted-small" id="monitor-active-count">0 activos</span>
+                  </div>
+                  <div class="deployed-agents-list" id="monitor-agents-list"></div>
+                </div>
+                <div class="monitor-col">
+                  <div class="sub-section-head">
+                    <h3>Registro Técnico en Vivo</h3>
+                    <span class="muted-small">Herramientas, archivos y verificaciones</span>
+                  </div>
+                  <div class="live-log-feed" id="monitor-log-feed"></div>
+                </div>
+              </div>
+
+              <div class="mission-report-box hidden" id="mission-report-box">
+                <div class="sub-section-head">
+                  <h3>Informe Ejecutivo de Entrega</h3>
+                  <div class="report-files-links" id="monitor-files-list"></div>
+                </div>
+                <div class="markdown-body" id="mission-report-content"></div>
+              </div>
+            </section>
+
+            <!-- Recent Missions History -->
+            <section class="card">
+              <div class="card-header">
+                <div>
+                  <h2>Historial de Misiones</h2>
+                  <p class="card-sub">Inspecciona informes, archivos modificados y resultados de verificación de misiones anteriores.</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="refresh-missions-btn">Actualizar</button>
+              </div>
+              <div class="missions-history-list" id="missions-history-list">
+                <div class="empty-inline">Aún no se han lanzado misiones en esta sesión.</div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- ===================== VIEW 2: 150 SPECIALIST AGENTS ===================== -->
+        <section class="page-view" id="view-agents" aria-label="Flota de 150 Agentes Especialistas">
+          <div class="page-container">
+            <div class="page-header">
+              <div>
+                <h1>Flota de 150 Especialistas de Ingeniería</h1>
+                <p class="page-lead">15 divisiones técnicas completas. Toca cualquier especialista para abrir su expediente, asignarle un modelo LLM específico, chatear 1 a 1 o integrarlo a tu escuadrón.</p>
+              </div>
+              <div class="page-header-actions">
+                <button type="button" class="btn btn-secondary hidden" id="clear-squad-btn">Limpiar Escuadrón (<span id="squad-count-label">0</span>)</button>
+                <button type="button" class="btn btn-primary hidden" id="dispatch-squad-btn">Lanzar Escuadrón Seleccionado</button>
+              </div>
+            </div>
+
+            <div class="agents-toolbar card">
+              <div class="search-box">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16.2 16.2 4.3 4.3"/></svg>
+                <input type="search" id="agent-search-input" placeholder="Buscar entre los 150 especialistas por nombre, ID (AG-051), lenguaje o especialidad…" autocomplete="off">
+              </div>
+              <div class="filter-row">
+                <select id="agent-phase-filter" class="select-field compact">
+                  <option value="">Todas las fases</option>
+                  <option value="plan">Planificación y Orquestación</option>
+                  <option value="architect">Arquitectura</option>
+                  <option value="implement">Implementación</option>
+                  <option value="debug">Depuración</option>
+                  <option value="security">Seguridad</option>
+                  <option value="test">Pruebas QA</option>
+                  <option value="optimize">SRE y Rendimiento</option>
+                  <option value="devops">DevOps</option>
+                  <option value="review">Revisión</option>
+                </select>
+                <span class="filter-count" id="agents-filtered-count">Mostrando 150 de 150</span>
+              </div>
+              <div class="division-pills" id="division-pills" role="tablist" aria-label="Divisiones de ingeniería"></div>
+            </div>
+
+            <div class="agents-grid" id="agents-grid"></div>
+          </div>
+        </section>
+
+        <!-- ===================== VIEW 3: CODE STUDIO (IDE) ===================== -->
+        <section class="page-view view-code-full" id="view-code" aria-label="Estudio de Código">
+          <div class="code-workbench" id="code-workbench">
+            <!-- Collapsible Explorer Side Pane -->
+            <aside class="code-sidebar" id="code-sidebar" aria-label="Explorador de archivos">
+              <div class="code-sidebar-tabs">
+                <button type="button" class="sub-tab is-active" data-code-tab="explorer">Archivos</button>
+                <button type="button" class="sub-tab" data-code-tab="search">Buscar</button>
+                <button type="button" class="sub-tab" data-code-tab="snapshots">Snapshots</button>
+                <button type="button" class="icon-btn sm mobile-only-flex" id="close-explorer-btn" aria-label="Cerrar explorador">
+                  <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+
+              <div class="code-sidebar-pane is-active" id="code-pane-explorer">
+                <div class="pane-actions-bar">
+                  <button type="button" class="btn btn-ghost btn-xs" id="new-file-button">+ Archivo</button>
+                  <button type="button" class="btn btn-ghost btn-xs" id="new-folder-button">+ Carpeta</button>
+                  <button type="button" class="btn btn-ghost btn-xs" id="upload-files-trigger">Subir</button>
+                  <button type="button" class="icon-btn xs" id="refresh-tree-button" title="Actualizar árbol" aria-label="Actualizar árbol">
+                    <svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 9A6.5 6.5 0 0 1 17 6.5L20 9M4 15l3 2.5A6.5 6.5 0 0 0 18 15"/></svg>
+                  </button>
+                </div>
+                <div class="file-tree-scroll" id="file-tree" role="tree"></div>
+                <div class="empty-tree hidden" id="tree-empty">
+                  <strong>Workspace vacío</strong>
+                  <p>Crea un archivo, sube código desde tu dispositivo o genera una plantilla empresarial en Herramientas.</p>
+                  <div class="empty-tree-btns">
+                    <button type="button" class="btn btn-primary btn-sm" id="empty-create-file">Crear archivo</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-open-drawer="tools">Plantillas / Clonar</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="code-sidebar-pane" id="code-pane-search">
+                <form id="search-form" class="code-search-form">
+                  <input type="search" id="search-query" class="input-field" placeholder="Buscar texto o regex…" autocomplete="off">
+                  <div class="code-search-opts">
+                    <label class="checkbox-inline"><input type="checkbox" id="search-case"><span>Aa</span></label>
+                    <label class="checkbox-inline"><input type="checkbox" id="search-regex"><span>Regex</span></label>
+                    <input type="text" id="search-glob" class="input-field sm" placeholder="*.js">
+                  </div>
+                  <button type="submit" class="btn btn-secondary btn-sm full-width">Buscar en proyecto</button>
+                </form>
+                <div id="search-summary" class="search-summary"></div>
+                <div id="search-results" class="search-results-list"></div>
+              </div>
+
+              <div class="code-sidebar-pane" id="code-pane-snapshots">
+                <div class="pane-actions-bar">
+                  <button type="button" class="btn btn-primary btn-xs" id="create-snapshot-button">+ Crear Snapshot</button>
+                  <button type="button" class="btn btn-ghost btn-xs" id="refresh-snapshots-button">Actualizar</button>
+                </div>
+                <div id="snapshot-list" class="snapshot-list"></div>
+              </div>
+            </aside>
+
+            <!-- Editor Column -->
+            <div class="code-editor-area">
+              <div class="editor-toolbar">
+                <div class="editor-toolbar-left">
+                  <button type="button" class="btn btn-ghost btn-sm mobile-only-flex" id="toggle-explorer-btn">
+                    <svg viewBox="0 0 24 24"><path d="M3.5 6h6l2 2h9v11h-17z"/></svg>
+                    <span>Archivos</span>
+                  </button>
+                  <div class="breadcrumbs" id="breadcrumbs"><span>workspace</span> / <span class="muted">Sin archivo abierto</span></div>
+                </div>
+                <div class="editor-toolbar-right">
+                  <button type="button" class="btn btn-ghost btn-sm" id="quick-open-button" title="Abrir rápido (Ctrl+P)">Abrir</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="verify-file-button" title="Verificar sintaxis y seguridad del archivo" disabled>Verificar</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="save-button" title="Guardar (Ctrl+S)" disabled>Guardar</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="run-button" title="Ejecutar archivo (F5)" disabled>Ejecutar</button>
+                </div>
+              </div>
+
+              <div class="editor-tabs-bar" id="editor-tabs" role="tablist">
+                <div class="tab-empty-hint">Selecciona un archivo del explorador para editar</div>
+              </div>
+
+              <div class="file-diagnostic-banner hidden" id="file-diagnostic-banner"></div>
+
+              <div class="editor-canvas-wrap">
+                <div id="monaco-editor" class="monaco-host hidden"></div>
+                <div id="welcome-view" class="editor-welcome">
+                  <div class="welcome-card">
+                    <span class="eyebrow">ESTUDIO DE INGENIERÍA REAL</span>
+                    <h2>Edita, verifica y ejecuta código real desde cualquier dispositivo</h2>
+                    <p>Todos los archivos se almacenan en el workspace del servidor con control de concurrencia y acceso completo para los 150 especialistas.</p>
+                    <div class="welcome-cta-row">
+                      <button type="button" class="btn btn-primary" id="welcome-new-file">Nuevo archivo</button>
+                      <button type="button" class="btn btn-secondary" data-open-drawer="tools">Generar proyecto</button>
+                      <button type="button" class="btn btn-secondary" data-open-drawer="git">Clonar GitHub</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="editor-statusbar">
+                <span id="status-message">Listo</span>
+                <div class="editor-status-right">
+                  <span id="cursor-status" class="hidden">Ln 1, Col 1</span>
+                  <span id="language-status">Texto</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== VIEW 4: TERMINAL, EXECUTION & AUDIT ===================== -->
+        <section class="page-view" id="view-runtime" aria-label="Terminal, Ejecución y Auditoría">
+          <div class="page-container">
+            <div class="page-header">
+              <div>
+                <h1>Terminal, Ejecución y Diagnósticos</h1>
+                <p class="page-lead">Shell interactiva real, ejecución multi-lenguaje, pruebas automatizadas, auditoría de sintaxis/seguridad y procesos en segundo plano.</p>
+              </div>
+              <div class="page-header-actions">
+                <button type="button" class="btn btn-secondary" id="rt-run-syntax-btn">Verificar Sintaxis</button>
+                <button type="button" class="btn btn-secondary" id="rt-run-security-btn">Auditar Seguridad</button>
+                <button type="button" class="btn btn-primary" id="rt-run-tests-btn">Ejecutar Tests</button>
+              </div>
+            </div>
+
+            <div class="runtime-tabs-bar" role="tablist">
+              <button type="button" class="runtime-tab is-active" data-rt-tab="terminal">Terminal Real <span class="dot-inline" id="term-conn-dot"></span></button>
+              <button type="button" class="runtime-tab" data-rt-tab="output">Salida de Ejecución</button>
+              <button type="button" class="runtime-tab" data-rt-tab="diagnostics">Diagnósticos y Seguridad <span class="tab-badge" id="diag-count-badge">0</span></button>
+              <button type="button" class="runtime-tab" data-rt-tab="processes">Procesos Activos</button>
+            </div>
+
+            <!-- Terminal Pane -->
+            <div class="runtime-pane is-active" id="rt-pane-terminal">
+              <div class="card terminal-card">
+                <div class="terminal-topbar">
+                  <div class="terminal-tabs" id="terminal-tabs"></div>
+                  <div class="terminal-actions">
+                    <span class="terminal-state-label" id="terminal-state">Conectando…</span>
+                    <button type="button" class="btn btn-ghost btn-xs" id="new-terminal-button">+ Nueva</button>
+                    <button type="button" class="btn btn-ghost btn-xs" id="clear-terminal-button">Limpiar</button>
+                  </div>
+                </div>
+                <div class="terminal-host-wrap" id="terminal-host-wrap"></div>
+                <!-- Touch-friendly Command Helper for Mobile/Tablet -->
+                <div class="touch-terminal-bar">
+                  <div class="touch-keys-row">
+                    <button type="button" class="touch-key" data-term-key="ctrl-c">Ctrl+C</button>
+                    <button type="button" class="touch-key" data-term-cmd="ls -la">ls -la</button>
+                    <button type="button" class="touch-key" data-term-cmd="git status">git status</button>
+                    <button type="button" class="touch-key" data-term-cmd="npm test">npm test</button>
+                    <button type="button" class="touch-key" data-term-cmd="pwd">pwd</button>
+                    <button type="button" class="touch-key" data-term-cmd="clear">clear</button>
+                  </div>
+                  <form id="mobile-term-form" class="mobile-term-form">
+                    <input type="text" id="mobile-term-input" class="input-field mono" placeholder="Escribe un comando bash y pulsa Ejecutar…" autocomplete="off" autocapitalize="off" spellcheck="false">
+                    <button type="submit" class="btn btn-primary btn-sm">Ejecutar</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- Output Pane -->
+            <div class="runtime-pane" id="rt-pane-output">
+              <div class="card output-card">
+                <div class="card-header">
+                  <h2>Salida de Ejecución y Pruebas</h2>
+                  <button type="button" class="btn btn-ghost btn-sm" id="clear-output-button">Limpiar salida</button>
+                </div>
+                <div id="run-output" class="run-output-box">
+                  <div class="empty-inline">Ejecuta un archivo, un comando o la suite de pruebas para ver stdout, stderr, código de salida y tiempos reales.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Diagnostics & Security Audit Pane -->
+            <div class="runtime-pane" id="rt-pane-diagnostics">
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h2>Diagnósticos de Sintaxis y Auditoría de Seguridad</h2>
+                    <p class="card-sub" id="diagnostics-summary-line">Ejecuta una verificación o auditoría para inspeccionar todo el proyecto.</p>
+                  </div>
+                  <div class="inline-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" id="auto-repair-safe-btn">Auto-Reparación Segura</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="send-diags-to-debuggers-btn">Enviar a Agentes Depuradores</button>
+                  </div>
+                </div>
+                <div class="diagnostics-table-wrap" id="diagnostics-list">
+                  <div class="empty-inline">Sin diagnósticos ejecutados todavía.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Background Processes Pane -->
+            <div class="runtime-pane" id="rt-pane-processes">
+              <div class="card">
+                <div class="card-header">
+                  <div>
+                    <h2>Procesos y Servidores en Segundo Plano</h2>
+                    <p class="card-sub">Inicia servidores de desarrollo, watchers o servicios persistentes del workspace.</p>
+                  </div>
+                  <button type="button" class="btn btn-ghost btn-sm" id="refresh-procs-btn">Actualizar</button>
+                </div>
+                <form id="start-proc-form" class="inline-form">
+                  <input type="text" id="proc-name-input" class="input-field" placeholder="Nombre (ej. API Dev)">
+                  <input type="text" id="proc-cmd-input" class="input-field mono" placeholder="Comando (ej. node src/server.js)" required>
+                  <button type="submit" class="btn btn-primary">Iniciar Proceso</button>
+                </form>
+                <div id="processes-list" class="processes-list">
+                  <div class="empty-inline">No hay procesos en segundo plano ejecutándose.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Mobile & Tablet Bottom Navigation Bar -->
+    <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
+      <button type="button" class="mobile-nav-btn is-active" data-nav="missions">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h14"/><circle cx="18" cy="12" r="2.5"/></svg>
+        <span>Misiones</span>
+      </button>
+      <button type="button" class="mobile-nav-btn" data-nav="agents">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 19c.6-3.4 2.8-5 6-5s5.4 1.6 6 5"/><circle cx="17" cy="9" r="2.3"/></svg>
+        <span>150 Agentes</span>
+      </button>
+      <button type="button" class="mobile-nav-btn" data-nav="code">
+        <svg viewBox="0 0 24 24"><path d="m8.5 7.5-5 4.5 5 4.5m7-9 5 4.5-5 4.5m-2.2-11-2.6 13"/></svg>
+        <span>Código</span>
+      </button>
+      <button type="button" class="mobile-nav-btn" data-nav="runtime">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3.5 3L7 15m5.5 0H17"/></svg>
+        <span>Ejecución</span>
+      </button>
+      <button type="button" class="mobile-nav-btn" id="mobile-drawer-btn">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/></svg>
+        <span>Config</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ===================== COLLAPSIBLE UNIVERSAL TOOLS & CONFIG DRAWER ===================== -->
+  <div class="drawer-backdrop hidden" id="drawer-backdrop"></div>
+  <aside class="slide-drawer hidden" id="tools-drawer" aria-label="Panel desplegable de herramientas y configuración">
+    <div class="drawer-header">
+      <div>
+        <span class="eyebrow">PANEL DE CONTROL EMPRESARIAL</span>
+        <h2>Herramientas, APIs LLM Gratis y Configuración</h2>
+      </div>
+      <button type="button" class="icon-btn" id="close-tools-drawer-btn" aria-label="Cerrar panel">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="drawer-tabs" role="tablist">
+      <button type="button" class="drawer-tab is-active" data-drawer-tab="providers">APIs LLM Gratis</button>
+      <button type="button" class="drawer-tab" data-drawer-tab="tools">Herramientas</button>
+      <button type="button" class="drawer-tab" data-drawer-tab="git">Git y Repos</button>
+      <button type="button" class="drawer-tab" data-drawer-tab="settings">Configuración</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: MULTI-LLM FREE PROVIDER POOL -->
+      <div class="drawer-pane is-active" id="drawer-pane-providers">
+        <div class="info-banner">
+          <strong>Pool Multi-Proveedor para los 150 Agentes</strong>
+          <p>Conecta múltiples modelos LLM gratuitos a la vez (OpenRouter <code>:free</code>, Groq, Google Gemini, Cerebras, GitHub Models, Mistral, SambaNova, Hugging Face u Ollama local). La plataforma balancea carga y aplica failover automático si una API alcanza límite de cuota (HTTP 429).</p>
+        </div>
+
+        <details class="accordion-card" open>
+          <summary>Agregar Proveedor Gratuito en 1 Toque</summary>
+          <div class="accordion-body">
+            <div class="preset-provider-grid" id="provider-presets-grid">
+              <button type="button" class="btn btn-secondary btn-sm" id="openrouter-preset-button">OpenRouter: buscar modelos GRATIS</button>
+            </div>
+          </div>
+        </details>
+
+        <div class="section-bar">
+          <h3>Proveedores Conectados (<span id="connected-providers-count">0</span>)</h3>
+          <div class="inline-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="test-all-providers-btn">Probar Todo el Pool</button>
+            <button type="button" class="btn btn-primary btn-sm" id="add-custom-provider-btn">+ Agregar API</button>
+          </div>
+        </div>
+
+        <div id="providers-list" class="providers-list"></div>
+
+        <!-- Quick Single-Model Discovery / Compatibility Bar -->
+        <details class="accordion-card">
+          <summary>Explorador Rápido de Catálogo de Modelos (/models)</summary>
+          <div class="accordion-body">
+            <div class="field-group">
+              <label for="setting-base-url">URL base del proveedor</label>
+              <input class="input-field" id="setting-base-url" type="url" placeholder="https://openrouter.ai/api/v1" autocomplete="url">
+            </div>
+            <div class="field-group">
+              <label for="setting-api-key">API Key del proveedor (solo guardada en este navegador)</label>
+              <div class="secret-row">
+                <input class="input-field" id="setting-api-key" type="password" placeholder="sk-or-… / gsk_… / AIza…" autocomplete="new-password">
+                <button type="button" class="btn btn-ghost btn-sm" id="toggle-api-key">Mostrar</button>
+              </div>
+            </div>
+            <div class="field-group">
+              <label for="setting-model">Modelo descubierto o manual</label>
+              <div class="inline-form compact">
+                <input class="input-field" id="setting-model" type="text" list="setting-model-options" placeholder="Pulsa Buscar modelos" autocomplete="off">
+                <datalist id="setting-model-options"></datalist>
+                <button type="button" class="btn btn-secondary btn-sm" id="discover-models-button">Buscar modelos</button>
+              </div>
+            </div>
+            <div id="model-discovery-note" class="field-note">Busca el catálogo <code>/models</code> para priorizar modelos GRATIS. Si un proveedor devuelve <code>insufficient_quota</code> o <code>credit_balance_exhausted</code>, esa clave no tiene saldo: agrega otro proveedor gratuito en el pool superior.</div>
+            <div class="inline-actions mt-8">
+              <button type="button" class="btn btn-secondary btn-sm" id="quick-test-single-btn">Probar conexión</button>
+              <button type="button" class="btn btn-primary btn-sm" id="quick-add-discovered-btn">Añadir al Pool Activo</button>
+            </div>
+            <div id="agent-test-result" class="test-banner hidden"></div>
+          </div>
+        </details>
+
+        <details class="accordion-card" open>
+          <summary>Estrategia de Enrutamiento, Concurrencia y Failover</summary>
+          <div class="accordion-body">
+            <div class="form-grid-2">
+              <div class="field-group">
+                <label for="pool-strategy">Estrategia de Balanceo</label>
+                <select id="pool-strategy" class="select-field">
+                  <option value="round-robin">Round-Robin (Reparte carga entre todas las APIs gratis)</option>
+                  <option value="priority-failover">Failover por Prioridad (1 → 2 → 3 automático)</option>
+                  <option value="least-used">Menor Uso / Menor Latencia</option>
+                  <option value="division-mapped">Asignación Específica por División</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="pool-concurrency">Agentes en Paralelo (Concurrencia)</label>
+                <input id="pool-concurrency" class="input-field" type="number" min="1" max="16" value="4">
+              </div>
+              <div class="field-group">
+                <label for="pool-max-steps">Pasos Máximos por Especialista</label>
+                <input id="pool-max-steps" class="input-field" type="number" min="2" max="60" value="18">
+              </div>
+              <div class="field-group">
+                <label for="pool-temperature">Temperatura (Precisión Técnica)</label>
+                <input id="pool-temperature" class="input-field" type="number" min="0" max="2" step="0.1" value="0.2">
+              </div>
+            </div>
+            <label class="toggle-line">
+              <span><strong>Llamadas a Herramientas Reales</strong><small>Permite a los agentes leer, editar, ejecutar código, auditar y probar el proyecto</small></span>
+              <input type="checkbox" id="pool-tools-enabled" checked>
+            </label>
+            <div class="save-bar">
+              <button type="button" class="btn btn-primary" id="save-pool-config-btn">Guardar Configuración del Pool</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="accordion-card">
+          <summary>Matriz de Modelos por División (15 Divisiones)</summary>
+          <div class="accordion-body">
+            <p class="field-note">Asigna un proveedor gratuito concreto a cada división (ej. Arquitectura → Gemini, Programación → Groq, Seguridad → OpenRouter) o déjalo en Automático.</p>
+            <div id="division-provider-matrix" class="division-matrix"></div>
+          </div>
+        </details>
+      </div>
+
+      <!-- TAB 2: ENGINEERING TOOLBOX -->
+      <div class="drawer-pane" id="drawer-pane-tools">
+        <details class="accordion-card" open>
+          <summary>Análisis, Verificación y Seguridad a Gran Escala</summary>
+          <div class="accordion-body tool-buttons-grid">
+            <button type="button" class="tool-tile" id="tool-verify-syntax">
+              <strong>Verificar Sintaxis Multi-Lenguaje</strong>
+              <span>Node.js, Python AST, JSON, Bash, C/C++, CSS y HTML en todo el proyecto.</span>
+            </button>
+            <button type="button" class="tool-tile" id="tool-security-audit">
+              <strong>Auditoría de Seguridad OWASP</strong>
+              <span>Detecta secretos hardcoded, inyecciones SQL/Shell, XSS, TLS débil y riesgos.</span>
+            </button>
+            <button type="button" class="tool-tile" id="tool-cartography">
+              <strong>Cartografía y Métricas del Código</strong>
+              <span>Mapa de lenguajes, líneas, grafo de dependencias y hotspots complejos.</span>
+            </button>
+            <button type="button" class="tool-tile" id="tool-auto-repair">
+              <strong>Auto-Reparación Determinista</strong>
+              <span>Normaliza UTF-8/LF, repara JSON con comas sobrantes y re-verifica sintaxis.</span>
+            </button>
+          </div>
+        </details>
+
+        <details class="accordion-card" open>
+          <summary>Pruebas, Ejecución Rápida y Runtimes</summary>
+          <div class="accordion-body">
+            <div class="tool-buttons-grid">
+              <button type="button" class="tool-tile" id="tool-run-tests">
+                <strong>Ejecutar Suite de Pruebas</strong>
+                <span>Autodetecta npm test, node --test o python unittest y reporta resultados.</span>
+              </button>
+              <button type="button" class="tool-tile" id="tool-list-runtimes">
+                <strong>Inspeccionar Runtimes y Compiladores</strong>
+                <span>Verifica lenguajes y herramientas CLI disponibles en el servidor.</span>
+              </button>
+            </div>
+            <form id="quick-exec-form" class="inline-form mt-12">
+              <input type="text" id="quick-exec-input" class="input-field mono" placeholder="Ejecutar comando shell en workspace (ej. npm test)">
+              <button type="submit" class="btn btn-secondary">Ejecutar</button>
+            </form>
+            <div id="tool-output-preview" class="tool-preview-box hidden"></div>
+          </div>
+        </details>
+
+        <details class="accordion-card" open>
+          <summary>Generador de Proyectos Empresariales y Archivos</summary>
+          <div class="accordion-body">
+            <div class="field-group">
+              <label for="scaffold-template">Plantilla de Arquitectura Completa</label>
+              <select id="scaffold-template" class="select-field">
+                <option value="node-enterprise-api">API Empresarial Node.js + Suite de Pruebas</option>
+                <option value="python-service">Servicio Modular Python + Unittest</option>
+                <option value="fullstack-web">Aplicación Web Full-Stack + Pruebas</option>
+              </select>
+            </div>
+            <div class="inline-form">
+              <input type="text" id="scaffold-dir" class="input-field" placeholder="Subcarpeta destino (opcional, ej. api-core)">
+              <button type="button" class="btn btn-primary" id="scaffold-create-btn">Crear Proyecto</button>
+            </div>
+            <div class="divider-line"></div>
+            <div class="inline-actions wrap">
+              <button type="button" class="btn btn-secondary btn-sm" id="drawer-upload-files-btn">Subir Archivos desde Dispositivo</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="drawer-export-bundle-btn">Exportar Workspace (JSON)</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="drawer-create-snapshot-btn">Crear Snapshot de Seguridad</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- TAB 3: GIT & REPOSITORIES -->
+      <div class="drawer-pane" id="drawer-pane-git">
+        <details class="accordion-card" open>
+          <summary>Clonar Repositorio GitHub al Workspace</summary>
+          <div class="accordion-body">
+            <p class="field-note">Importa cualquier repositorio público de GitHub para que los 150 especialistas analicen, depuren, auditen o extiendan proyectos completos.</p>
+            <form id="git-clone-form" class="stack-form">
+              <input type="url" id="git-clone-url" class="input-field" placeholder="https://github.com/usuario/repositorio" required>
+              <div class="inline-form">
+                <input type="text" id="git-clone-dir" class="input-field" placeholder="Carpeta destino (opcional)">
+                <button type="submit" class="btn btn-primary" id="git-clone-btn">Clonar Repo</button>
+              </div>
+            </form>
+          </div>
+        </details>
+
+        <details class="accordion-card" open>
+          <summary>Estado Git, Diff y Commits Locales</summary>
+          <div class="accordion-body">
+            <div class="inline-actions wrap mb-10">
+              <button type="button" class="btn btn-secondary btn-sm" id="git-refresh-btn">Actualizar Estado</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="git-init-btn">Inicializar Git</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="git-diff-btn">Ver Diff</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="git-log-btn">Ver Historial</button>
+            </div>
+            <div id="git-status-box" class="code-box">Pulsa Actualizar Estado para consultar Git en el workspace.</div>
+            <form id="git-commit-form" class="inline-form mt-10">
+              <input type="text" id="git-commit-msg" class="input-field" placeholder="Mensaje de commit (ej. fix: corrige validación)">
+              <button type="submit" class="btn btn-primary btn-sm">Commit</button>
+            </form>
+          </div>
+        </details>
+      </div>
+
+      <!-- TAB 4: GENERAL & FLEET SETTINGS -->
+      <div class="drawer-pane" id="drawer-pane-settings">
+        <details class="accordion-card" open>
+          <summary>Políticas de Flota y Auto-Depuración</summary>
+          <div class="accordion-body">
+            <div class="field-group">
+              <label for="setting-debug-retries">Ciclos Automáticos de Auto-Depuración al Fallar Sintaxis o Tests</label>
+              <input type="number" id="setting-debug-retries" class="input-field" min="0" max="5" value="2">
+            </div>
+            <label class="toggle-line">
+              <span><strong>Snapshot Automático Pre-Misión</strong><small>Crea un punto de restauración antes de despliegues multi-agente</small></span>
+              <input type="checkbox" id="setting-auto-snapshot" checked>
+            </label>
+          </div>
+        </details>
+
+        <details class="accordion-card" open>
+          <summary>Apariencia Corporativa y Editor</summary>
+          <div class="accordion-body">
+            <div class="field-group">
+              <label for="setting-theme">Tema de Interfaz</label>
+              <select id="setting-theme" class="select-field">
+                <option value="light">Claro Empresarial (Recomendado)</option>
+                <option value="dark">Grafito Corporativo Oscuro</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="setting-font-size">Tamaño de Fuente del Editor (<span id="font-size-value">14 px</span>)</label>
+              <input type="range" id="setting-font-size" min="11" max="22" value="14">
+            </div>
+            <label class="toggle-line">
+              <span><strong>Ajuste de Línea (Word Wrap)</strong><small>Recomendado para lectura cómoda en móvil y tableta</small></span>
+              <input type="checkbox" id="setting-wordwrap" checked>
+            </label>
+            <label class="toggle-line">
+              <span><strong>Minimapa de Código</strong><small>Vista panorámica lateral en pantallas grandes</small></span>
+              <input type="checkbox" id="setting-minimap">
+            </label>
+            <label class="toggle-line">
+              <span><strong>Autoguardado al Cambiar Pestaña</strong><small>Guarda cambios pendientes automáticamente</small></span>
+              <input type="checkbox" id="setting-autosave">
+            </label>
+            <div class="save-bar">
+              <button type="button" class="btn btn-primary" id="save-general-settings-btn">Guardar Preferencias</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="accordion-card">
+          <summary>Respaldo de Configuración (JSON)</summary>
+          <div class="accordion-body">
+            <p class="field-note">Exporta tus perfiles de proveedores (sin claves API) o importa tu configuración en otro dispositivo.</p>
+            <div class="inline-actions wrap">
+              <button type="button" class="btn btn-secondary btn-sm" id="export-config-btn">Exportar Config</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="import-config-btn">Importar Config</button>
+              <input type="file" id="import-config-file" class="hidden" accept=".json,application/json">
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== SPECIALIST DOSSIER & 1-ON-1 CHAT DRAWER ===================== -->
+  <aside class="slide-drawer specialist-drawer hidden" id="agent-chat-drawer" aria-label="Chat directo con especialista">
+    <div class="drawer-header">
+      <div>
+        <div class="specialist-header-badges">
+          <span class="badge badge-accent" id="chat-agent-id">AG-141</span>
+          <span class="badge badge-neutral" id="chat-agent-division">Orquestación</span>
+        </div>
+        <h2 id="chat-agent-name">Strata Agent</h2>
+        <p class="card-sub" id="chat-agent-specialty"></p>
+      </div>
+      <div class="inline-actions">
+        <button type="button" class="icon-btn" id="chat-reset-btn" title="Nueva conversación" aria-label="Nueva conversación">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="close-chat-drawer-btn" aria-label="Cerrar chat">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <details class="specialist-dossier">
+      <summary>Expediente Técnico, Checklist y Asignación de Modelo</summary>
+      <div class="dossier-body">
+        <div class="field-group">
+          <label for="chat-agent-provider-pin">Proveedor LLM para este especialista</label>
+          <select id="chat-agent-provider-pin" class="select-field compact"></select>
+        </div>
+        <div class="dossier-checklist-label">Estándares de Verificación Obligatorios</div>
+        <ul id="chat-agent-checklist" class="dossier-checklist"></ul>
+        <div class="dossier-tools" id="chat-agent-tools"></div>
+      </div>
+    </details>
+
+    <div class="chat-transcript" id="agent-transcript" aria-live="polite"></div>
+
+    <form id="agent-chat-form" class="chat-composer">
+      <textarea id="agent-input" rows="2" placeholder="Indica al especialista qué programar, analizar, depurar o verificar…" aria-label="Mensaje para el especialista"></textarea>
+      <div class="chat-composer-bar">
+        <button type="button" class="btn btn-ghost btn-xs" id="chat-add-squad-btn">+ Añadir al Escuadrón</button>
+        <button type="submit" class="btn btn-primary btn-sm" id="agent-send-button">Enviar</button>
+      </div>
+    </form>
+  </aside>
+
+  <!-- ===================== MODALS ===================== -->
+  <dialog id="quick-open-dialog" class="modal">
+    <div class="modal-head">
+      <input type="search" id="quick-open-input" class="input-field" placeholder="Buscar archivo por nombre…" autocomplete="off">
+      <button type="button" class="icon-btn" data-close-dialog="quick-open-dialog" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div id="quick-open-results" class="quick-open-list"></div>
+  </dialog>
+
+  <dialog id="prompt-dialog" class="modal modal-sm">
+    <form id="prompt-form" method="dialog">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow" id="prompt-eyebrow">WORKSPACE</span>
+          <h3 id="prompt-title">Nuevo elemento</h3>
+        </div>
+        <button type="button" class="icon-btn" data-close-dialog="prompt-dialog" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="prompt-description" class="field-note"></p>
+        <div class="field-group">
+          <label for="prompt-input" id="prompt-label">Ruta</label>
+          <input type="text" id="prompt-input" class="input-field" autocomplete="off" required>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close-dialog="prompt-dialog">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="prompt-submit">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="file" id="hidden-file-upload" class="hidden" multiple>
+  <div id="context-menu" class="context-menu hidden" role="menu"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/vendor/monaco/vs/loader.js"></script>
+  <script src="/vendor/xterm/xterm.js"></script>
+  <script src="/vendor/xterm-fit/addon-fit.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
